@@ -324,7 +324,7 @@ Features:
 
 ---
 
-## Phase 3 — Remote Volume Control 🚧 NEXT
+## Phase 3 — Remote Volume Control ⭐ ✅ IMPLEMENTED
 
 Parents can remotely adjust the volume on their child's device.
 
@@ -364,7 +364,7 @@ This phase introduces the **Parent App** and extends the **Child App** with a vo
 
 ---
 
-## Phase 4 — Parent Dashboard
+## Phase 4 — Parent Dashboard 🚧 NEXT
 
 Expand the parent app with a read-only overview.
 
