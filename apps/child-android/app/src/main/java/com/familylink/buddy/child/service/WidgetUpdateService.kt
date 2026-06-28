@@ -765,6 +765,29 @@ class WidgetUpdateService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update volume report in Firestore", e)
         }
+
+        // Also update local DataStore state to refresh Child App UI
+        val currentMedia = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val currentRing = audioManager.getStreamVolume(AudioManager.STREAM_RING)
+        val currentAlarm = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+        val maxMedia = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
+        val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+
+        val localState = VolumeState(
+            mediaVolume = currentMedia,
+            ringtoneVolume = currentRing,
+            alarmVolume = currentAlarm,
+            maxMediaVolume = maxMedia,
+            maxRingtoneVolume = maxRing,
+            maxAlarmVolume = maxAlarm,
+            isMuted = currentMedia == 0,
+            deviceToken = token
+        )
+        serviceScope.launch {
+            repository.updateVolumeState(localState)
+            Log.d(TAG, "Updated local repository volumeState from Firestore command: $currentMedia/$maxMedia")
+        }
     }
 
     private fun setStreamVolume(audioManager: AudioManager, stream: Int, level: Int) {
