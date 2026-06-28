@@ -2,7 +2,14 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 class GoogleSignInService {
   static final _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
+    scopes: [
+      'email',
+      'profile',
+      'https://www.googleapis.com/auth/kid.family'
+    ],
+    // The Web Application Client ID from Google Cloud Console.
+    // Necessary to exchange serverAuthCode on the backend for a refresh token.
+    serverClientId: '260707499739-mock-web-server-client-id.apps.googleusercontent.com',
   );
 
   static Future<GoogleSignInAccount?> signIn() async {

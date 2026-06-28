@@ -92,7 +92,7 @@ class _PairingScreenState extends State<PairingScreen> {
           .httpsCallable('pairWithCode')
           .call({
             'code': code,
-            'googleAuthCode': 'mock-auth-code'
+            'googleAuthCode': widget.account?.serverAuthCode ?? 'mock-auth-code'
           });
 
       final Map<dynamic, dynamic> resData = result.data;
