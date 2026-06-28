@@ -13,8 +13,8 @@ echo "=== FamilyLink Buddy Phase 3 Local Test Runner ==="
 echo "Ensuring port 8080 is clear from previous ADB forwards..."
 $ADB forward --remove tcp:8080 >/dev/null 2>&1 || true
 
-echo "Starting Firebase Local Emulator Suite (Firestore & Cloud Functions)..."
-npx -y firebase-tools@latest emulators:start --only firestore,functions > firebase-emulator.log 2>&1 &
+echo "Starting Firebase Local Emulator Suite (Firestore)..."
+npx -y firebase-tools@latest emulators:start --only firestore > firebase-emulator.log 2>&1 &
 
 
 
