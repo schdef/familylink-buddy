@@ -361,9 +361,9 @@ class WidgetUpdateService : Service() {
         val density = resources.displayMetrics.density
         
         val rocketSize = when (preset) {
-            0 -> 20f
-            2 -> 48f
-            else -> 32f
+            0 -> 40f
+            2 -> 96f
+            else -> 64f
         } * density
         
         val earthSize = when (preset) {
@@ -514,9 +514,9 @@ class WidgetUpdateService : Service() {
                         val angle = progress * 2f * Math.PI.toFloat()
 
                         val orbitRadiusDp = when (currentSizePreset) {
-                            0 -> 20f
-                            2 -> 46f
-                            else -> 32f
+                            0 -> 36f
+                            2 -> 90f
+                            else -> 60f
                         }
                         val radius = orbitRadiusDp * resources.displayMetrics.density
 
