@@ -526,7 +526,7 @@ class WidgetUpdateService : Service() {
                         rocketImage?.translationX = orbX
                         rocketImage?.translationY = orbY
 
-                        val angleDegrees = (angle * 180f / Math.PI.toFloat()) + 90f
+                        val angleDegrees = (angle * 180f / Math.PI.toFloat()) + 180f
                         rocketImage?.rotation = angleDegrees
                     }
                 } else {
