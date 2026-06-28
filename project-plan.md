@@ -274,9 +274,9 @@ A project that can be built forever.
 
 ---
 
-## Phase 1 — Child Widget MVP ⭐
+## Phase 1 — Child Widget MVP ⭐ ✅ IMPLEMENTED
 
-This is where I'd start.
+This is where we started.
 
 Goal:
 
@@ -295,59 +295,78 @@ Updates automatically
 
 ```
 
-Nothing else.
-
-No parent app yet.
-
-No overlay.
-
-No notifications.
-
-No onboarding polish.
-
-No SaaS.
-
-Just:
-
-> Can we reliably show remaining Family Link time?
-
-If this isn't delightful, nothing else matters.
-
 Deliverables:
 
-* Android Widget
-* Background sync
-* Usage display
-* Offline cache
-* Beautiful design
-* Battery optimized
+* ✅ Android Widget (Jetpack Glance `FamilyBuddyWidget`)
+* ✅ Background sync (`WidgetUpdateService` foreground service)
+* ✅ Usage display (overall + per-app remaining time)
+* ✅ Offline cache (Jetpack DataStore `FamilyTimeRepository`)
+* ✅ Beautiful design (gradient backgrounds, progress bars)
+* ✅ Battery optimized (screen-on/off receiver gating)
 
 ---
 
-## Phase 2 — Child Companion App
+## Phase 2 — Child Companion App ✅ IMPLEMENTED
 
 Only enough UI to support the widget.
 
 Features:
 
-* remaining time
-* today's usage (overall and per app)
-* device status
-* permissions
-* diagnostics
-* **Lock Warning Overlay:** When an app or the device has 3 minutes left before locking, a countdown overlay appears. It cannot be closed or removed, but it can be moved on the screen or resized.
-
-No settings.
-
-No parents.
-
-No SaaS.
+* ✅ remaining time
+* ✅ today's usage (overall and per app)
+* ✅ device status
+* ✅ permissions (overlay permission check & grant flow)
+* ✅ diagnostics (mock data controls in `MainActivity`)
+* ✅ **Lock Warning Overlay:** When an app or the device has 3 minutes left before locking, a countdown overlay appears with a **Space Rocket Launch Mission** animation (preparing → liftoff → orbit). It can be moved on the screen, resized via `+` button, and dismissed with a 4-tap gesture.
+* ✅ Lock reason display: shows whether the **device** or a specific **app** (by name) triggered the lock
+* ✅ Bilingual support: German (default) and English
+* ✅ 5-second post-countdown visibility delay before auto-dismiss
 
 ---
 
-## Phase 3 — Parent Dashboard
+## Phase 3 — Remote Volume Control 🚧 NEXT
 
-Now parents finally enter.
+Parents can remotely adjust the volume on their child's device.
+
+This phase introduces the **Parent App** and extends the **Child App** with a volume control listener.
+
+### Parent App (`apps/parent-flutter/` or `apps/parent-android/`)
+
+* Google Account login (OAuth 2.0) to authenticate the parent
+* Device discovery: list paired child devices from the family group
+* **Remote Volume Control UI:**
+  * Slider to set the child device volume (media, ringtone, alarm)
+  * Mute / unmute toggle
+  * Current volume level indicator (synced from child)
+* Communication channel: Firebase Cloud Messaging (FCM) or direct WebSocket to push volume commands to the child device
+
+### Child App Extension (`apps/child-android/`)
+
+* FCM receiver / WebSocket listener for incoming volume commands
+* `AudioManager` integration to programmatically set device volume (media, ringtone, alarm streams)
+* Report current volume level back to parent app
+* Permission handling: ensure `MODIFY_AUDIO_SETTINGS` and notification access are granted
+* Volume change broadcast receiver to detect manual volume changes on the device and sync back
+
+### Security & Pairing
+
+* Parent must authenticate with Google and prove family group membership
+* Child device pairing via one-time code or QR scan
+* All volume commands are authenticated and encrypted
+* Child app shows a brief notification when volume is remotely adjusted (transparency principle)
+
+### Deliverables
+
+* Parent app with Google login and volume control dashboard
+* Child app FCM/WebSocket volume command receiver
+* Bidirectional volume state sync
+* Secure pairing flow
+
+---
+
+## Phase 4 — Parent Dashboard
+
+Expand the parent app with a read-only overview.
 
 Dashboard:
 
@@ -362,21 +381,23 @@ Battery
 
 Last Sync
 
+Volume: 60%
+
 ```
 
-Read-only.
+Read-only status + volume control (from Phase 3).
 
-No management.
+No additional management.
 
 No notifications.
 
 ---
 
-## Phase 4 — Family Pairing
+## Phase 5 — Family Pairing
 
 Now:
 
-Google Login
+Google Login (already implemented in Phase 3)
 
 Invite
 
@@ -388,7 +409,7 @@ Everything secure.
 
 ---
 
-## Phase 5 — Live Updates
+## Phase 6 — Live Updates
 
 Realtime sync
 
@@ -400,25 +421,27 @@ Widget updates
 
 Status changes
 
+Volume state sync
+
 ---
 
-## Phase 6 — Nice UX
+## Phase 7 — Nice UX
 
-Overlay
+Overlay (partially done in Phase 2)
 
 Notifications (including "Limit Reached" alerts)
 
 Warnings
 
-Animations
+Animations (partially done in Phase 2: rocket launch)
 
-Localization (i18n for at least DE/EN)
+Localization (i18n — DE/EN done in Phase 2)
 
 Accessibility
 
 ---
 
-## Phase 7 — Hosted Platform
+## Phase 8 — Hosted Platform
 
 Now build:
 
@@ -442,7 +465,7 @@ Account Deletion & Data Export (GDPR compliance)
 
 ---
 
-## Phase 8 — Public Release
+## Phase 9 — Public Release
 
 Play Store
 
