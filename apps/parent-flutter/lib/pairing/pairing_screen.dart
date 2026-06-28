@@ -121,6 +121,8 @@ class _PairingScreenState extends State<PairingScreen> {
       final childNameFromCode = codeData['deviceName'] as String;
       final parentId = widget.account?.id ?? 'mock-parent-uid';
 
+      final volumeReport = codeData['volumeReport'] as Map<dynamic, dynamic>?;
+
       // 1. Create pairings document directly
       await FirebaseFirestore.instance
           .collection('pairings')
@@ -128,7 +130,8 @@ class _PairingScreenState extends State<PairingScreen> {
           .set({
             'parentId': parentId,
             'deviceName': childNameFromCode,
-            'lastSeen': FieldValue.serverTimestamp()
+            'lastSeen': FieldValue.serverTimestamp(),
+            'volumeReport': volumeReport
           });
 
       // 2. Delete temporary pairing code

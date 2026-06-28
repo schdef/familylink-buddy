@@ -128,15 +128,26 @@ class MainActivity : ComponentActivity() {
                             pairingCode = code
 
                             try {
+                                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                                val volumeReport = hashMapOf(
+                                    "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+                                    "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
+                                    "alarmVolume" to audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
+                                    "maxMediaVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                                    "maxRingtoneVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
+                                    "maxAlarmVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                                )
+
                                 val db = FirebaseFirestore.getInstance()
                                 val docData = hashMapOf(
                                     "fcmToken" to token,
                                     "deviceName" to "Emma",
-                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                    "volumeReport" to volumeReport
                                 )
                                 db.collection("pairing_codes").document(code).set(docData)
                                     .addOnSuccessListener {
-                                        Log.d("MainActivity", "Pairing code registered directly: $code")
+                                        Log.d("MainActivity", "Pairing code registered directly with initial volume: $code")
                                     }
                                     .addOnFailureListener { e ->
                                         pairingCode = "Fehler"
