@@ -364,7 +364,7 @@ This phase introduces the **Parent App** and extends the **Child App** with a vo
 
 ---
 
-## Phase 4 — Parent Dashboard 🚧 NEXT
+## Phase 4 — Parent Dashboard (Optional / Defer)
 
 Expand the parent app with a read-only overview.
 
@@ -393,7 +393,7 @@ No notifications.
 
 ---
 
-## Phase 5 — Family Pairing
+## Phase 5 — Family Pairing (Optional / Defer)
 
 Now:
 
@@ -409,7 +409,7 @@ Everything secure.
 
 ---
 
-## Phase 6 — Live Updates
+## Phase 6 — Live Updates 🚧 NEXT
 
 Realtime sync
 
