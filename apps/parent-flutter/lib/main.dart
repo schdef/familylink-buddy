@@ -67,21 +67,24 @@ class _InitialRouterState extends State<InitialRouter> {
   }
 
   Future<void> _routeInitialScreen() async {
-    final account = await GoogleSignInService.signInSilently();
-    if (account != null) {
-      final pairingRepo = PairingRepository();
-      final device = await pairingRepo.loadPairedDevice();
-      if (device != null) {
-        // If already paired, go straight to volume control dashboard
-        _targetScreen = VolumeControlScreen(
-          account: account,
-          device: device,
-        );
-      } else {
-        // If logged in but not paired, go to pairing screen
-        _targetScreen = PairingScreen(account: account);
-      }
+    final pairingRepo = PairingRepository();
+    var device = await pairingRepo.loadPairedDevice();
+
+    if (device == null) {
+      // By default, pre-pair with the local emulator for instant out-of-the-box testing
+      device = PairedDevice(
+        name: "Emma (Emulator)",
+        fcmToken: "emulator",
+        lastSeen: DateTime.now(),
+      );
+      await pairingRepo.savePairedDevice(device);
     }
+
+    _targetScreen = VolumeControlScreen(
+      account: null,
+      device: device,
+    );
+
     setState(() {
       _isLoading = false;
     });
