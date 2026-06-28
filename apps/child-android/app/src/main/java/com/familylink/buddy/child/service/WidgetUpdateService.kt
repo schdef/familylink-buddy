@@ -14,6 +14,9 @@ import androidx.core.app.NotificationCompat
 import androidx.glance.appwidget.updateAll
 import com.familylink.buddy.child.MainActivity
 import com.familylink.buddy.child.data.FamilyTimeData
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 import kotlinx.coroutines.*
@@ -51,6 +54,7 @@ class WidgetUpdateService : Service() {
     private var overlayParams: WindowManager.LayoutParams? = null
     private var isOverlayShown = false
     private var overlaySecondsRemaining = 180
+    private var overlaySecondsRemainingFloat = 180f
     private var overlayTickerJob: Job? = null
     private var currentSizePreset = 1 // 0 = Small, 1 = Medium, 2 = Large
 
@@ -342,20 +346,107 @@ class WidgetUpdateService : Service() {
     private fun startOverlayCountdown() {
         overlayTickerJob?.cancel()
         overlayTickerJob = serviceScope.launch(Dispatchers.Main) {
+            overlaySecondsRemainingFloat = overlaySecondsRemaining.toFloat()
+
+            val animationContainer = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.animationContainer)
+            val earthImage = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.earthImage)
+            val launchpadImage = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.launchpadImage)
+            val rocketImage = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.rocketImage)
+            val countdownLabel = overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownLabel)
+
             while (isActive && isOverlayShown) {
-                val minutes = overlaySecondsRemaining / 60
-                val seconds = overlaySecondsRemaining % 60
+                val t = overlaySecondsRemainingFloat
+
+                // 1. Update Countdown Text once per second
+                val displaySeconds = Math.ceil(t.toDouble()).toInt().coerceAtLeast(0)
+                val minutes = displaySeconds / 60
+                val seconds = displaySeconds % 60
                 val timeStr = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-                
                 overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = timeStr
 
-                if (overlaySecondsRemaining <= 0) {
+                // 2. Handle Space Mission Animation Stages
+                if (t <= 30f && t > 0f) {
+                    animationContainer?.visibility = View.VISIBLE
+
+                    if (t > 20f) {
+                        // Stage 1: Preparing (30s to 20s)
+                        earthImage?.visibility = View.GONE
+                        launchpadImage?.visibility = View.VISIBLE
+                        rocketImage?.visibility = View.VISIBLE
+
+                        countdownLabel?.text = getString(R.string.rocket_preparing)
+
+                        val containerHeight = animationContainer?.height ?: 0
+                        val rocketHeight = rocketImage?.height ?: 0
+                        val bottomY = (containerHeight / 2f) - (rocketHeight / 2f) - (4f * resources.displayMetrics.density)
+                        
+                        val shakeX = (Random.nextFloat() - 0.5f) * 2f * resources.displayMetrics.density
+                        val shakeY = (Random.nextFloat() - 0.5f) * 2f * resources.displayMetrics.density
+
+                        rocketImage?.translationX = shakeX
+                        rocketImage?.translationY = bottomY + shakeY
+                        rocketImage?.rotation = 0f
+                        launchpadImage?.translationY = 0f
+
+                    } else if (t > 10f) {
+                        // Stage 2: Launching (20s to 10s)
+                        earthImage?.visibility = View.GONE
+                        launchpadImage?.visibility = View.VISIBLE
+                        rocketImage?.visibility = View.VISIBLE
+
+                        countdownLabel?.text = getString(R.string.rocket_launching)
+
+                        val progress = (20f - t) / 10f // 0.0 to 1.0
+
+                        val containerHeight = animationContainer?.height ?: 0
+                        val rocketHeight = rocketImage?.height ?: 0
+                        val bottomY = (containerHeight / 2f) - (rocketHeight / 2f) - (4f * resources.displayMetrics.density)
+
+                        val travelDistance = bottomY + (rocketHeight * 2f)
+                        val currentY = bottomY - (progress * travelDistance)
+
+                        val shakeX = (Random.nextFloat() - 0.5f) * 3f * resources.displayMetrics.density * (1f - progress)
+                        
+                        rocketImage?.translationX = shakeX
+                        rocketImage?.translationY = currentY
+                        rocketImage?.rotation = 0f
+
+                        launchpadImage?.translationY = progress * 40f * resources.displayMetrics.density
+
+                    } else {
+                        // Stage 3: Orbiting Earth (10s to 0s)
+                        launchpadImage?.visibility = View.GONE
+                        earthImage?.visibility = View.VISIBLE
+                        rocketImage?.visibility = View.VISIBLE
+
+                        countdownLabel?.text = getString(R.string.rocket_orbit)
+
+                        val progress = (10f - t) / 10f // 0.0 to 1.0
+                        val angle = progress * 2f * Math.PI.toFloat()
+
+                        val radius = 22f * resources.displayMetrics.density
+
+                        val orbX = radius * cos(angle)
+                        val orbY = radius * sin(angle)
+
+                        rocketImage?.translationX = orbX
+                        rocketImage?.translationY = orbY
+
+                        val angleDegrees = (angle * 180f / Math.PI.toFloat()) + 90f
+                        rocketImage?.rotation = angleDegrees
+                    }
+                } else {
+                    animationContainer?.visibility = View.GONE
+                    countdownLabel?.text = getString(R.string.overlay_label)
+                }
+
+                if (t <= 0f) {
                     overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = "00:00"
                     break
                 }
 
-                delay(1000)
-                overlaySecondsRemaining--
+                delay(50)
+                overlaySecondsRemainingFloat -= 0.05f
             }
         }
     }

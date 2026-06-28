@@ -13,6 +13,9 @@
     <!-- Overlay Strings -->
     <string name="overlay_label">Locking</string>
     <string name="overlay_size_btn">SIZE</string>
+    <string name="rocket_preparing">Preparing...</string>
+    <string name="rocket_launching">Liftoff!</string>
+    <string name="rocket_orbit">In Orbit!</string>
     
     <!-- Notification Strings -->
     <string name="notification_title">FamilyLink Buddy Active</string>
