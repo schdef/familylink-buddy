@@ -102,6 +102,9 @@ fi
 echo "✅ Parent App installed!"
 
 # 5. Launch both apps
+echo "Setting up ADB port forwarding for local developer direct connection..."
+$ADB -s $DEVICE1 forward tcp:8080 tcp:8080
+
 echo "Launching Child app on $DEVICE1..."
 $ADB -s $DEVICE1 shell am start -n com.familylink.buddy.child/.MainActivity
 

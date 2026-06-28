@@ -84,12 +84,38 @@ class VolumeRepository extends ChangeNotifier {
     }
   }
 
-  /// Send a SET_VOLUME command to the child device via FCM
+  /// Send a SET_VOLUME command to the child device via FCM (or local HTTP in dev mode)
   Future<bool> setVolume({
     required String childFcmToken,
     required String stream, // MEDIA | RINGTONE | ALARM | ALL
     required int level,
   }) async {
+    if (childFcmToken == 'emulator' || childFcmToken.length < 50) {
+      try {
+        final url = Uri.parse('http://10.0.2.2:8080/set_volume?stream=$stream&level=$level');
+        final response = await http.post(url);
+        if (response.statusCode == 200) {
+          _volumeState = VolumeState(
+            mediaVolume: stream == 'MEDIA' || stream == 'ALL' ? level : _volumeState.mediaVolume,
+            ringtoneVolume: stream == 'RINGTONE' || stream == 'ALL' ? level : _volumeState.ringtoneVolume,
+            alarmVolume: stream == 'ALARM' || stream == 'ALL' ? level : _volumeState.alarmVolume,
+            maxMediaVolume: _volumeState.maxMediaVolume,
+            maxRingtoneVolume: _volumeState.maxRingtoneVolume,
+            maxAlarmVolume: _volumeState.maxAlarmVolume,
+            isMuted: level == 0 && stream == 'ALL',
+            timestamp: DateTime.now(),
+          );
+          _isConnected = true;
+          _lastSeen = DateTime.now();
+          notifyListeners();
+          return true;
+        }
+      } catch (e) {
+        debugPrint('Local HTTP volume change failed: $e');
+      }
+      return false;
+    }
+
     final requestId = const Uuid().v4();
     final payload = {
       'to': childFcmToken,
@@ -119,8 +145,25 @@ class VolumeRepository extends ChangeNotifier {
     }
   }
 
-  /// Request a volume report from the child device
+  /// Request a volume report from the child device (or local HTTP in dev mode)
   Future<void> requestVolumeReport(String childFcmToken) async {
+    if (childFcmToken == 'emulator' || childFcmToken.length < 50) {
+      try {
+        final url = Uri.parse('http://10.0.2.2:8080/volume_report');
+        final response = await http.get(url);
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          _volumeState = VolumeState.fromJson(data);
+          _isConnected = true;
+          _lastSeen = DateTime.now();
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('Local HTTP volume report failed: $e');
+      }
+      return;
+    }
+
     final payload = {
       'to': childFcmToken,
       'data': {

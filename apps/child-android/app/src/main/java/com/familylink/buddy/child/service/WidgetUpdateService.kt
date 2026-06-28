@@ -48,6 +48,7 @@ class WidgetUpdateService : Service() {
     private var tickerJob: Job? = null
     private var dbObserverJob: Job? = null
     private var isScreenOn = true
+    private var localHttpServer: LocalHttpServer? = null
 
     // Overlay state variables
     private var windowManager: WindowManager? = null
@@ -89,6 +90,10 @@ class WidgetUpdateService : Service() {
         registerReceiver(screenReceiver, filter)
 
         startDatabaseObserver()
+
+        localHttpServer = LocalHttpServer(applicationContext, repository).apply {
+            start()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -116,6 +121,7 @@ class WidgetUpdateService : Service() {
         unregisterReceiver(screenReceiver)
         hideOverlay()
         serviceScope.cancel()
+        localHttpServer?.stop()
         Log.d(TAG, "Service destroyed")
     }
 

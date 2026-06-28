@@ -171,6 +171,25 @@ class _PairingScreenState extends State<PairingScreen> {
                         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        _deviceNameController.text = "Emma (Emulator)";
+                        _deviceTokenController.text = "emulator";
+                        _handlePairing();
+                      },
+                      icon: const Icon(Icons.developer_board),
+                      label: const Text('Lokale Emulator-Kopplung (Auto-Pair)'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF6366F1),
+                        side: const BorderSide(color: Color(0xFF6366F1)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ],
                 ),
               ),
