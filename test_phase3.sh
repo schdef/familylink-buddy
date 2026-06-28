@@ -7,20 +7,34 @@ EMULATOR="$SDK_DIR/emulator/emulator"
 CHILD_DIR="$(dirname "$0")/apps/child-android"
 PARENT_DIR="$(dirname "$0")/apps/parent-flutter"
 
-echo "=== FamilyLink Buddy Phase 3 Local Test Runner ==="
+echo "=== FamilyLink Buddy Test Runner ==="
 
-# Start Firebase Local Emulator Suite
-echo "Ensuring port 8080 is clear from previous ADB forwards..."
-$ADB forward --remove tcp:8080 >/dev/null 2>&1 || true
+# Default: Cloud mode
+USE_EMULATOR="false"
 
-echo "Starting Firebase Local Emulator Suite (Firestore)..."
-npx -y firebase-tools@latest emulators:start --only firestore > firebase-emulator.log 2>&1 &
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -l|--local) USE_EMULATOR="true" ;;
+        -c|--cloud) USE_EMULATOR="false" ;;
+        *) echo "Unknown parameter: $1. Use --local (-l) or --cloud (-c)."; exit 1 ;;
+    esac
+    shift
+done
 
+echo "Configured Connection Mode: $([ "$USE_EMULATOR" = "true" ] && echo "LOCAL EMULATOR" || echo "PRODUCTION CLOUD")"
 
+if [ "$USE_EMULATOR" = "true" ]; then
+    echo "Ensuring port 8080 is clear from previous ADB forwards..."
+    $ADB forward --remove tcp:8080 >/dev/null 2>&1 || true
+
+    echo "Starting Firebase Local Emulator Suite (Firestore)..."
+    npx -y firebase-tools@latest emulators:start --only firestore > firebase-emulator.log 2>&1 &
+fi
 
 # 1. Compile both apps
 echo "Building child app (com.familylink.buddy.child)..."
-(cd "$CHILD_DIR" && ./gradlew assembleDebug)
+(cd "$CHILD_DIR" && ./gradlew assembleDebug -PuseEmulator=$USE_EMULATOR)
 if [ $? -ne 0 ]; then
     echo "❌ Child app build failed!"
     exit 1
@@ -28,7 +42,7 @@ fi
 echo "✅ Child app build successful!"
 
 echo "Building parent app (com.familylink.buddy.parent)..."
-(cd "$PARENT_DIR" && flutter build apk --debug)
+(cd "$PARENT_DIR" && flutter build apk --debug --dart-define=USE_EMULATOR=$USE_EMULATOR)
 if [ $? -ne 0 ]; then
     echo "❌ Parent app build failed!"
     exit 1

@@ -19,6 +19,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        val useEmulatorProp = project.findProperty("useEmulator")?.toString() ?: "false"
+        buildConfigField("boolean", "USE_EMULATOR", useEmulatorProp)
     }
 
     buildTypes {

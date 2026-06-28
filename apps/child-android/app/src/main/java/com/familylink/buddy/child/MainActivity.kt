@@ -56,14 +56,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         repository = FamilyTimeRepository(applicationContext)
 
-        // Initialize Firebase emulators in debug mode
+        // Initialize Firebase emulators in debug mode if USE_EMULATOR build flag is set
         try {
-            val isEmulator = BuildConfig.DEBUG || 
-                             Build.FINGERPRINT.startsWith("generic") || 
-                             Build.FINGERPRINT.startsWith("google/sdk_gphone") ||
-                             Build.MODEL.contains("google_sdk") || 
-                             Build.MODEL.contains("Emulator")
-            if (isEmulator) {
+            if (BuildConfig.USE_EMULATOR) {
                 Firebase.firestore.useEmulator("10.0.2.2", 8080)
                 Firebase.functions.useEmulator("10.0.2.2", 5001)
                 Log.d("MainActivity", "Firebase clients redirected to local emulators (10.0.2.2)")

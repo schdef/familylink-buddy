@@ -667,6 +667,13 @@ class WidgetUpdateService : Service() {
     private fun registerFirestoreListener(token: String) {
         firestoreListenerRegistration?.remove()
         try {
+            if (com.familylink.buddy.child.BuildConfig.USE_EMULATOR) {
+                try {
+                    FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
+                } catch (e: IllegalStateException) {
+                    // Already initialized
+                }
+            }
             val db = FirebaseFirestore.getInstance()
             firestoreListenerRegistration = db.collection("pairings").document(token)
                 .addSnapshotListener { snapshot, error ->

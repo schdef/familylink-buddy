@@ -18,14 +18,14 @@ void main() async {
   // Initialize Firebase App
   await Firebase.initializeApp();
 
-  if (kDebugMode) {
+  const useEmulator = String.fromEnvironment('USE_EMULATOR') == 'true';
+  if (useEmulator) {
     try {
       final host = defaultTargetPlatform == TargetPlatform.android ? '10.0.2.2' : 'localhost';
       FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
-      FirebaseFunctions.instance.useFunctionsEmulator(host, 5001);
       debugPrint('Redirected Firebase clients to local emulator suite ($host)');
     } catch (e) {
-      debugPrint('Firestore/Functions emulator redirection failed: $e');
+      debugPrint('Firestore emulator redirection failed: $e');
     }
   }
 
