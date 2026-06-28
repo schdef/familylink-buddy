@@ -286,6 +286,7 @@ class WidgetUpdateService : Service() {
             y = 200
         }
 
+        applyImageSizesForPreset(currentSizePreset)
         setupDragListener()
 
         val sizeBtn = overlayView?.findViewById<Button>(com.familylink.buddy.child.R.id.sizeToggleButton)
@@ -349,9 +350,51 @@ class WidgetUpdateService : Service() {
         overlayParams?.height = height
         try {
             windowManager?.updateViewLayout(overlayView, overlayParams)
+            applyImageSizesForPreset(currentSizePreset)
             Log.d(TAG, "Overlay resized to preset $currentSizePreset: $width x $height")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resize overlay: ${e.message}")
+        }
+    }
+
+    private fun applyImageSizesForPreset(preset: Int) {
+        val density = resources.displayMetrics.density
+        
+        val rocketSize = when (preset) {
+            0 -> 20f
+            2 -> 48f
+            else -> 32f
+        } * density
+        
+        val earthSize = when (preset) {
+            0 -> 36f
+            2 -> 80f
+            else -> 56f
+        } * density
+        
+        val launchpadSize = when (preset) {
+            0 -> 36f
+            2 -> 80f
+            else -> 56f
+        } * density
+
+        val rocket = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.rocketImage)
+        val earth = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.earthImage)
+        val launchpad = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.launchpadImage)
+
+        rocket?.layoutParams = rocket?.layoutParams?.apply {
+            width = rocketSize.toInt()
+            height = rocketSize.toInt()
+        }
+        
+        earth?.layoutParams = earth?.layoutParams?.apply {
+            width = earthSize.toInt()
+            height = earthSize.toInt()
+        }
+        
+        launchpad?.layoutParams = launchpad?.layoutParams?.apply {
+            width = launchpadSize.toInt()
+            height = launchpadSize.toInt()
         }
     }
 
@@ -470,7 +513,12 @@ class WidgetUpdateService : Service() {
                         val progress = (10f - t) / 10f // 0.0 to 1.0
                         val angle = progress * 2f * Math.PI.toFloat()
 
-                        val radius = 22f * resources.displayMetrics.density
+                        val orbitRadiusDp = when (currentSizePreset) {
+                            0 -> 20f
+                            2 -> 46f
+                            else -> 32f
+                        }
+                        val radius = orbitRadiusDp * resources.displayMetrics.density
 
                         val orbX = radius * cos(angle)
                         val orbY = radius * sin(angle)
