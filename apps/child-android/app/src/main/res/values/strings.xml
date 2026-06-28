@@ -38,6 +38,7 @@
     <string name="btn_add_time">+15 Min.</string>
     <string name="btn_sub_time">-15 Min.</string>
     <string name="btn_mock_alert">Mock 3 Min. Alarm</string>
+    <string name="btn_mock_rocket">Mock Raketenstart</string>
     <string name="btn_reset_data">Mock-Daten zurücksetzen</string>
     <string name="main_sync_title">Echtzeit-Widget-Synchronisierung</string>
     <string name="main_sync_desc">Verwendet den Hintergrund-Foreground-Service</string>

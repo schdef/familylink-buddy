@@ -190,7 +190,7 @@ class MainActivity : ComponentActivity() {
 
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
                                 onClick = {
@@ -202,6 +202,7 @@ class MainActivity : ComponentActivity() {
                                         FamilyBuddyWidget().updateAll(applicationContext)
                                     }
                                 },
+                                modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
                             ) {
                                 Text(stringResource(R.string.btn_add_time))
@@ -217,11 +218,17 @@ class MainActivity : ComponentActivity() {
                                         FamilyBuddyWidget().updateAll(applicationContext)
                                     }
                                 },
+                                modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
                             ) {
                                 Text(stringResource(R.string.btn_sub_time))
                             }
+                        }
 
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Button(
                                 onClick = {
                                     scope.launch {
@@ -235,9 +242,27 @@ class MainActivity : ComponentActivity() {
                                         FamilyBuddyWidget().updateAll(applicationContext)
                                     }
                                 },
+                                modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
                             ) {
                                 Text(stringResource(R.string.btn_mock_alert))
+                            }
+
+                            Button(
+                                onClick = {
+                                    val intent = Intent(applicationContext, WidgetUpdateService::class.java).apply {
+                                        action = WidgetUpdateService.ACTION_MOCK_ROCKET
+                                    }
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        startForegroundService(intent)
+                                    } else {
+                                        startService(intent)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
+                            ) {
+                                Text(stringResource(R.string.btn_mock_rocket))
                             }
                         }
 

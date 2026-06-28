@@ -40,6 +40,7 @@ class WidgetUpdateService : Service() {
 
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_MOCK_ROCKET = "ACTION_MOCK_ROCKET"
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -53,6 +54,7 @@ class WidgetUpdateService : Service() {
     private var overlayView: View? = null
     private var overlayParams: WindowManager.LayoutParams? = null
     private var isOverlayShown = false
+    private var isMockRocketRunning = false
     private var overlaySecondsRemaining = 180
     private var overlaySecondsRemainingFloat = 180f
     private var overlayTickerJob: Job? = null
@@ -99,7 +101,12 @@ class WidgetUpdateService : Service() {
         }
 
         startForegroundServiceCompat()
-        startTicker()
+
+        if (action == ACTION_MOCK_ROCKET) {
+            triggerMockRocketLaunch()
+        } else {
+            startTicker()
+        }
 
         return START_STICKY
     }
@@ -196,6 +203,10 @@ class WidgetUpdateService : Service() {
     private fun handleTimeDataChanged(data: FamilyTimeData) {
         val remaining = data.totalRemainingMinutes
         if (remaining <= 3 && remaining > 0) {
+            if (isMockRocketRunning) {
+                // Ignore background DB checks while mock rocket simulation is explicitly active
+                return
+            }
             if (!isOverlayShown) {
                 overlaySecondsRemaining = remaining * 60
                 showOverlay()
@@ -206,7 +217,32 @@ class WidgetUpdateService : Service() {
                 }
             }
         } else {
+            isMockRocketRunning = false
             hideOverlay()
+        }
+    }
+
+    private fun triggerMockRocketLaunch() {
+        isMockRocketRunning = true
+        overlaySecondsRemaining = 30
+        showOverlay()
+        startOverlayCountdown()
+        
+        // Update DB so that companion layout mirrors active timer state
+        serviceScope.launch {
+            try {
+                val current = repository.familyTimeData.first()
+                val updated = current.copy(
+                    totalRemainingMinutes = 1,
+                    appUsages = current.appUsages.map {
+                        it.copy(usedMinutes = it.limitMinutes - 1)
+                    }
+                )
+                repository.updateFamilyTimeData(updated)
+                FamilyBuddyWidget().updateAll(applicationContext)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating repository for mock rocket launch", e)
+            }
         }
     }
 
@@ -270,6 +306,7 @@ class WidgetUpdateService : Service() {
         overlayView = null
         overlayParams = null
         isOverlayShown = false
+        isMockRocketRunning = false
 
         if (wm != null && view != null) {
             try {

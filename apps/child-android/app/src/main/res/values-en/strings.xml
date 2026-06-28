@@ -38,6 +38,7 @@
     <string name="btn_add_time">+15 min</string>
     <string name="btn_sub_time">-15 min</string>
     <string name="btn_mock_alert">Mock 3 min Alert</string>
+    <string name="btn_mock_rocket">Mock Rocket Start</string>
     <string name="btn_reset_data">Reset Mock Data</string>
     <string name="main_sync_title">Real-Time Widget Sync</string>
     <string name="main_sync_desc">Uses background ForegroundService</string>
