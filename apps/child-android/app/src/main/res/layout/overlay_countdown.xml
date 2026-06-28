@@ -4,24 +4,27 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/glowing_overlay_bg"
-    android:padding="12dp">
+    android:padding="8dp">
 
     <!-- Top drag visual indicator -->
     <View
         android:id="@+id/dragIndicator"
-        android:layout_width="40dp"
-        android:layout_height="4dp"
+        android:layout_width="32dp"
+        android:layout_height="3dp"
         android:layout_centerHorizontal="true"
         android:layout_alignParentTop="true"
         android:background="#475569" />
 
-    <!-- Countdown display -->
+    <!-- Left section: Countdown display -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
+        android:layout_centerVertical="true"
+        android:layout_alignParentLeft="true"
+        android:layout_marginLeft="12dp"
+        android:layout_toLeftOf="@+id/sizeToggleButton"
         android:orientation="vertical"
-        android:gravity="center">
+        android:gravity="left|center_vertical">
 
         <TextView
             android:id="@+id/countdownText"
@@ -29,31 +32,32 @@
             android:layout_height="wrap_content"
             android:text="03:00"
             android:textColor="#EF4444"
-            android:textSize="26sp"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/countdownLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Device Locking"
+            android:text="Locking"
             android:textColor="#94A3B8"
-            android:textSize="10sp"
+            android:textSize="9sp"
             android:textStyle="bold"
             android:textAllCaps="true" />
     </LinearLayout>
 
-    <!-- Sizing preset switcher -->
+    <!-- Right section: Sizing preset switcher -->
     <Button
         android:id="@+id/sizeToggleButton"
         style="?android:attr/buttonStyleSmall"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
+        android:layout_centerVertical="true"
         android:layout_alignParentRight="true"
+        android:layout_marginRight="8dp"
         android:background="#1E293B"
         android:textColor="#F8FAFC"
         android:text="SIZE"
-        android:textSize="9sp" />
+        android:textSize="8sp" />
 
 </RelativeLayout>
