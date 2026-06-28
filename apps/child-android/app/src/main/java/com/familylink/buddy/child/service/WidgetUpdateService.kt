@@ -418,6 +418,9 @@ class WidgetUpdateService : Service() {
             private var initialY = 0
             private var initialTouchX = 0f
             private var initialTouchY = 0f
+            private var touchDownTime = 0L
+            private var tapCount = 0
+            private var lastTapTime = 0L
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
@@ -426,6 +429,7 @@ class WidgetUpdateService : Service() {
                         initialY = overlayParams?.y ?: 0
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
+                        touchDownTime = System.currentTimeMillis()
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -437,6 +441,30 @@ class WidgetUpdateService : Service() {
                             windowManager?.updateViewLayout(overlayView, overlayParams)
                         } catch (e: Exception) {
                             // View might have been removed
+                        }
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val duration = System.currentTimeMillis() - touchDownTime
+                        val dx = Math.abs(event.rawX - initialTouchX)
+                        val dy = Math.abs(event.rawY - initialTouchY)
+                        val density = resources.displayMetrics.density
+
+                        // Consider it a tap if duration is short and drag movement is within 8dp bounds
+                        if (duration < 250 && dx < 8 * density && dy < 8 * density) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastTapTime < 500) {
+                                tapCount++
+                            } else {
+                                tapCount = 1
+                            }
+                            lastTapTime = now
+
+                            Log.d(TAG, "Overlay tapped: $tapCount/4")
+                            if (tapCount >= 4) {
+                                Log.d(TAG, "Overlay tapped 4 times: dismissing")
+                                hideOverlay()
+                            }
                         }
                         return true
                     }
