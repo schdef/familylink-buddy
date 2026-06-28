@@ -16,6 +16,8 @@
     <string name="rocket_preparing">Bereitmachen...</string>
     <string name="rocket_launching">Abheben!</string>
     <string name="rocket_orbit">Im Orbit!</string>
+    <string name="lock_reason_device">Gerät</string>
+    <string name="text_locked">GESPERRT</string>
     
     <!-- Notification Strings -->
     <string name="notification_title">FamilyLink Buddy Aktiv</string>

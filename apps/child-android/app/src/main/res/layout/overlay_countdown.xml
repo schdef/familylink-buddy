@@ -47,18 +47,21 @@
     </LinearLayout>
 
     <!-- Right section: Sizing preset switcher -->
-    <Button
+    <TextView
         android:id="@+id/sizeToggleButton"
-        style="?android:attr/buttonStyleSmall"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:layout_centerVertical="true"
         android:layout_alignParentRight="true"
         android:layout_marginRight="8dp"
-        android:background="#1E293B"
+        android:background="@drawable/oval_button_bg"
         android:textColor="#F8FAFC"
-        android:text="@string/overlay_size_btn"
-        android:textSize="8sp" />
+        android:text="+"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true" />
 
     <!-- Center section: Animation Container -->
     <FrameLayout

@@ -58,7 +58,7 @@ class WidgetUpdateService : Service() {
     private var overlaySecondsRemaining = 180
     private var overlaySecondsRemainingFloat = 180f
     private var overlayTickerJob: Job? = null
-    private var currentSizePreset = 1 // 0 = Small, 1 = Medium, 2 = Large
+    private var currentSizePreset = 2 // 0 = Small, 1 = Medium, 2 = Large
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -207,7 +207,9 @@ class WidgetUpdateService : Service() {
 
     private fun handleTimeDataChanged(data: FamilyTimeData) {
         val remaining = data.totalRemainingMinutes
-        if (remaining <= 3 && remaining > 0) {
+        val lockedApp = data.appUsages.firstOrNull { it.remainingMinutes <= 0 }
+
+        if ((remaining <= 3 && remaining > 0) || lockedApp != null) {
             if (isMockRocketRunning) {
                 if (remaining == 1) {
                     // Ignore background DB checks while mock rocket simulation is explicitly active
@@ -216,13 +218,21 @@ class WidgetUpdateService : Service() {
                     isMockRocketRunning = false
                 }
             }
-            if (!isOverlayShown) {
+            
+            if (lockedApp != null) {
+                overlaySecondsRemaining = 0
+            } else {
                 overlaySecondsRemaining = remaining * 60
+            }
+
+            if (!isOverlayShown) {
                 showOverlay()
             } else {
-                val expectedSeconds = remaining * 60
-                if (Math.abs(overlaySecondsRemaining - expectedSeconds) > 15) {
-                    overlaySecondsRemaining = expectedSeconds
+                if (lockedApp == null) {
+                    val expectedSeconds = remaining * 60
+                    if (Math.abs(overlaySecondsRemaining - expectedSeconds) > 15) {
+                        overlaySecondsRemaining = expectedSeconds
+                    }
                 }
             }
         } else {
@@ -274,6 +284,10 @@ class WidgetUpdateService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val marginPx = (16 * displayMetrics.density).toInt()
+
         overlayParams = WindowManager.LayoutParams(
             widthPx,
             heightPx,
@@ -282,14 +296,14 @@ class WidgetUpdateService : Service() {
             android.graphics.PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 100
-            y = 200
+            x = screenWidth - widthPx - marginPx
+            y = marginPx
         }
 
         applyImageSizesForPreset(currentSizePreset)
         setupDragListener()
 
-        val sizeBtn = overlayView?.findViewById<Button>(com.familylink.buddy.child.R.id.sizeToggleButton)
+        val sizeBtn = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.sizeToggleButton)
         sizeBtn?.setOnClickListener {
             cycleSizePreset()
         }
@@ -361,9 +375,9 @@ class WidgetUpdateService : Service() {
         val density = resources.displayMetrics.density
         
         val rocketSize = when (preset) {
-            0 -> 40f
-            2 -> 96f
-            else -> 64f
+            0 -> 32f
+            2 -> 76f
+            else -> 50f
         } * density
         
         val earthSize = when (preset) {
@@ -444,103 +458,134 @@ class WidgetUpdateService : Service() {
             val countdownLabel = overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownLabel)
 
             while (isActive && isOverlayShown) {
-                val t = overlaySecondsRemainingFloat
+                // Fetch current DB details to check for active app locks
+                val currentData = repository.familyTimeData.first()
+                val lockedApp = currentData.appUsages.firstOrNull { it.remainingMinutes <= 0 }
 
-                // 1. Update Countdown Text once per second
-                val displaySeconds = Math.ceil(t.toDouble()).toInt().coerceAtLeast(0)
-                val minutes = displaySeconds / 60
-                val seconds = displaySeconds % 60
-                val timeStr = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-                overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = timeStr
+                if (lockedApp != null) {
+                    // App Lock State: Show app name reason and LOCK status
+                    overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = getString(R.string.text_locked)
+                    countdownLabel?.text = lockedApp.appName
 
-                // 2. Handle Space Mission Animation Stages
-                if (t <= 30f && t > 0f) {
                     animationContainer?.visibility = View.VISIBLE
+                    launchpadImage?.visibility = View.GONE
+                    earthImage?.visibility = View.VISIBLE
+                    rocketImage?.visibility = View.VISIBLE
 
-                    if (t > 20f) {
-                        // Stage 1: Preparing (30s to 20s)
-                        earthImage?.visibility = View.GONE
-                        launchpadImage?.visibility = View.VISIBLE
-                        rocketImage?.visibility = View.VISIBLE
-
-                        countdownLabel?.text = getString(R.string.rocket_preparing)
-
-                        val containerHeight = animationContainer?.height ?: 0
-                        val rocketHeight = rocketImage?.height ?: 0
-                        val bottomY = (containerHeight / 2f) - (rocketHeight / 2f) - (4f * resources.displayMetrics.density)
-                        
-                        val shakeX = (Random.nextFloat() - 0.5f) * 2f * resources.displayMetrics.density
-                        val shakeY = (Random.nextFloat() - 0.5f) * 2f * resources.displayMetrics.density
-
-                        rocketImage?.translationX = shakeX
-                        rocketImage?.translationY = bottomY + shakeY
-                        rocketImage?.rotation = 0f
-                        launchpadImage?.translationY = 0f
-
-                    } else if (t > 10f) {
-                        // Stage 2: Launching (20s to 10s)
-                        earthImage?.visibility = View.GONE
-                        launchpadImage?.visibility = View.VISIBLE
-                        rocketImage?.visibility = View.VISIBLE
-
-                        countdownLabel?.text = getString(R.string.rocket_launching)
-
-                        val progress = (20f - t) / 10f // 0.0 to 1.0
-
-                        val containerHeight = animationContainer?.height ?: 0
-                        val rocketHeight = rocketImage?.height ?: 0
-                        val bottomY = (containerHeight / 2f) - (rocketHeight / 2f) - (4f * resources.displayMetrics.density)
-
-                        val travelDistance = bottomY + (rocketHeight * 2f)
-                        val currentY = bottomY - (progress * travelDistance)
-
-                        val shakeX = (Random.nextFloat() - 0.5f) * 3f * resources.displayMetrics.density * (1f - progress)
-                        
-                        rocketImage?.translationX = shakeX
-                        rocketImage?.translationY = currentY
-                        rocketImage?.rotation = 0f
-
-                        launchpadImage?.translationY = progress * 40f * resources.displayMetrics.density
-
-                    } else {
-                        // Stage 3: Orbiting Earth (10s to 0s)
-                        launchpadImage?.visibility = View.GONE
-                        earthImage?.visibility = View.VISIBLE
-                        rocketImage?.visibility = View.VISIBLE
-
-                        countdownLabel?.text = getString(R.string.rocket_orbit)
-
-                        val progress = (10f - t) / 10f // 0.0 to 1.0
-                        val angle = progress * 2f * Math.PI.toFloat()
-
-                        val orbitRadiusDp = when (currentSizePreset) {
-                            0 -> 36f
-                            2 -> 90f
-                            else -> 60f
-                        }
-                        val radius = orbitRadiusDp * resources.displayMetrics.density
-
-                        val orbX = radius * cos(angle)
-                        val orbY = radius * sin(angle)
-
-                        rocketImage?.translationX = orbX
-                        rocketImage?.translationY = orbY
-
-                        val angleDegrees = (angle * 180f / Math.PI.toFloat()) + 180f
-                        rocketImage?.rotation = angleDegrees
+                    // Rotate rocket orbiting Earth continuously
+                    val angle = (System.currentTimeMillis() % 10000) / 10000f * 2f * Math.PI.toFloat()
+                    val orbitRadiusDp = when (currentSizePreset) {
+                        0 -> 28f
+                        2 -> 72f
+                        else -> 48f
                     }
-                } else {
-                    animationContainer?.visibility = View.GONE
-                    countdownLabel?.text = getString(R.string.overlay_label)
-                }
+                    val radius = orbitRadiusDp * resources.displayMetrics.density
+                    rocketImage?.translationX = radius * cos(angle)
+                    rocketImage?.translationY = radius * sin(angle)
+                    rocketImage?.rotation = (angle * 180f / Math.PI.toFloat()) + 180f
 
-                if (t <= 0f) {
-                    overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = "00:00"
-                    break
+                } else {
+                    val t = overlaySecondsRemainingFloat
+
+                    // 1. Update Countdown Text once per second
+                    val displaySeconds = Math.ceil(t.toDouble()).toInt().coerceAtLeast(0)
+                    val minutes = displaySeconds / 60
+                    val seconds = displaySeconds % 60
+                    val timeStr = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                    overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = timeStr
+
+                    // 2. Handle Space Mission Animation Stages
+                    if (t <= 30f && t > 0f) {
+                        animationContainer?.visibility = View.VISIBLE
+
+                        if (t > 20f) {
+                            // Stage 1: Preparing (30s to 20s)
+                            earthImage?.visibility = View.GONE
+                            launchpadImage?.visibility = View.VISIBLE
+                            rocketImage?.visibility = View.VISIBLE
+
+                            countdownLabel?.text = "${getString(R.string.lock_reason_device)}: ${getString(R.string.rocket_preparing)}"
+
+                            val containerHeight = animationContainer?.height ?: 0
+                            val rocketHeight = rocketImage?.height ?: 0
+                            val bottomY = (containerHeight / 2f) - (rocketHeight / 2f) - (4f * resources.displayMetrics.density)
+                            
+                            val shakeX = (Random.nextFloat() - 0.5f) * 2f * resources.displayMetrics.density
+                            val shakeY = (Random.nextFloat() - 0.5f) * 2f * resources.displayMetrics.density
+
+                            rocketImage?.translationX = shakeX
+                            rocketImage?.translationY = bottomY + shakeY
+                            rocketImage?.rotation = 0f
+                            launchpadImage?.translationY = 0f
+
+                        } else if (t > 10f) {
+                            // Stage 2: Launching (20s to 10s)
+                            earthImage?.visibility = View.GONE
+                            launchpadImage?.visibility = View.VISIBLE
+                            rocketImage?.visibility = View.VISIBLE
+
+                            countdownLabel?.text = "${getString(R.string.lock_reason_device)}: ${getString(R.string.rocket_launching)}"
+
+                            val progress = (20f - t) / 10f // 0.0 to 1.0
+
+                            val containerHeight = animationContainer?.height ?: 0
+                            val rocketHeight = rocketImage?.height ?: 0
+                            val bottomY = (containerHeight / 2f) - (rocketHeight / 2f) - (4f * resources.displayMetrics.density)
+
+                            val travelDistance = bottomY + (rocketHeight * 2f)
+                            val currentY = bottomY - (progress * travelDistance)
+
+                            val shakeX = (Random.nextFloat() - 0.5f) * 3f * resources.displayMetrics.density * (1f - progress)
+                            
+                            rocketImage?.translationX = shakeX
+                            rocketImage?.translationY = currentY
+                            rocketImage?.rotation = 0f
+
+                            launchpadImage?.translationY = progress * 40f * resources.displayMetrics.density
+
+                        } else {
+                            // Stage 3: Orbiting Earth (10s to 0s)
+                            launchpadImage?.visibility = View.GONE
+                            earthImage?.visibility = View.VISIBLE
+                            rocketImage?.visibility = View.VISIBLE
+
+                            countdownLabel?.text = "${getString(R.string.lock_reason_device)}: ${getString(R.string.rocket_orbit)}"
+
+                            val progress = (10f - t) / 10f // 0.0 to 1.0
+                            val angle = progress * 2f * Math.PI.toFloat()
+
+                            val orbitRadiusDp = when (currentSizePreset) {
+                                0 -> 28f
+                                2 -> 72f
+                                else -> 48f
+                            }
+                            val radius = orbitRadiusDp * resources.displayMetrics.density
+
+                            val orbX = radius * cos(angle)
+                            val orbY = radius * sin(angle)
+
+                            rocketImage?.translationX = orbX
+                            rocketImage?.translationY = orbY
+
+                            val angleDegrees = (angle * 180f / Math.PI.toFloat()) + 180f
+                            rocketImage?.rotation = angleDegrees
+                        }
+                    } else {
+                        animationContainer?.visibility = View.GONE
+                        countdownLabel?.text = getString(R.string.lock_reason_device)
+                    }
+
+                    if (t <= 0f) {
+                        overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = "00:00"
+                        // Keep the overlay visible for 5 seconds after countdown ends, then hide
+                        delay(5000)
+                        hideOverlay()
+                        break
+                    }
+                    overlaySecondsRemainingFloat -= 0.05f
                 }
 
                 delay(50)
-                overlaySecondsRemainingFloat -= 0.05f
             }
         }
     }
