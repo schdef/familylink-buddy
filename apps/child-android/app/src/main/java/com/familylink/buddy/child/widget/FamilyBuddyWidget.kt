@@ -17,23 +17,15 @@ import com.familylink.buddy.child.data.FamilyTimeRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
+import kotlinx.coroutines.flow.first
+
 class FamilyBuddyWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val repository = FamilyTimeRepository(context.applicationContext)
+        val dataState = repository.familyTimeData.first()
+
         provideContent {
-            val prefs = currentState<androidx.datastore.preferences.core.Preferences>()
-            val remaining = prefs[androidx.datastore.preferences.core.intPreferencesKey("remaining_minutes")] ?: 60
-            val limit = prefs[androidx.datastore.preferences.core.intPreferencesKey("limit_minutes")] ?: 120
-            val lastUpdated = prefs[androidx.datastore.preferences.core.longPreferencesKey("last_updated")] ?: System.currentTimeMillis()
-            val usagesString = prefs[androidx.datastore.preferences.core.stringPreferencesKey("app_usages")] ?: ""
-
-            val dataState = FamilyTimeData(
-                totalRemainingMinutes = remaining,
-                totalLimitMinutes = limit,
-                lastUpdatedMillis = lastUpdated,
-                appUsages = FamilyTimeRepository.deserializeAppUsages(usagesString)
-            )
-
             // Build the widget UI
             WidgetContent(context, dataState)
         }
