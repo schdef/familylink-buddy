@@ -38,6 +38,7 @@ import android.content.ClipData
 import android.widget.Toast
 import com.familylink.buddy.child.data.VolumeState
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
@@ -127,23 +128,28 @@ class MainActivity : ComponentActivity() {
                         val token = volumeState.deviceToken
                         if (token.isNotEmpty()) {
                             qrBitmap = QrCodeGenerator.generateQrCode(token)
+                            
+                            val code = Math.floor(100000 + Math.random() * 900000).toInt().toString()
+                            pairingCode = code
+
                             try {
-                                val functions = Firebase.functions
-                                val data = hashMapOf("fcmToken" to token, "deviceName" to "Emma")
-                                functions.getHttpsCallable("generatePairingCode")
-                                    .call(data)
-                                    .addOnCompleteListener { task ->
-                                        if (task.isSuccessful) {
-                                            val res = task.result.data as? Map<*, *>
-                                            pairingCode = (res?.get("code") as? String) ?: "Error"
-                                        } else {
-                                            pairingCode = "Fehler"
-                                            Log.e("MainActivity", "Pairing code fetch failed", task.exception)
-                                        }
+                                val db = FirebaseFirestore.getInstance()
+                                val docData = hashMapOf(
+                                    "fcmToken" to token,
+                                    "deviceName" to "Emma",
+                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                                db.collection("pairing_codes").document(code).set(docData)
+                                    .addOnSuccessListener {
+                                        Log.d("MainActivity", "Pairing code registered directly: $code")
+                                    }
+                                    .addOnFailureListener { e ->
+                                        pairingCode = "Fehler"
+                                        Log.e("MainActivity", "Pairing registration failed", e)
                                     }
                             } catch (e: Exception) {
                                 pairingCode = "Fehler"
-                                Log.e("MainActivity", "Error requesting pairing code", e)
+                                Log.e("MainActivity", "Firestore write error", e)
                             }
                         }
                     }

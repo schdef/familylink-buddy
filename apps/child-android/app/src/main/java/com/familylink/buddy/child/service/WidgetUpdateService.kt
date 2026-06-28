@@ -28,6 +28,12 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.Timestamp
+import com.familylink.buddy.child.data.AppUsage
+import com.familylink.buddy.child.data.VolumeState
+import android.media.AudioManager
 import android.provider.Settings
 import java.util.Locale
 
@@ -94,6 +100,8 @@ class WidgetUpdateService : Service() {
         localHttpServer = LocalHttpServer(applicationContext, repository).apply {
             start()
         }
+
+        startFirestoreListener()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -120,6 +128,8 @@ class WidgetUpdateService : Service() {
         super.onDestroy()
         unregisterReceiver(screenReceiver)
         hideOverlay()
+        firestoreListenerRegistration?.remove()
+        firestoreListenerRegistration = null
         serviceScope.cancel()
         localHttpServer?.stop()
         Log.d(TAG, "Service destroyed")
@@ -635,6 +645,154 @@ class WidgetUpdateService : Service() {
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
+        }
+    }
+
+    private var firestoreListenerRegistration: ListenerRegistration? = null
+    private var lastExecutedCommandTimestamp: Long = 0
+
+    private fun startFirestoreListener() {
+        serviceScope.launch {
+            repository.volumeState.collect { volumeState ->
+                val token = volumeState.deviceToken
+                if (token.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        registerFirestoreListener(token)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun registerFirestoreListener(token: String) {
+        firestoreListenerRegistration?.remove()
+        try {
+            val db = FirebaseFirestore.getInstance()
+            firestoreListenerRegistration = db.collection("pairings").document(token)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e(TAG, "Firestore listener error", error)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && snapshot.exists()) {
+                        handleFirestoreUpdate(snapshot.data ?: emptyMap(), token)
+                    }
+                }
+            Log.d(TAG, "Registered Firestore listener for token: $token")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error registering Firestore listener", e)
+        }
+    }
+
+    private fun handleFirestoreUpdate(data: Map<String, Any>, token: String) {
+        // 1. Process Volume Command
+        val commandMap = data["volumeCommand"] as? Map<*, *>
+        if (commandMap != null) {
+            val stream = commandMap["stream"] as? String ?: "MEDIA"
+            val level = (commandMap["level"] as? Number)?.toInt() ?: 0
+            val timestampObj = commandMap["timestamp"] as? Timestamp
+            val timestamp = timestampObj?.seconds ?: 0L
+
+            if (timestamp > lastExecutedCommandTimestamp) {
+                lastExecutedCommandTimestamp = timestamp
+                executeVolumeCommand(stream, level, token)
+            }
+        }
+
+        // 2. Process Screen Time Update
+        val screenTimeMap = data["screenTime"] as? Map<*, *>
+        if (screenTimeMap != null) {
+            val remaining = (screenTimeMap["totalRemainingMinutes"] as? Number)?.toInt() ?: -1
+            val limit = (screenTimeMap["totalLimitMinutes"] as? Number)?.toInt() ?: 120
+            val appUsagesJsonStr = screenTimeMap["appUsages"] as? String ?: "[]"
+
+            if (remaining >= 0) {
+                updateScreenTimeData(remaining, limit, appUsagesJsonStr)
+            }
+        }
+    }
+
+    private fun executeVolumeCommand(stream: String, level: Int, token: String) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val systemStream = when (stream) {
+            "MEDIA" -> AudioManager.STREAM_MUSIC
+            "RINGTONE" -> AudioManager.STREAM_RING
+            "ALARM" -> AudioManager.STREAM_ALARM
+            "ALL" -> -1
+            else -> AudioManager.STREAM_MUSIC
+        }
+
+        if (systemStream == -1) {
+            setStreamVolume(audioManager, AudioManager.STREAM_MUSIC, level)
+            setStreamVolume(audioManager, AudioManager.STREAM_RING, level)
+            setStreamVolume(audioManager, AudioManager.STREAM_ALARM, level)
+        } else {
+            setStreamVolume(audioManager, systemStream, level)
+        }
+
+        // Send transparency system notification inside the child service
+        val notifyManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Lautstärke geändert")
+            .setContentText("Lautstärke wurde von einem Elternteil geändert")
+            .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        notifyManager.notify(9002, notif)
+
+        // Write back volume report
+        val report = hashMapOf(
+            "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+            "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
+            "alarmVolume" to audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
+            "maxMediaVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            "maxRingtoneVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
+            "maxAlarmVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        )
+        try {
+            val db = FirebaseFirestore.getInstance()
+            db.collection("pairings").document(token).update("volumeReport", report)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update volume report in Firestore", e)
+        }
+    }
+
+    private fun setStreamVolume(audioManager: AudioManager, stream: Int, level: Int) {
+        val max = audioManager.getStreamMaxVolume(stream)
+        val clamped = level.coerceIn(0, max)
+        audioManager.setStreamVolume(stream, clamped, AudioManager.FLAG_SHOW_UI)
+    }
+
+    private fun updateScreenTimeData(remaining: Int, limit: Int, appUsagesJsonStr: String) {
+        val appUsages = mutableListOf<AppUsage>()
+        try {
+            val jsonArray = org.json.JSONArray(appUsagesJsonStr)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                appUsages.add(
+                    AppUsage(
+                        packageName = obj.getString("packageName"),
+                        appName = obj.getString("appName"),
+                        usedMinutes = obj.getInt("usedMinutes"),
+                        limitMinutes = obj.getInt("limitMinutes")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing appUsages in direct update", e)
+        }
+
+        val updatedData = FamilyTimeData(
+            totalRemainingMinutes = remaining,
+            totalLimitMinutes = limit,
+            lastUpdatedMillis = System.currentTimeMillis(),
+            appUsages = appUsages
+        )
+
+        serviceScope.launch {
+            repository.updateFamilyTimeData(updatedData)
+            FamilyBuddyWidget().updateAll(applicationContext)
+            Log.d(TAG, "Direct sync update applied: $remaining mins remaining")
         }
     }
 }

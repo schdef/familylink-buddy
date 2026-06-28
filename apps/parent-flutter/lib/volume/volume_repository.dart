@@ -1,7 +1,8 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
@@ -53,6 +54,47 @@ class VolumeRepository extends ChangeNotifier {
   VolumeState get volumeState => _volumeState;
   bool get isConnected => _isConnected;
   DateTime? get lastSeen => _lastSeen;
+
+  StreamSubscription<DocumentSnapshot>? _subscription;
+
+  void subscribeToDevice(String childFcmToken) {
+    _subscription?.cancel();
+    if (childFcmToken.isEmpty || childFcmToken == 'emulator') return;
+
+    _subscription = FirebaseFirestore.instance
+        .collection('pairings')
+        .doc(childFcmToken)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data();
+        if (data != null) {
+          final report = data['volumeReport'] as Map<dynamic, dynamic>?;
+          if (report != null) {
+            _volumeState = VolumeState(
+              mediaVolume: report['mediaVolume'] as int? ?? -1,
+              ringtoneVolume: report['ringtoneVolume'] as int? ?? -1,
+              alarmVolume: report['alarmVolume'] as int? ?? -1,
+              maxMediaVolume: report['maxMediaVolume'] as int? ?? 15,
+              maxRingtoneVolume: report['maxRingtoneVolume'] as int? ?? 15,
+              maxAlarmVolume: report['maxAlarmVolume'] as int? ?? 15,
+              isMuted: report['mediaVolume'] == 0 && report['ringtoneVolume'] == 0,
+              timestamp: DateTime.now(),
+            );
+            _isConnected = true;
+            _lastSeen = DateTime.now();
+            notifyListeners();
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
 
   // FCM server key (from Firebase Console → Project Settings → Cloud Messaging)
   // In production this should be fetched securely from a backend, not hardcoded.
@@ -118,17 +160,16 @@ class VolumeRepository extends ChangeNotifier {
     }
 
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('setVolume')
-          .call({
-            'childToken': childFcmToken,
-            'stream': stream,
-            'level': level
-          });
-      final resData = result.data as Map<dynamic, dynamic>;
-      return resData['status'] == 'success';
+      await FirebaseFirestore.instance.collection('pairings').doc(childFcmToken).update({
+        'volumeCommand': {
+          'stream': stream,
+          'level': level,
+          'timestamp': FieldValue.serverTimestamp()
+        }
+      });
+      return true;
     } catch (e) {
-      debugPrint('Cloud Function setVolume failed: $e');
+      debugPrint('Firestore direct setVolume failed: $e');
       return false;
     }
   }
@@ -153,11 +194,15 @@ class VolumeRepository extends ChangeNotifier {
     }
 
     try {
-      await FirebaseFunctions.instance
-          .httpsCallable('forceSync')
-          .call({'childToken': childFcmToken});
+      await FirebaseFirestore.instance.collection('pairings').doc(childFcmToken).update({
+        'volumeCommand': {
+          'stream': 'GET_VOLUME',
+          'level': 0,
+          'timestamp': FieldValue.serverTimestamp()
+        }
+      });
     } catch (e) {
-      debugPrint('Cloud Function forceSync failed: $e');
+      debugPrint('Firestore direct requestVolumeReport failed: $e');
     }
   }
 }

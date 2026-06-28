@@ -49,6 +49,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
 
     _volumeRepository = Provider.of<VolumeRepository>(context, listen: false);
     _volumeRepository.initialize().then((_) {
+      _volumeRepository.subscribeToDevice(widget.device.fcmToken);
       _volumeRepository.requestVolumeReport(widget.device.fcmToken);
     });
   }

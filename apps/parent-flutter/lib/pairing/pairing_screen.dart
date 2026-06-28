@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pairing_repository.dart';
 import '../volume/volume_control_screen.dart';
 
@@ -61,21 +62,35 @@ class _PairingScreenState extends State<PairingScreen> {
 
     setState(() { _isLoading = true; _error = null; });
 
-    final device = PairedDevice(
-      name: name,
-      fcmToken: token,
-      lastSeen: DateTime.now(),
-    );
+    try {
+      final parentId = widget.account?.id ?? 'mock-parent-uid';
+      await FirebaseFirestore.instance.collection('pairings').doc(token).set({
+        'parentId': parentId,
+        'deviceName': name,
+        'lastSeen': FieldValue.serverTimestamp()
+      });
 
-    await _repository.savePairedDevice(device);
-    setState(() { _isLoading = false; });
+      final device = PairedDevice(
+        name: name,
+        fcmToken: token,
+        lastSeen: DateTime.now(),
+      );
 
-    if (mounted) {
-      _navigateToVolumeControl(device);
+      await _repository.savePairedDevice(device);
+      setState(() { _isLoading = false; });
+
+      if (mounted) {
+        _navigateToVolumeControl(device);
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _error = 'Direkte Kopplung fehlgeschlagen: $e';
+      });
     }
   }
 
-  // 2. Resolve Pairing using 6-Digit Code via Cloud Functions
+  // 2. Resolve Pairing using 6-Digit Code via Direct Firestore
   Future<void> _handlePairingWithCode() async {
     final name = _deviceNameController.text.trim();
     final code = _pairingCodeController.text.trim();
@@ -88,16 +103,39 @@ class _PairingScreenState extends State<PairingScreen> {
     setState(() { _isLoading = true; _error = null; });
 
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('pairWithCode')
-          .call({
-            'code': code,
-            'googleAuthCode': widget.account?.serverAuthCode ?? 'mock-auth-code'
+      final codeDoc = await FirebaseFirestore.instance
+          .collection('pairing_codes')
+          .doc(code)
+          .get();
+
+      if (!codeDoc.exists) {
+        throw 'Der eingegebene Code ist ungültig oder abgelaufen.';
+      }
+
+      final codeData = codeDoc.data();
+      if (codeData == null) {
+        throw 'Dokumentdaten sind leer.';
+      }
+
+      final childToken = codeData['fcmToken'] as String;
+      final childNameFromCode = codeData['deviceName'] as String;
+      final parentId = widget.account?.id ?? 'mock-parent-uid';
+
+      // 1. Create pairings document directly
+      await FirebaseFirestore.instance
+          .collection('pairings')
+          .doc(childToken)
+          .set({
+            'parentId': parentId,
+            'deviceName': childNameFromCode,
+            'lastSeen': FieldValue.serverTimestamp()
           });
 
-      final Map<dynamic, dynamic> resData = result.data;
-      final childToken = resData['childToken'] as String;
-      final childNameFromCode = resData['childName'] as String;
+      // 2. Delete temporary pairing code
+      await FirebaseFirestore.instance
+          .collection('pairing_codes')
+          .doc(code)
+          .delete();
 
       final device = PairedDevice(
         name: name.isNotEmpty ? name : childNameFromCode,
@@ -114,7 +152,7 @@ class _PairingScreenState extends State<PairingScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = 'Kopplung fehlgeschlagen: ${e.toString().split('] ').last}';
+        _error = 'Kopplung fehlgeschlagen: $e';
       });
     }
   }
