@@ -71,14 +71,17 @@ class VolumeRepository extends ChangeNotifier {
         if (data != null) {
           final report = data['volumeReport'] as Map<dynamic, dynamic>?;
           if (report != null) {
+            final int mediaVol = (report['mediaVolume'] as num?)?.toInt() ?? -1;
+            final int ringtoneVol = (report['ringtoneVolume'] as num?)?.toInt() ?? -1;
+            final int alarmVol = (report['alarmVolume'] as num?)?.toInt() ?? -1;
             _volumeState = VolumeState(
-              mediaVolume: report['mediaVolume'] as int? ?? -1,
-              ringtoneVolume: report['ringtoneVolume'] as int? ?? -1,
-              alarmVolume: report['alarmVolume'] as int? ?? -1,
-              maxMediaVolume: report['maxMediaVolume'] as int? ?? 15,
-              maxRingtoneVolume: report['maxRingtoneVolume'] as int? ?? 15,
-              maxAlarmVolume: report['maxAlarmVolume'] as int? ?? 15,
-              isMuted: report['mediaVolume'] == 0 && report['ringtoneVolume'] == 0,
+              mediaVolume: mediaVol,
+              ringtoneVolume: ringtoneVol,
+              alarmVolume: alarmVol,
+              maxMediaVolume: (report['maxMediaVolume'] as num?)?.toInt() ?? 15,
+              maxRingtoneVolume: (report['maxRingtoneVolume'] as num?)?.toInt() ?? 15,
+              maxAlarmVolume: (report['maxAlarmVolume'] as num?)?.toInt() ?? 15,
+              isMuted: mediaVol == 0 && ringtoneVol == 0,
               timestamp: DateTime.now(),
             );
             _isConnected = true;

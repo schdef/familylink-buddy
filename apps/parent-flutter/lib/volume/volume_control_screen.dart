@@ -33,6 +33,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   late VolumeRepository _volumeRepository;
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
+  final Map<String, double> _localValues = {};
 
   @override
   void initState() {
@@ -48,14 +49,24 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     _animController.forward();
 
     _volumeRepository = Provider.of<VolumeRepository>(context, listen: false);
+    _volumeRepository.addListener(_onRepositoryUpdate);
     _volumeRepository.initialize().then((_) {
       _volumeRepository.subscribeToDevice(widget.device.fcmToken);
       _volumeRepository.requestVolumeReport(widget.device.fcmToken);
     });
   }
 
+  void _onRepositoryUpdate() {
+    if (mounted) {
+      setState(() {
+        _localValues.clear();
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _volumeRepository.removeListener(_onRepositoryUpdate);
     _animController.dispose();
     super.dispose();
   }
@@ -79,7 +90,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     required String streamName,
     required ValueChanged<double> onChanged,
   }) {
-    final double percent = maxValue > 0 ? (value.clamp(0, maxValue) / maxValue) * 100 : 0;
+    final double displayValue = _localValues[streamName] ?? (value >= 0 ? value.toDouble() : 0);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -109,7 +120,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 ],
               ),
               Text(
-                '${percent.round()}%',
+                '${displayValue.round()}/$maxValue',
                 style: const TextStyle(
                   color: Color(0xFF94A3B8),
                   fontSize: 14,
@@ -129,11 +140,16 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
             ),
             child: Slider(
-              value: value >= 0 ? value.toDouble() : 0,
+              value: displayValue.clamp(0.0, maxValue.toDouble()),
               min: 0,
               max: maxValue.toDouble(),
               divisions: maxValue > 0 ? maxValue : 1,
               onChanged: (val) {
+                setState(() {
+                  _localValues[streamName] = val;
+                });
+              },
+              onChangeEnd: (val) {
                 onChanged(val);
               },
             ),

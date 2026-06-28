@@ -721,31 +721,34 @@ class WidgetUpdateService : Service() {
 
     private fun executeVolumeCommand(stream: String, level: Int, token: String) {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val systemStream = when (stream) {
-            "MEDIA" -> AudioManager.STREAM_MUSIC
-            "RINGTONE" -> AudioManager.STREAM_RING
-            "ALARM" -> AudioManager.STREAM_ALARM
-            "ALL" -> -1
-            else -> AudioManager.STREAM_MUSIC
-        }
 
-        if (systemStream == -1) {
-            setStreamVolume(audioManager, AudioManager.STREAM_MUSIC, level)
-            setStreamVolume(audioManager, AudioManager.STREAM_RING, level)
-            setStreamVolume(audioManager, AudioManager.STREAM_ALARM, level)
-        } else {
-            setStreamVolume(audioManager, systemStream, level)
-        }
+        if (stream != "GET_VOLUME") {
+            val systemStream = when (stream) {
+                "MEDIA" -> AudioManager.STREAM_MUSIC
+                "RINGTONE" -> AudioManager.STREAM_RING
+                "ALARM" -> AudioManager.STREAM_ALARM
+                "ALL" -> -1
+                else -> AudioManager.STREAM_MUSIC
+            }
 
-        // Send transparency system notification inside the child service
-        val notifyManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Lautstärke geändert")
-            .setContentText("Lautstärke wurde von einem Elternteil geändert")
-            .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .build()
-        notifyManager.notify(9002, notif)
+            if (systemStream == -1) {
+                setStreamVolume(audioManager, AudioManager.STREAM_MUSIC, level)
+                setStreamVolume(audioManager, AudioManager.STREAM_RING, level)
+                setStreamVolume(audioManager, AudioManager.STREAM_ALARM, level)
+            } else {
+                setStreamVolume(audioManager, systemStream, level)
+            }
+
+            // Send transparency system notification inside the child service
+            val notifyManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Lautstärke geändert")
+                .setContentText("Lautstärke wurde von einem Elternteil geändert")
+                .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            notifyManager.notify(9002, notif)
+        }
 
         // Write back volume report
         val report = hashMapOf(
