@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
@@ -90,9 +91,9 @@ class VolumeRepository extends ChangeNotifier {
     required String stream, // MEDIA | RINGTONE | ALARM | ALL
     required int level,
   }) async {
-    if (childFcmToken == 'emulator' || childFcmToken.length < 50) {
+    if (childFcmToken == 'emulator') {
       try {
-        final url = Uri.parse('http://10.0.2.2:8080/set_volume?stream=$stream&level=$level');
+        final url = Uri.parse('http://10.0.2.2:8085/set_volume?stream=$stream&level=$level');
         final response = await http.post(url);
         if (response.statusCode == 200) {
           _volumeState = VolumeState(
@@ -116,40 +117,27 @@ class VolumeRepository extends ChangeNotifier {
       return false;
     }
 
-    final requestId = const Uuid().v4();
-    final payload = {
-      'to': childFcmToken,
-      'data': {
-        'type': 'SET_VOLUME',
-        'stream': stream,
-        'level': level.toString(),
-        'parentToken': _parentFcmToken ?? '',
-        'requestId': requestId,
-      },
-    };
-
     try {
-      final response = await http.post(
-        Uri.parse('https://fcm.googleapis.com/fcm/send'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'key=$_fcmServerKey',
-        },
-        body: jsonEncode(payload),
-      );
-      debugPrint('FCM send status: ${response.statusCode} ${response.body}');
-      return response.statusCode == 200;
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('setVolume')
+          .call({
+            'childToken': childFcmToken,
+            'stream': stream,
+            'level': level
+          });
+      final resData = result.data as Map<dynamic, dynamic>;
+      return resData['status'] == 'success';
     } catch (e) {
-      debugPrint('FCM send error: $e');
+      debugPrint('Cloud Function setVolume failed: $e');
       return false;
     }
   }
 
   /// Request a volume report from the child device (or local HTTP in dev mode)
   Future<void> requestVolumeReport(String childFcmToken) async {
-    if (childFcmToken == 'emulator' || childFcmToken.length < 50) {
+    if (childFcmToken == 'emulator') {
       try {
-        final url = Uri.parse('http://10.0.2.2:8080/volume_report');
+        final url = Uri.parse('http://10.0.2.2:8085/volume_report');
         final response = await http.get(url);
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -164,24 +152,12 @@ class VolumeRepository extends ChangeNotifier {
       return;
     }
 
-    final payload = {
-      'to': childFcmToken,
-      'data': {
-        'type': 'GET_VOLUME',
-        'parentToken': _parentFcmToken ?? '',
-      },
-    };
     try {
-      await http.post(
-        Uri.parse('https://fcm.googleapis.com/fcm/send'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'key=$_fcmServerKey',
-        },
-        body: jsonEncode(payload),
-      );
+      await FirebaseFunctions.instance
+          .httpsCallable('forceSync')
+          .call({'childToken': childFcmToken});
     } catch (e) {
-      debugPrint('FCM request error: $e');
+      debugPrint('Cloud Function forceSync failed: $e');
     }
   }
 }

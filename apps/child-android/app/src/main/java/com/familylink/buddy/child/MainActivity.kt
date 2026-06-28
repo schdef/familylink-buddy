@@ -38,6 +38,12 @@ import android.content.ClipData
 import android.widget.Toast
 import com.familylink.buddy.child.data.VolumeState
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.functions.ktx.functions
+import com.google.firebase.ktx.Firebase
+import androidx.compose.ui.graphics.asImageBitmap
+import com.familylink.buddy.child.data.QrCodeGenerator
+import android.util.Log
 
 
 class MainActivity : ComponentActivity() {
@@ -48,6 +54,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = FamilyTimeRepository(applicationContext)
+
+        // Initialize Firebase emulators in debug mode
+        try {
+            val isEmulator = Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk")
+            if (isEmulator) {
+                Firebase.firestore.useEmulator("10.0.2.2", 8080)
+                Firebase.functions.useEmulator("10.0.2.2", 5001)
+                Log.d("MainActivity", "Firebase clients redirected to local emulators (10.0.2.2)")
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to connect to Firebase emulators", e)
+        }
 
         // Request notification permission if Android 13+
         requestNotificationPermission()
@@ -97,6 +115,34 @@ class MainActivity : ComponentActivity() {
                     val volumeState by repository.volumeState.collectAsState(initial = VolumeState())
                     var serviceRunning by remember { mutableStateOf(true) }
                     val hasOverlayPermission by canDrawOverlaysState
+
+                    var pairingCode by remember { mutableStateOf("Lade...") }
+                    var qrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+                    LaunchedEffect(volumeState.deviceToken) {
+                        val token = volumeState.deviceToken
+                        if (token.isNotEmpty()) {
+                            qrBitmap = QrCodeGenerator.generateQrCode(token)
+                            try {
+                                val functions = Firebase.functions
+                                val data = hashMapOf("fcmToken" to token, "deviceName" to "Emma")
+                                functions.getHttpsCallable("generatePairingCode")
+                                    .call(data)
+                                    .addOnCompleteListener { task ->
+                                        if (task.isSuccessful) {
+                                            val res = task.result.data as? Map<*, *>
+                                            pairingCode = (res?.get("code") as? String) ?: "Error"
+                                        } else {
+                                            pairingCode = "Fehler"
+                                            Log.e("MainActivity", "Pairing code fetch failed", task.exception)
+                                        }
+                                    }
+                            } catch (e: Exception) {
+                                pairingCode = "Fehler"
+                                Log.e("MainActivity", "Error requesting pairing code", e)
+                            }
+                        }
+                    }
 
                     // Auto-start service on app open for real-time widget testing
                     LaunchedEffect(Unit) {
@@ -284,6 +330,32 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.height(32.dp)
                                         ) {
                                             Text(stringResource(R.string.volume_copy_btn), fontSize = 11.sp, color = Color.White)
+                                        }
+                                    }
+                                }
+
+                                if (qrBitmap != null) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        androidx.compose.foundation.Image(
+                                            bitmap = qrBitmap!!.asImageBitmap(),
+                                            contentDescription = "QR Code Pairing",
+                                            modifier = Modifier.size(130.dp).background(Color.White).padding(8.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("6-stelliger Code:", color = Color(0xFFC5C6C7), fontSize = 13.sp)
+                                            Text(
+                                                text = pairingCode,
+                                                color = Color(0xFF66FCF1),
+                                                fontSize = 24.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
                                         }
                                     }
                                 }

@@ -21,7 +21,7 @@ class LocalHttpServer(
 ) {
     companion object {
         private const val TAG = "LocalHttpServer"
-        private const val PORT = 8080
+        private const val PORT = 8085
     }
 
     private var serverSocket: ServerSocket? = null

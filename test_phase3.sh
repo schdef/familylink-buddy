@@ -9,6 +9,11 @@ PARENT_DIR="$(dirname "$0")/apps/parent-flutter"
 
 echo "=== FamilyLink Buddy Phase 3 Local Test Runner ==="
 
+# Start Firebase Local Emulator Suite
+echo "Starting Firebase Local Emulator Suite (Firestore & Cloud Functions)..."
+npx -y firebase-tools@latest emulators:start --only firestore,functions > /dev/null 2>&1 &
+
+
 # 1. Compile both apps
 echo "Building child app (com.familylink.buddy.child)..."
 (cd "$CHILD_DIR" && ./gradlew assembleDebug)
@@ -103,7 +108,7 @@ echo "✅ Parent App installed!"
 
 # 5. Launch both apps
 echo "Setting up ADB port forwarding for local developer direct connection..."
-$ADB -s $DEVICE1 forward tcp:8080 tcp:8080
+$ADB -s $DEVICE1 forward tcp:8085 tcp:8085
 
 echo "Launching Child app on $DEVICE1..."
 $ADB -s $DEVICE1 shell am start -n com.familylink.buddy.child/.MainActivity

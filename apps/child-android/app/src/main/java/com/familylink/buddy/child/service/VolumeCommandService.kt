@@ -17,6 +17,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import org.json.JSONArray
+import com.familylink.buddy.child.data.AppUsage
+import com.familylink.buddy.child.data.FamilyTimeData
+import androidx.glance.appwidget.updateAll
+import com.familylink.buddy.child.widget.FamilyBuddyWidget
+
 
 class VolumeCommandService : FirebaseMessagingService() {
 
@@ -28,6 +34,7 @@ class VolumeCommandService : FirebaseMessagingService() {
         // FCM message types
         const val TYPE_SET_VOLUME = "SET_VOLUME"
         const val TYPE_GET_VOLUME = "GET_VOLUME"
+        const val TYPE_SCREEN_TIME_UPDATE = "SCREEN_TIME_UPDATE"
 
         // Volume stream names
         const val STREAM_MEDIA = "MEDIA"
@@ -57,7 +64,47 @@ class VolumeCommandService : FirebaseMessagingService() {
         when (type) {
             TYPE_SET_VOLUME -> handleSetVolume(data)
             TYPE_GET_VOLUME -> reportVolumeToParent(data["parentToken"])
+            TYPE_SCREEN_TIME_UPDATE -> handleScreenTimeUpdate(data)
             else -> Log.w(TAG, "Unknown FCM message type: $type")
+        }
+    }
+
+    private fun handleScreenTimeUpdate(data: Map<String, String>) {
+        val remaining = data["totalRemainingMinutes"]?.toIntOrNull() ?: return
+        val limit = data["totalLimitMinutes"]?.toIntOrNull() ?: 120
+        val appUsagesJsonStr = data["appUsages"] ?: "[]"
+
+        val appUsages = mutableListOf<AppUsage>()
+        try {
+            val jsonArray = JSONArray(appUsagesJsonStr)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                appUsages.add(
+                    AppUsage(
+                        packageName = obj.getString("packageName"),
+                        appName = obj.getString("appName"),
+                        usedMinutes = obj.getInt("usedMinutes"),
+                        limitMinutes = obj.getInt("limitMinutes")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing appUsages from FCM", e)
+        }
+
+        val updatedData = FamilyTimeData(
+            totalRemainingMinutes = remaining,
+            totalLimitMinutes = limit,
+            lastUpdatedMillis = System.currentTimeMillis(),
+            appUsages = appUsages
+        )
+
+        serviceScope.launch {
+            val repo = FamilyTimeRepository(applicationContext)
+            repo.updateFamilyTimeData(updatedData)
+            // Trigger widget redraw
+            FamilyBuddyWidget().updateAll(applicationContext)
+            Log.d(TAG, "Screen time updated from FCM: $remaining mins remaining")
         }
     }
 

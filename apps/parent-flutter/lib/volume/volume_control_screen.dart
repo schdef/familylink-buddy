@@ -5,6 +5,8 @@ import '../auth/google_sign_in_service.dart';
 import '../auth/sign_in_screen.dart';
 import '../pairing/pairing_repository.dart';
 import 'volume_repository.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+
 
 class VolumeControlScreen extends StatefulWidget {
   final GoogleSignInAccount? account;
@@ -163,13 +165,21 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                   ),
                   actions: [
                     TextButton(
-                      child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                    TextButton(
-                      child: const Text('Abmelden', style: TextStyle(color: Color(0xFFEF4444))),
+                      child: const Text('Abmelden', style: TextStyle(color: Colors.white)),
                       onPressed: () {
                         Navigator.of(ctx).pop();
+                        _handleSignOut();
+                      },
+                    ),
+                    TextButton(
+                      child: const Text('Konto löschen (GDPR)', style: TextStyle(color: Color(0xFFEF4444))),
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        try {
+                          await FirebaseFunctions.instance.httpsCallable('deleteUserAccount').call();
+                        } catch (e) {
+                          debugPrint("GDPR delete failed: $e");
+                        }
                         _handleSignOut();
                       },
                     ),

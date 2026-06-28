@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'pairing_repository.dart';
 import '../volume/volume_control_screen.dart';
 
@@ -13,10 +15,12 @@ class PairingScreen extends StatefulWidget {
 }
 
 class _PairingScreenState extends State<PairingScreen> {
-  final _deviceNameController = TextEditingController(text: 'Kind-Gerät');
+  final _deviceNameController = TextEditingController(text: 'Emma');
   final _deviceTokenController = TextEditingController();
+  final _pairingCodeController = TextEditingController();
   final _repository = PairingRepository();
   bool _isLoading = false;
+  bool _isScanning = false;
   String? _error;
 
   @override
@@ -45,21 +49,17 @@ class _PairingScreenState extends State<PairingScreen> {
     );
   }
 
-  Future<void> _handlePairing() async {
+  // 1. Direct Pairing using FCM Token
+  Future<void> _handleDirectPairing() async {
     final name = _deviceNameController.text.trim();
     final token = _deviceTokenController.text.trim();
 
     if (name.isEmpty || token.isEmpty) {
-      setState(() {
-        _error = 'Bitte füllen Sie alle Felder aus.';
-      });
+      setState(() { _error = 'Bitte füllen Sie alle Felder aus.'; });
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    setState(() { _isLoading = true; _error = null; });
 
     final device = PairedDevice(
       name: name,
@@ -68,7 +68,6 @@ class _PairingScreenState extends State<PairingScreen> {
     );
 
     await _repository.savePairedDevice(device);
-
     setState(() { _isLoading = false; });
 
     if (mounted) {
@@ -76,8 +75,80 @@ class _PairingScreenState extends State<PairingScreen> {
     }
   }
 
+  // 2. Resolve Pairing using 6-Digit Code via Cloud Functions
+  Future<void> _handlePairingWithCode() async {
+    final name = _deviceNameController.text.trim();
+    final code = _pairingCodeController.text.trim();
+
+    if (name.isEmpty || code.isEmpty) {
+      setState(() { _error = 'Bitte Geräte-Name und 6-stelligen Code eingeben.'; });
+      return;
+    }
+
+    setState(() { _isLoading = true; _error = null; });
+
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('pairWithCode')
+          .call({
+            'code': code,
+            'googleAuthCode': 'mock-auth-code'
+          });
+
+      final Map<dynamic, dynamic> resData = result.data;
+      final childToken = resData['childToken'] as String;
+      final childNameFromCode = resData['childName'] as String;
+
+      final device = PairedDevice(
+        name: name.isNotEmpty ? name : childNameFromCode,
+        fcmToken: childToken,
+        lastSeen: DateTime.now(),
+      );
+
+      await _repository.savePairedDevice(device);
+      setState(() { _isLoading = false; });
+
+      if (mounted) {
+        _navigateToVolumeControl(device);
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _error = 'Kopplung fehlgeschlagen: ${e.toString().split('] ').last}';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isScanning) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('QR Code scannen'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => _isScanning = false),
+          ),
+        ),
+        body: MobileScanner(
+          onDetect: (capture) {
+            final List<Barcode> barcodes = capture.barcodes;
+            for (final barcode in barcodes) {
+              final raw = barcode.rawValue;
+              if (raw != null && raw.isNotEmpty) {
+                setState(() {
+                  _deviceTokenController.text = raw;
+                  _isScanning = false;
+                });
+                _handleDirectPairing();
+                break;
+              }
+            }
+          },
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
@@ -94,7 +165,7 @@ class _PairingScreenState extends State<PairingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Neues Kinder-Gerät koppeln',
+                      'Kinder-Gerät koppeln',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -103,10 +174,11 @@ class _PairingScreenState extends State<PairingScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Kopieren Sie die Geräte-ID aus der FamilyLink Buddy App auf dem Gerät Ihres Kindes und fügen Sie sie hier ein.',
+                      'Koppeln Sie das Gerät Ihres Kindes per 6-stelligem Code oder QR-Code.',
                       style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+
                     if (_error != null) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -118,6 +190,8 @@ class _PairingScreenState extends State<PairingScreen> {
                       ),
                       const SizedBox(height: 16),
                     ],
+
+                    // Common Device Name Field
                     TextField(
                       controller: _deviceNameController,
                       style: const TextStyle(color: Colors.white),
@@ -136,47 +210,85 @@ class _PairingScreenState extends State<PairingScreen> {
                         fillColor: const Color(0xFF1E293B),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _deviceTokenController,
-                      style: const TextStyle(color: Colors.white),
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Geräte-ID (FCM Token)',
-                        labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFF334155)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFF6366F1)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF1E293B),
+                    const SizedBox(height: 24),
+
+                    // SECTION 1: 6-Digit Code Pairing
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF334155)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'Methode A: 6-stelliger Code',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _pairingCodeController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              hintText: '123 456',
+                              hintStyle: const TextStyle(color: Color(0xFF475569)),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(color: Color(0xFF334155)),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(color: Color(0xFF6366F1)),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _handlePairingWithCode,
+                            icon: const Icon(Icons.pin),
+                            label: const Text('Per PIN-Code verbinden'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6366F1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 16),
+
+                    // SECTION 2: QR Code Scan
                     ElevatedButton.icon(
-                      onPressed: _handlePairing,
-                      icon: const Icon(Icons.link),
-                      label: const Text('Verbinden & Koppeln'),
+                      onPressed: () => setState(() => _isScanning = true),
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Methode B: QR-Code scannen'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
+                        backgroundColor: const Color(0xFF10B981),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // DEV OVERRIDES
                     OutlinedButton.icon(
                       onPressed: () {
                         _deviceNameController.text = "Emma (Emulator)";
                         _deviceTokenController.text = "emulator";
-                        _handlePairing();
+                        _handleDirectPairing();
                       },
                       icon: const Icon(Icons.developer_board),
                       label: const Text('Lokale Emulator-Kopplung (Auto-Pair)'),
@@ -187,7 +299,6 @@ class _PairingScreenState extends State<PairingScreen> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -201,6 +312,7 @@ class _PairingScreenState extends State<PairingScreen> {
   void dispose() {
     _deviceNameController.dispose();
     _deviceTokenController.dispose();
+    _pairingCodeController.dispose();
     super.dispose();
   }
 }
