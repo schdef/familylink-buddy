@@ -155,6 +155,11 @@ class WidgetUpdateService : Service() {
                 // Fetch current time details
                 val currentData = repository.familyTimeData.first()
 
+                if (isMockRocketRunning) {
+                    delay(10_000)
+                    continue
+                }
+
                 if (currentData.totalRemainingMinutes > 0) {
                     val updatedAppUsages = currentData.appUsages.map { app ->
                         // Simulate usage incrementing by 1 minute for active apps
@@ -204,8 +209,12 @@ class WidgetUpdateService : Service() {
         val remaining = data.totalRemainingMinutes
         if (remaining <= 3 && remaining > 0) {
             if (isMockRocketRunning) {
-                // Ignore background DB checks while mock rocket simulation is explicitly active
-                return
+                if (remaining == 1) {
+                    // Ignore background DB checks while mock rocket simulation is explicitly active
+                    return
+                } else {
+                    isMockRocketRunning = false
+                }
             }
             if (!isOverlayShown) {
                 overlaySecondsRemaining = remaining * 60
