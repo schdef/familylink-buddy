@@ -57,7 +57,11 @@ class MainActivity : ComponentActivity() {
 
         // Initialize Firebase emulators in debug mode
         try {
-            val isEmulator = Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk")
+            val isEmulator = BuildConfig.DEBUG || 
+                             Build.FINGERPRINT.startsWith("generic") || 
+                             Build.FINGERPRINT.startsWith("google/sdk_gphone") ||
+                             Build.MODEL.contains("google_sdk") || 
+                             Build.MODEL.contains("Emulator")
             if (isEmulator) {
                 Firebase.firestore.useEmulator("10.0.2.2", 8080)
                 Firebase.functions.useEmulator("10.0.2.2", 5001)

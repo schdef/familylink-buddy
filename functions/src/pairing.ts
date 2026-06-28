@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { encrypt } from "./crypto";
 
 if (!admin.apps.length) {
@@ -31,7 +32,7 @@ export const generatePairingCode = onCall(async (request) => {
   await db.collection("pairing_codes").doc(code).set({
     fcmToken: fcmToken,
     deviceName: deviceName,
-    createdAt: admin.firestore.FieldValue.serverTimestamp()
+    createdAt: FieldValue.serverTimestamp()
   });
 
   return { code: code };
@@ -67,7 +68,7 @@ export const pairWithCode = onCall(async (request) => {
   await db.collection("pairings").doc(childToken).set({
     parentId: parentId,
     deviceName: childName,
-    lastSeen: admin.firestore.FieldValue.serverTimestamp()
+    lastSeen: FieldValue.serverTimestamp()
   });
 
   // Store encrypted refresh token (mock exchange or actual token encryption)
@@ -76,7 +77,7 @@ export const pairWithCode = onCall(async (request) => {
 
   await db.collection("users").doc(parentId).set({
     encryptedTokens: encrypted,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    updatedAt: FieldValue.serverTimestamp()
   });
 
   // Delete the temporary pairing code

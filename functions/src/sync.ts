@@ -1,6 +1,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -31,7 +32,7 @@ async function syncDeviceTime(childToken: string, parentId: string) {
   try {
     await messaging.send(payload);
     await db.collection("pairings").doc(childToken).update({
-      lastSeen: admin.firestore.FieldValue.serverTimestamp()
+      lastSeen: FieldValue.serverTimestamp()
     });
   } catch (e) {
     console.error(`Sync failed for token ${childToken}:`, e);

@@ -10,8 +10,12 @@ PARENT_DIR="$(dirname "$0")/apps/parent-flutter"
 echo "=== FamilyLink Buddy Phase 3 Local Test Runner ==="
 
 # Start Firebase Local Emulator Suite
+echo "Ensuring port 8080 is clear from previous ADB forwards..."
+$ADB forward --remove tcp:8080 >/dev/null 2>&1 || true
+
 echo "Starting Firebase Local Emulator Suite (Firestore & Cloud Functions)..."
-npx -y firebase-tools@latest emulators:start --only firestore,functions > /dev/null 2>&1 &
+npx -y firebase-tools@latest emulators:start --only firestore,functions > firebase-emulator.log 2>&1 &
+
 
 
 # 1. Compile both apps
