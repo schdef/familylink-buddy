@@ -26,38 +26,49 @@ if [ $? -ne 0 ]; then
 fi
 echo "✅ Parent app build successful!"
 
-# 2. Check and start emulators
+# 2. Configure and start emulators
 echo "Checking running emulators..."
 DEVICE1="emulator-5554"
 DEVICE2="emulator-5556"
+
+# Ensure AVDs exist
+AVD1_NAME="Medium_Phone_API_36.1"
+AVD2_NAME="Medium_Phone_API_36.2"
+AVD1_DIR="/Users/stefanheintz/.android/avd/Medium_Phone.avd"
+AVD2_DIR="/Users/stefanheintz/.android/avd/Medium_Phone_2.avd"
+
+if [ ! -d "$AVD2_DIR" ]; then
+    echo "Cloning AVD configuration to allow concurrent emulator runs..."
+    mkdir -p "$AVD2_DIR"
+    cp "$AVD1_DIR/config.ini" "$AVD2_DIR/"
+    cp "$AVD1_DIR/user-settings.ini" "$AVD2_DIR/" 2>/dev/null || true
+    
+    cat <<EOF > "/Users/stefanheintz/.android/avd/$AVD2_NAME.ini"
+avd.ini.encoding=UTF-8
+path=$AVD2_DIR
+path.rel=avd/Medium_Phone_2.avd
+target=android-36.1
+EOF
+    echo "✅ Cloned AVD configuration created: $AVD2_NAME"
+fi
 
 # Check if emulator-5554 is running
 $ADB -s $DEVICE1 get-state >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "Starting first emulator (emulator-5554)..."
-    AVD=$($EMULATOR -list-avds | head -n 1)
-    if [ -z "$AVD" ]; then
-        echo "❌ Error: No AVD configured!"
-        exit 1
-    fi
-    $EMULATOR -avd "$AVD" -port 5554 > /dev/null 2>&1 &
+    $EMULATOR -avd "$AVD1_NAME" -port 5554 > /dev/null 2>&1 &
 fi
 
 # Check if emulator-5556 is running
 $ADB -s $DEVICE2 get-state >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "Starting second emulator (emulator-5556)..."
-    AVD=$($EMULATOR -list-avds | head -n 1)
-    if [ -z "$AVD" ]; then
-        echo "❌ Error: No AVD configured!"
-        exit 1
-    fi
-    # Launch second instance of same AVD as read-only on different port
-    $EMULATOR -avd "$AVD" -port 5556 -read-only > /dev/null 2>&1 &
+    $EMULATOR -avd "$AVD2_NAME" -port 5556 > /dev/null 2>&1 &
 fi
 
 # Wait for both to be online and booted
 echo "Waiting for both emulators to boot..."
+echo "Note: The second emulator does a cold boot on first launch and may take 1-2 minutes."
 for DEVICE in "$DEVICE1" "$DEVICE2"; do
     echo "Waiting for $DEVICE..."
     while true; do
