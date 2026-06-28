@@ -1,0 +1,28 @@
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build and local files
+node_modules/
+build/
+dist/
+*.log
+
+# Flutter/Android/Node specific (for our future workspace)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+android/app/signatures/
+ios/.symlinks/
+*.apk
+*.aab
