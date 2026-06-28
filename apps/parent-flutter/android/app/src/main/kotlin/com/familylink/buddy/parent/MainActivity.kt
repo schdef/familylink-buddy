@@ -1,4 +1,4 @@
-package com.familylink.buddy.parent_app
+package com.familylink.buddy.parent
 
 import io.flutter.embedding.android.FlutterActivity
 
