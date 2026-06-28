@@ -28,9 +28,13 @@ import com.familylink.buddy.child.service.WidgetUpdateService
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 import kotlinx.coroutines.launch
 
+import android.provider.Settings
+import android.net.Uri
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var repository: FamilyTimeRepository
+    private val canDrawOverlaysState = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +73,7 @@ class MainActivity : ComponentActivity() {
                     val scope = rememberCoroutineScope()
                     val familyData by repository.familyTimeData.collectAsState(initial = FamilyTimeData())
                     var serviceRunning by remember { mutableStateOf(true) }
+                    val hasOverlayPermission by canDrawOverlaysState
 
                     // Auto-start service on app open for real-time widget testing
                     LaunchedEffect(Unit) {
@@ -95,6 +100,44 @@ class MainActivity : ComponentActivity() {
                             color = Color(0xFFC5C6C7),
                             modifier = Modifier.padding(bottom = 24.dp)
                         )
+
+                        // Overlay Permission Warning Card
+                        if (!hasOverlayPermission) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF3A1C20))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Permission Required: Draw over other apps",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFEF4444)
+                                    )
+                                    Text(
+                                        text = "This allows the app to display a floating 3-minute warning countdown before locking.",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFFE2E8F0),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                                val intent = Intent(
+                                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                    Uri.parse("package:$packageName")
+                                                )
+                                                startActivity(intent)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                                    ) {
+                                        Text("Grant Permission", color = Color.White)
+                                    }
+                                }
+                            }
+                        }
 
                         // Info Card
                         Card(
@@ -262,6 +305,15 @@ class MainActivity : ComponentActivity() {
             startForegroundService(intent)
         } else {
             startService(intent)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        canDrawOverlaysState.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else {
+            true
         }
     }
 

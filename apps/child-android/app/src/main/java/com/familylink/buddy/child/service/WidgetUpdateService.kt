@@ -17,6 +17,15 @@ import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.TextView
+import android.provider.Settings
+import java.util.Locale
 
 class WidgetUpdateService : Service() {
 
@@ -32,7 +41,17 @@ class WidgetUpdateService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private lateinit var repository: FamilyTimeRepository
     private var tickerJob: Job? = null
+    private var dbObserverJob: Job? = null
     private var isScreenOn = true
+
+    // Overlay state variables
+    private var windowManager: WindowManager? = null
+    private var overlayView: View? = null
+    private var overlayParams: WindowManager.LayoutParams? = null
+    private var isOverlayShown = false
+    private var overlaySecondsRemaining = 180
+    private var overlayTickerJob: Job? = null
+    private var currentSizePreset = 1 // 0 = Small, 1 = Medium, 2 = Large
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -61,6 +80,8 @@ class WidgetUpdateService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         registerReceiver(screenReceiver, filter)
+
+        startDatabaseObserver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -81,6 +102,7 @@ class WidgetUpdateService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(screenReceiver)
+        hideOverlay()
         serviceScope.cancel()
         Log.d(TAG, "Service destroyed")
     }
@@ -153,6 +175,188 @@ class WidgetUpdateService : Service() {
     private fun stopTicker() {
         tickerJob?.cancel()
         tickerJob = null
+    }
+
+    private fun startDatabaseObserver() {
+        if (dbObserverJob?.isActive == true) return
+        dbObserverJob = serviceScope.launch {
+            repository.familyTimeData.collect { data ->
+                withContext(Dispatchers.Main) {
+                    handleTimeDataChanged(data)
+                }
+            }
+        }
+    }
+
+    private fun handleTimeDataChanged(data: FamilyTimeData) {
+        val remaining = data.totalRemainingMinutes
+        if (remaining <= 3 && remaining > 0) {
+            if (!isOverlayShown) {
+                overlaySecondsRemaining = remaining * 60
+                showOverlay()
+            } else {
+                val expectedSeconds = remaining * 60
+                if (Math.abs(overlaySecondsRemaining - expectedSeconds) > 15) {
+                    overlaySecondsRemaining = expectedSeconds
+                }
+            }
+        } else {
+            hideOverlay()
+        }
+    }
+
+    private fun showOverlay() {
+        if (isOverlayShown) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Cannot show overlay: Overlay permission not granted")
+            return
+        }
+
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        overlayView = LayoutInflater.from(this).inflate(com.familylink.buddy.child.R.layout.overlay_countdown, null)
+
+        val (widthPx, heightPx) = getPresetDimensions(currentSizePreset)
+
+        val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        overlayParams = WindowManager.LayoutParams(
+            widthPx,
+            heightPx,
+            layoutFlag,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            android.graphics.PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 100
+            y = 200
+        }
+
+        setupDragListener()
+
+        val sizeBtn = overlayView?.findViewById<Button>(com.familylink.buddy.child.R.id.sizeToggleButton)
+        sizeBtn?.setOnClickListener {
+            cycleSizePreset()
+        }
+
+        try {
+            windowManager?.addView(overlayView, overlayParams)
+            isOverlayShown = true
+            Log.d(TAG, "Overlay added successfully")
+            startOverlayCountdown()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding overlay view: ${e.message}")
+        }
+    }
+
+    private fun hideOverlay() {
+        if (!isOverlayShown) return
+        overlayTickerJob?.cancel()
+        overlayTickerJob = null
+
+        val wm = windowManager
+        val view = overlayView
+
+        windowManager = null
+        overlayView = null
+        overlayParams = null
+        isOverlayShown = false
+
+        if (wm != null && view != null) {
+            try {
+                wm.removeView(view)
+                Log.d(TAG, "Overlay removed successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing overlay: ${e.message}")
+            }
+        }
+    }
+
+    private fun getPresetDimensions(preset: Int): Pair<Int, Int> {
+        val density = resources.displayMetrics.density
+        val widthDp = when (preset) {
+            0 -> 160
+            2 -> 320
+            else -> 240
+        }
+        val heightDp = when (preset) {
+            0 -> 80
+            2 -> 160
+            else -> 120
+        }
+        return Pair((widthDp * density).toInt(), (heightDp * density).toInt())
+    }
+
+    private fun cycleSizePreset() {
+        currentSizePreset = (currentSizePreset + 1) % 3
+        val (width, height) = getPresetDimensions(currentSizePreset)
+        overlayParams?.width = width
+        overlayParams?.height = height
+        try {
+            windowManager?.updateViewLayout(overlayView, overlayParams)
+            Log.d(TAG, "Overlay resized to preset $currentSizePreset: $width x $height")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resize overlay: ${e.message}")
+        }
+    }
+
+    private fun setupDragListener() {
+        overlayView?.setOnTouchListener(object : View.OnTouchListener {
+            private var initialX = 0
+            private var initialY = 0
+            private var initialTouchX = 0f
+            private var initialTouchY = 0f
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = overlayParams?.x ?: 0
+                        initialY = overlayParams?.y ?: 0
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - initialTouchX).toInt()
+                        val dy = (event.rawY - initialTouchY).toInt()
+                        overlayParams?.x = initialX + dx
+                        overlayParams?.y = initialY + dy
+                        try {
+                            windowManager?.updateViewLayout(overlayView, overlayParams)
+                        } catch (e: Exception) {
+                            // View might have been removed
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+    }
+
+    private fun startOverlayCountdown() {
+        overlayTickerJob?.cancel()
+        overlayTickerJob = serviceScope.launch(Dispatchers.Main) {
+            while (isActive && isOverlayShown) {
+                val minutes = overlaySecondsRemaining / 60
+                val seconds = overlaySecondsRemaining % 60
+                val timeStr = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                
+                overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = timeStr
+
+                if (overlaySecondsRemaining <= 0) {
+                    overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = "00:00"
+                    break
+                }
+
+                delay(1000)
+                overlaySecondsRemaining--
+            }
+        }
     }
 
     private fun createNotificationChannel() {
