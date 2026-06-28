@@ -1,6 +1,7 @@
 package com.familylink.buddy.child.service
 
 import android.app.*
+import com.familylink.buddy.child.R
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -116,8 +117,8 @@ class WidgetUpdateService : Service() {
         )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("FamilyLink Buddy Active")
-            .setContentText("Keeping widget up-to-date in real-time.")
+            .setContentTitle(getString(R.string.notification_title))
+            .setContentText(getString(R.string.notification_text))
             .setSmallIcon(android.R.drawable.ic_menu_myplaces)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -363,10 +364,10 @@ class WidgetUpdateService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Device Status (Background Keep-Alive)",
+                getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Runs the background sync engine for real-time widgets. Toggling this off hides the icon while retaining functionality."
+                description = getString(R.string.notification_channel_desc)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)

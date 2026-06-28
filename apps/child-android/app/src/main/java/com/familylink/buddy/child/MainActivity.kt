@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 
 import android.provider.Settings
 import android.net.Uri
+import androidx.compose.ui.res.stringResource
 
 class MainActivity : ComponentActivity() {
 
@@ -87,7 +88,7 @@ class MainActivity : ComponentActivity() {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "FamilyLink Buddy",
+                            text = stringResource(R.string.main_title),
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF66FCF1),
@@ -95,7 +96,7 @@ class MainActivity : ComponentActivity() {
                         )
 
                         Text(
-                            text = "Child Device Companion (MVP Mode)",
+                            text = stringResource(R.string.main_subtitle),
                             fontSize = 14.sp,
                             color = Color(0xFFC5C6C7),
                             modifier = Modifier.padding(bottom = 24.dp)
@@ -110,13 +111,13 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = "Permission Required: Draw over other apps",
+                                        text = stringResource(R.string.perm_title),
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFEF4444)
                                     )
                                     Text(
-                                        text = "This allows the app to display a floating 3-minute warning countdown before locking.",
+                                        text = stringResource(R.string.perm_desc),
                                         fontSize = 13.sp,
                                         color = Color(0xFFE2E8F0),
                                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -133,7 +134,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                                     ) {
-                                        Text("Grant Permission", color = Color.White)
+                                        Text(stringResource(R.string.perm_btn), color = Color.White)
                                     }
                                 }
                             }
@@ -147,13 +148,13 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "Total Remaining Time: ${familyData.totalRemainingMinutes} min",
+                                    text = stringResource(R.string.main_remaining, familyData.totalRemainingMinutes),
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "Daily Limit: ${familyData.totalLimitMinutes} min",
+                                    text = stringResource(R.string.main_limit, familyData.totalLimitMinutes),
                                     fontSize = 14.sp,
                                     color = Color(0xFFC5C6C7),
                                     modifier = Modifier.padding(top = 4.dp)
@@ -168,7 +169,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         Text(text = app.appName, color = Color(0xFF66FCF1))
                                         Text(
-                                            text = "${app.remainingMinutes}m left (${app.usedMinutes}m used of ${app.limitMinutes}m)",
+                                            text = stringResource(R.string.main_app_status, app.remainingMinutes.toString(), app.usedMinutes, app.limitMinutes),
                                             color = Color.White
                                         )
                                     }
@@ -180,7 +181,7 @@ class MainActivity : ComponentActivity() {
 
                         // Controls Block
                         Text(
-                            text = "Mock Control Panel",
+                            text = stringResource(R.string.main_control_panel),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -203,7 +204,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
                             ) {
-                                Text("+15 min")
+                                Text(stringResource(R.string.btn_add_time))
                             }
 
                             Button(
@@ -218,7 +219,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
                             ) {
-                                Text("-15 min")
+                                Text(stringResource(R.string.btn_sub_time))
                             }
 
                             Button(
@@ -236,7 +237,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
                             ) {
-                                Text("Mock 3 min Alert")
+                                Text(stringResource(R.string.btn_mock_alert))
                             }
                         }
 
@@ -260,7 +261,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F2833))
                         ) {
-                            Text("Reset Mock Data", color = Color(0xFF66FCF1))
+                            Text(stringResource(R.string.btn_reset_data), color = Color(0xFF66FCF1))
                         }
 
                         Spacer(modifier = Modifier.height(32.dp))
@@ -272,8 +273,8 @@ class MainActivity : ComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("Real-Time Widget Sync", color = Color.White, fontWeight = FontWeight.Bold)
-                                Text("Uses background ForegroundService", fontSize = 11.sp, color = Color(0xFFC5C6C7))
+                                Text(stringResource(R.string.main_sync_title), color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.main_sync_desc), fontSize = 11.sp, color = Color(0xFFC5C6C7))
                             }
                             Switch(
                                 checked = serviceRunning,

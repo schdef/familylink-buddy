@@ -1,5 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FamilyLink Buddy</string>
-    <string name="widget_description">Displays remaining screen time and app usages in real-time.</string>
+    <string name="widget_description">Zeigt die verbleibende Bildschirmzeit und App-Nutzung in Echtzeit an.</string>
+    
+    <!-- Widget Strings -->
+    <string name="widget_header">FamilyLink Buddy</string>
+    <string name="widget_sync">Synchronisiert: %1$s</string>
+    <string name="widget_min_left">%1$d Min. verbleibend</string>
+    <string name="widget_no_limits">Keine aktiven App-Limits</string>
+    <string name="widget_app_remaining">%1$d Min. übrig</string>
+    
+    <!-- Overlay Strings -->
+    <string name="overlay_label">Sperrung</string>
+    <string name="overlay_size_btn">GRÖSSE</string>
+    
+    <!-- Notification Strings -->
+    <string name="notification_title">FamilyLink Buddy Aktiv</string>
+    <string name="notification_text">Hält das Widget in Echtzeit auf dem neuesten Stand.</string>
+    <string name="notification_channel_name">Gerätestatus (Hintergrund-Keep-Alive)</string>
+    <string name="notification_channel_desc">Führt die Synchronisierung im Hintergrund aus. Ausschalten verbirgt das Symbol, behält aber die Funktion.</string>
+    
+    <!-- Companion Dashboard Strings -->
+    <string name="main_title">FamilyLink Buddy</string>
+    <string name="main_subtitle">Kinder-Gerätebegleiter (MVP-Modus)</string>
+    <string name="perm_title">Berechtigung erforderlich: Über anderen Apps einblenden</string>
+    <string name="perm_desc">Dies ermöglicht es der App, einen schwebenden 3-Minuten-Countdown vor der Sperrung anzuzeigen.</string>
+    <string name="perm_btn">Berechtigung erteilen</string>
+    <string name="main_remaining">Verbleibende Gesamtzeit: %1$d Min.</string>
+    <string name="main_limit">Tägliches Limit: %1$d Min.</string>
+    <string name="main_app_status">%1$s übrig (%2$d Min. genutzt von %3$d Min.)</string>
+    <string name="main_control_panel">Mock-Kontrollpanel</string>
+    
+    <!-- Mock Buttons -->
+    <string name="btn_add_time">+15 Min.</string>
+    <string name="btn_sub_time">-15 Min.</string>
+    <string name="btn_mock_alert">Mock 3 Min. Alarm</string>
+    <string name="btn_reset_data">Mock-Daten zurücksetzen</string>
+    <string name="main_sync_title">Echtzeit-Widget-Synchronisierung</string>
+    <string name="main_sync_desc">Verwendet den Hintergrund-Foreground-Service</string>
 </resources>

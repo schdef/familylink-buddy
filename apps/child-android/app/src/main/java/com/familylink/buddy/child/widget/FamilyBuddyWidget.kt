@@ -11,6 +11,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
+import com.familylink.buddy.child.R
 import com.familylink.buddy.child.data.AppUsage
 import com.familylink.buddy.child.data.FamilyTimeData
 import com.familylink.buddy.child.data.FamilyTimeRepository
@@ -63,7 +64,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                 ) {}
                 Spacer(modifier = GlanceModifier.width(6.dp))
                 Text(
-                    text = "FamilyLink Buddy",
+                    text = context.getString(R.string.widget_header),
                     style = TextStyle(
                         color = ColorProvider(Color(0xFF94A3B8)),
                         fontSize = 11.sp,
@@ -72,7 +73,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
-                    text = "Sync: $formattedTime",
+                    text = context.getString(R.string.widget_sync, formattedTime),
                     style = TextStyle(
                         color = ColorProvider(Color(0xFF64748B)),
                         fontSize = 10.sp
@@ -84,7 +85,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
 
             // Large remaining time text
             Text(
-                text = "$remainingMinutes min left",
+                text = context.getString(R.string.widget_min_left, remainingMinutes),
                 style = TextStyle(
                     color = ColorProvider(Color(0xFFF8FAFC)),
                     fontSize = 24.sp,
@@ -118,7 +119,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
             Column(modifier = GlanceModifier.fillMaxWidth()) {
                 if (data.appUsages.isEmpty()) {
                     Text(
-                        text = "No active app limits",
+                        text = context.getString(R.string.widget_no_limits),
                         style = TextStyle(
                             color = ColorProvider(Color(0xFF64748B)),
                             fontSize = 11.sp
@@ -161,7 +162,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
-                    text = "${app.remainingMinutes}m remaining",
+                    text = LocalContext.current.getString(R.string.widget_app_remaining, app.remainingMinutes),
                     style = TextStyle(
                         color = ColorProvider(progressColor),
                         fontSize = 11.sp
