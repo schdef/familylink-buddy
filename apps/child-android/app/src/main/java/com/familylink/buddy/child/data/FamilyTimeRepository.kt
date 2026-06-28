@@ -27,6 +27,20 @@ class FamilyTimeRepository(private val context: Context) {
             )
         }
 
+    val volumeState: Flow<VolumeState> = context.dataStore.data
+        .map { preferences ->
+            VolumeState(
+                mediaVolume = preferences[KEY_VOLUME_MEDIA] ?: -1,
+                ringtoneVolume = preferences[KEY_VOLUME_RINGTONE] ?: -1,
+                alarmVolume = preferences[KEY_VOLUME_ALARM] ?: -1,
+                maxMediaVolume = preferences[KEY_VOLUME_MEDIA_MAX] ?: 15,
+                maxRingtoneVolume = preferences[KEY_VOLUME_RINGTONE_MAX] ?: 15,
+                maxAlarmVolume = preferences[KEY_VOLUME_ALARM_MAX] ?: 15,
+                isMuted = preferences[KEY_VOLUME_MUTED] ?: false,
+                deviceToken = preferences[KEY_DEVICE_TOKEN] ?: ""
+            )
+        }
+
     suspend fun updateFamilyTimeData(data: FamilyTimeData) {
         context.dataStore.edit { preferences ->
             preferences[KEY_REMAINING_MINUTES] = data.totalRemainingMinutes
@@ -36,11 +50,38 @@ class FamilyTimeRepository(private val context: Context) {
         }
     }
 
+    suspend fun updateVolumeState(state: VolumeState) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_VOLUME_MEDIA] = state.mediaVolume
+            preferences[KEY_VOLUME_RINGTONE] = state.ringtoneVolume
+            preferences[KEY_VOLUME_ALARM] = state.alarmVolume
+            preferences[KEY_VOLUME_MEDIA_MAX] = state.maxMediaVolume
+            preferences[KEY_VOLUME_RINGTONE_MAX] = state.maxRingtoneVolume
+            preferences[KEY_VOLUME_ALARM_MAX] = state.maxAlarmVolume
+            preferences[KEY_VOLUME_MUTED] = state.isMuted
+        }
+    }
+
+    suspend fun updateDeviceToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_DEVICE_TOKEN] = token
+        }
+    }
+
     companion object {
         private val KEY_REMAINING_MINUTES = intPreferencesKey("remaining_minutes")
         private val KEY_LIMIT_MINUTES = intPreferencesKey("limit_minutes")
         private val KEY_LAST_UPDATED = longPreferencesKey("last_updated")
         private val KEY_APP_USAGES = stringPreferencesKey("app_usages")
+        // Volume state
+        private val KEY_VOLUME_MEDIA = intPreferencesKey("volume_media")
+        private val KEY_VOLUME_RINGTONE = intPreferencesKey("volume_ringtone")
+        private val KEY_VOLUME_ALARM = intPreferencesKey("volume_alarm")
+        private val KEY_VOLUME_MEDIA_MAX = intPreferencesKey("volume_media_max")
+        private val KEY_VOLUME_RINGTONE_MAX = intPreferencesKey("volume_ringtone_max")
+        private val KEY_VOLUME_ALARM_MAX = intPreferencesKey("volume_alarm_max")
+        private val KEY_VOLUME_MUTED = booleanPreferencesKey("volume_muted")
+        private val KEY_DEVICE_TOKEN = stringPreferencesKey("device_token")
 
         fun serializeAppUsages(usages: List<AppUsage>): String {
             return usages.joinToString("|") {

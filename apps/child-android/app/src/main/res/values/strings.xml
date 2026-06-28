@@ -44,4 +44,19 @@
     <string name="btn_reset_data">Mock-Daten zurücksetzen</string>
     <string name="main_sync_title">Echtzeit-Widget-Synchronisierung</string>
     <string name="main_sync_desc">Verwendet den Hintergrund-Foreground-Service</string>
+
+    <!-- Volume Control Strings -->
+    <string name="volume_changed_title">Lautstärke geändert</string>
+    <string name="volume_changed_body">%1$s auf %2$d gesetzt (von Elternteil)</string>
+    <string name="volume_notif_channel_name">Lautstärke-Fernsteuerung</string>
+    <string name="volume_stream_media">Medien</string>
+    <string name="volume_stream_ringtone">Klingelton</string>
+    <string name="volume_stream_alarm">Wecker</string>
+    <string name="volume_stream_all">Alle</string>
+    <string name="volume_card_title">🔊 Lautstärke</string>
+    <string name="volume_media_label">Medien</string>
+    <string name="volume_ringtone_label">Klingelton</string>
+    <string name="volume_alarm_label">Wecker</string>
+    <string name="volume_device_id_label">Geräte-ID (zum Koppeln)</string>
+    <string name="volume_copy_btn">Geräte-ID kopieren</string>
 </resources>

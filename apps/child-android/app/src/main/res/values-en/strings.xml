@@ -44,4 +44,19 @@
     <string name="btn_reset_data">Reset Mock Data</string>
     <string name="main_sync_title">Real-Time Widget Sync</string>
     <string name="main_sync_desc">Uses background ForegroundService</string>
+
+    <!-- Volume Control Strings -->
+    <string name="volume_changed_title">Volume Changed</string>
+    <string name="volume_changed_body">%1$s set to %2$d (by parent)</string>
+    <string name="volume_notif_channel_name">Remote Volume Control</string>
+    <string name="volume_stream_media">Media</string>
+    <string name="volume_stream_ringtone">Ringtone</string>
+    <string name="volume_stream_alarm">Alarm</string>
+    <string name="volume_stream_all">All</string>
+    <string name="volume_card_title">🔊 Volume</string>
+    <string name="volume_media_label">Media</string>
+    <string name="volume_ringtone_label">Ringtone</string>
+    <string name="volume_alarm_label">Alarm</string>
+    <string name="volume_device_id_label">Device ID (for pairing)</string>
+    <string name="volume_copy_btn">Copy Device ID</string>
 </resources>

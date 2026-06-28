@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -69,6 +70,10 @@ dependencies {
 
     // DataStore (Preferences and caching)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -31,6 +31,14 @@ import kotlinx.coroutines.launch
 import android.provider.Settings
 import android.net.Uri
 import androidx.compose.ui.res.stringResource
+import android.content.Context
+import android.media.AudioManager
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.widget.Toast
+import com.familylink.buddy.child.data.VolumeState
+import com.google.firebase.messaging.FirebaseMessaging
+
 
 class MainActivity : ComponentActivity() {
 
@@ -43,6 +51,19 @@ class MainActivity : ComponentActivity() {
 
         // Request notification permission if Android 13+
         requestNotificationPermission()
+
+        // Fetch FCM token on launch and update it in database
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val token = task.result
+                lifecycleScopeLaunch {
+                    repository.updateDeviceToken(token)
+                }
+            }
+        }
+
+        // Update local volume state on startup
+        updateLocalVolumeState()
 
         // Write initial data if none exists
         lifecycleScopeLaunch {
@@ -73,6 +94,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val scope = rememberCoroutineScope()
                     val familyData by repository.familyTimeData.collectAsState(initial = FamilyTimeData())
+                    val volumeState by repository.volumeState.collectAsState(initial = VolumeState())
                     var serviceRunning by remember { mutableStateOf(true) }
                     val hasOverlayPermission by canDrawOverlaysState
 
@@ -172,6 +194,97 @@ class MainActivity : ComponentActivity() {
                                             text = stringResource(R.string.main_app_status, app.remainingMinutes.toString(), app.usedMinutes, app.limitMinutes),
                                             color = Color.White
                                         )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Volume & Pairing Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = stringResource(R.string.volume_card_title),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(text = stringResource(R.string.volume_media_label), color = Color(0xFFC5C6C7))
+                                    Text(
+                                        text = if (volumeState.mediaVolume >= 0) "${volumeState.mediaVolume}/${volumeState.maxMediaVolume}" else "N/A",
+                                        color = Color.White
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(text = stringResource(R.string.volume_ringtone_label), color = Color(0xFFC5C6C7))
+                                    Text(
+                                        text = if (volumeState.ringtoneVolume >= 0) "${volumeState.ringtoneVolume}/${volumeState.maxRingtoneVolume}" else "N/A",
+                                        color = Color.White
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(text = stringResource(R.string.volume_alarm_label), color = Color(0xFFC5C6C7))
+                                    Text(
+                                        text = if (volumeState.alarmVolume >= 0) "${volumeState.alarmVolume}/${volumeState.maxAlarmVolume}" else "N/A",
+                                        color = Color.White
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = stringResource(R.string.volume_device_id_label),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF66FCF1)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val token = volumeState.deviceToken
+                                val displayToken = if (token.isNotEmpty()) {
+                                    if (token.length > 25) token.substring(0, 10) + "..." + token.substring(token.length - 10) else token
+                                } else {
+                                    "Lade Token..."
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = displayToken,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (token.isNotEmpty()) {
+                                        Button(
+                                            onClick = {
+                                                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val clip = ClipData.newPlainText("FCM Device Token", token)
+                                                clipboard.setPrimaryClip(clip)
+                                                Toast.makeText(this@MainActivity, "Kopiert!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E)),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Text(stringResource(R.string.volume_copy_btn), fontSize = 11.sp, color = Color.White)
+                                        }
                                     }
                                 }
                             }
@@ -363,6 +476,22 @@ class MainActivity : ComponentActivity() {
         // Run simple launch block scoped to activity helper
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
             block()
+        }
+    }
+
+    private fun updateLocalVolumeState() {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val state = VolumeState(
+            mediaVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+            ringtoneVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING),
+            alarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
+            maxMediaVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            maxRingtoneVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
+            maxAlarmVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
+            isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+        )
+        lifecycleScopeLaunch {
+            repository.updateVolumeState(state)
         }
     }
 }
