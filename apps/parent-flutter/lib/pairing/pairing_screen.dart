@@ -4,9 +4,9 @@ import 'pairing_repository.dart';
 import '../volume/volume_control_screen.dart';
 
 class PairingScreen extends StatefulWidget {
-  final GoogleSignInAccount account;
+  final GoogleSignInAccount? account;
 
-  const PairingScreen({super.key, required this.account});
+  const PairingScreen({super.key, this.account});
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();

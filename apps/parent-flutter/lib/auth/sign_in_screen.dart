@@ -91,19 +91,39 @@ class _SignInScreenState extends State<SignInScreen> {
 
               _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
-                  : ElevatedButton.icon(
-                      onPressed: _handleSignIn,
-                      icon: const Icon(Icons.login),
-                      label: const Text('Mit Google anmelden'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _handleSignIn,
+                          icon: const Icon(Icons.login),
+                          label: const Text('Mit Google anmelden'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
                         ),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(builder: (_) => const PairingScreen(account: null)),
+                            );
+                          },
+                          child: const Text(
+                            'Bypass Google Login (für Simulator/Test)',
+                            style: TextStyle(
+                              color: Color(0xFF6366F1),
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
             ],
           ),

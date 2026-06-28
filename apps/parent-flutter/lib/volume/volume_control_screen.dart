@@ -7,12 +7,12 @@ import '../pairing/pairing_repository.dart';
 import 'volume_repository.dart';
 
 class VolumeControlScreen extends StatefulWidget {
-  final GoogleSignInAccount account;
+  final GoogleSignInAccount? account;
   final PairedDevice device;
 
   const VolumeControlScreen({
     super.key,
-    required this.account,
+    this.account,
     required this.device,
   });
 
