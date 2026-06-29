@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../auth/google_sign_in_service.dart';
-import '../pairing/pairing_screen.dart';
+import '../pairing/device_list_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -21,7 +21,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
     if (account != null && mounted) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => PairingScreen(account: account)),
+        MaterialPageRoute(builder: (_) => DeviceListScreen(account: account)),
       );
     } else {
       setState(() { _error = 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'; });
@@ -112,7 +112,7 @@ class _SignInScreenState extends State<SignInScreen> {
                         TextButton(
                           onPressed: () {
                             Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(builder: (_) => const PairingScreen(account: null)),
+                              MaterialPageRoute(builder: (_) => const DeviceListScreen(account: null)),
                             );
                           },
                           child: const Text(

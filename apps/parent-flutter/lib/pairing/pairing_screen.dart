@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pairing_repository.dart';
 import '../volume/volume_control_screen.dart';
+import '../auth/google_family_link_service.dart';
 
 class PairingScreen extends StatefulWidget {
   final GoogleSignInAccount? account;
@@ -16,7 +17,7 @@ class PairingScreen extends StatefulWidget {
 }
 
 class _PairingScreenState extends State<PairingScreen> {
-  final _deviceNameController = TextEditingController(text: 'Emma');
+  final _deviceNameController = TextEditingController(text: 'Felix');
   final _deviceTokenController = TextEditingController();
   final _pairingCodeController = TextEditingController();
   final _repository = PairingRepository();
@@ -24,18 +25,30 @@ class _PairingScreenState extends State<PairingScreen> {
   bool _isScanning = false;
   String? _error;
 
+  List<FamilyMember> _familyChildren = [];
+  FamilyMember? _selectedChild;
+  bool _isLoadingFamily = false;
+
   @override
   void initState() {
     super.initState();
-    _checkExistingPairing();
+    _fetchFamilyChildren();
   }
 
-  Future<void> _checkExistingPairing() async {
-    setState(() { _isLoading = true; });
-    final device = await _repository.loadPairedDevice();
-    setState(() { _isLoading = false; });
-    if (device != null && mounted) {
-      _navigateToVolumeControl(device);
+  Future<void> _fetchFamilyChildren() async {
+    setState(() { _isLoadingFamily = true; });
+    try {
+      final email = widget.account?.email ?? 'stefanheintz@gmail.com';
+      final kids = await GoogleFamilyLinkService.fetchChildren(email);
+      setState(() {
+        _familyChildren = kids;
+        if (kids.isNotEmpty) {
+          _selectedChild = kids.first;
+        }
+        _isLoadingFamily = false;
+      });
+    } catch (e) {
+      setState(() { _isLoadingFamily = false; });
     }
   }
 
@@ -52,7 +65,7 @@ class _PairingScreenState extends State<PairingScreen> {
 
   // 1. Direct Pairing using FCM Token
   Future<void> _handleDirectPairing() async {
-    final name = _deviceNameController.text.trim();
+    final name = _selectedChild?.name ?? _deviceNameController.text.trim();
     final token = _deviceTokenController.text.trim();
 
     if (name.isEmpty || token.isEmpty) {
@@ -80,7 +93,7 @@ class _PairingScreenState extends State<PairingScreen> {
       setState(() { _isLoading = false; });
 
       if (mounted) {
-        _navigateToVolumeControl(device);
+        Navigator.of(context).pop();
       }
     } catch (e) {
       setState(() {
@@ -92,11 +105,11 @@ class _PairingScreenState extends State<PairingScreen> {
 
   // 2. Resolve Pairing using 6-Digit Code via Direct Firestore
   Future<void> _handlePairingWithCode() async {
-    final name = _deviceNameController.text.trim();
     final code = _pairingCodeController.text.trim();
+    final childName = _selectedChild?.name ?? 'Kind';
 
-    if (name.isEmpty || code.isEmpty) {
-      setState(() { _error = 'Bitte Geräte-Name und 6-stelligen Code eingeben.'; });
+    if (code.isEmpty) {
+      setState(() { _error = 'Bitte geben Sie den 6-stelligen Code ein.'; });
       return;
     }
 
@@ -118,18 +131,16 @@ class _PairingScreenState extends State<PairingScreen> {
       }
 
       final childToken = codeData['fcmToken'] as String;
-      final childNameFromCode = codeData['deviceName'] as String;
       final parentId = widget.account?.id ?? 'mock-parent-uid';
-
       final volumeReport = codeData['volumeReport'] as Map<dynamic, dynamic>?;
 
-      // 1. Create pairings document directly
+      // 1. Create pairings document directly with the child's Family Link API name
       await FirebaseFirestore.instance
           .collection('pairings')
           .doc(childToken)
           .set({
             'parentId': parentId,
-            'deviceName': childNameFromCode,
+            'deviceName': childName,
             'lastSeen': FieldValue.serverTimestamp(),
             'volumeReport': volumeReport
           });
@@ -141,7 +152,7 @@ class _PairingScreenState extends State<PairingScreen> {
           .delete();
 
       final device = PairedDevice(
-        name: name.isNotEmpty ? name : childNameFromCode,
+        name: childName,
         fcmToken: childToken,
         lastSeen: DateTime.now(),
       );
@@ -150,7 +161,7 @@ class _PairingScreenState extends State<PairingScreen> {
       setState(() { _isLoading = false; });
 
       if (mounted) {
-        _navigateToVolumeControl(device);
+        Navigator.of(context).pop(); // Go back to DeviceListScreen dashboard
       }
     } catch (e) {
       setState(() {
@@ -232,26 +243,67 @@ class _PairingScreenState extends State<PairingScreen> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Common Device Name Field
-                    TextField(
-                      controller: _deviceNameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'Geräte-Name (z.B. Emma)',
-                        labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFF334155)),
-                          borderRadius: BorderRadius.circular(12),
+                    // Family Link Supervised Kid Dropdown Selector
+                    if (_isLoadingFamily) ...[
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: CircularProgressIndicator(color: Color(0xFF6366F1)),
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFF6366F1)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF1E293B),
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
+                    ] else if (_familyChildren.isNotEmpty) ...[
+                      DropdownButtonFormField<FamilyMember>(
+                        value: _selectedChild,
+                        dropdownColor: const Color(0xFF1E293B),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Kind aus Family Link auswählen',
+                          labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: Color(0xFF334155)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: Color(0xFF6366F1)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFF1E293B),
+                        ),
+                        items: _familyChildren.map((child) => DropdownMenuItem(
+                          value: child,
+                          child: Text('${child.name} (${child.email})'),
+                        )).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedChild = val;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ] else ...[
+                      // Fallback input if Family Link API fails/empty
+                      TextField(
+                        controller: _deviceNameController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Geräte-Name (z.B. Felix)',
+                          labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: Color(0xFF334155)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: Color(0xFF6366F1)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
 
                     // SECTION 1: 6-Digit Code Pairing
                     Container(
@@ -327,7 +379,7 @@ class _PairingScreenState extends State<PairingScreen> {
                     // DEV OVERRIDES
                     OutlinedButton.icon(
                       onPressed: () {
-                        _deviceNameController.text = "Emma (Emulator)";
+                        _deviceNameController.text = "Felix (Emulator)";
                         _deviceTokenController.text = "emulator";
                         _handleDirectPairing();
                       },

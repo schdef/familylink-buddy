@@ -3,10 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'auth/google_sign_in_service.dart';
 import 'auth/sign_in_screen.dart';
-import 'pairing/pairing_repository.dart';
-import 'pairing/pairing_screen.dart';
+import 'pairing/device_list_screen.dart';
 import 'volume/volume_repository.dart';
-import 'volume/volume_control_screen.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -82,23 +80,14 @@ class _InitialRouterState extends State<InitialRouter> {
   }
 
   Future<void> _routeInitialScreen() async {
-    final pairingRepo = PairingRepository();
-    var device = await pairingRepo.loadPairedDevice();
-
-    if (device == null) {
-      // By default, pre-pair with the local emulator for instant out-of-the-box testing
-      device = PairedDevice(
-        name: "Emma (Emulator)",
-        fcmToken: "emulator",
-        lastSeen: DateTime.now(),
-      );
-      await pairingRepo.savePairedDevice(device);
+    // Check silent login first
+    final account = await GoogleSignInService.signInSilently();
+    
+    if (account != null) {
+      _targetScreen = DeviceListScreen(account: account);
+    } else {
+      _targetScreen = const SignInScreen();
     }
-
-    _targetScreen = VolumeControlScreen(
-      account: null,
-      device: device,
-    );
 
     setState(() {
       _isLoading = false;

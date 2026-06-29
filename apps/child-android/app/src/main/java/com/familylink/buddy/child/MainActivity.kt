@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
                                 val db = FirebaseFirestore.getInstance()
                                 val docData = hashMapOf(
                                     "fcmToken" to token,
-                                    "deviceName" to "Emma",
+                                    "deviceName" to "Felix",
                                     "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
                                     "volumeReport" to volumeReport
                                 )

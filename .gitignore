@@ -26,3 +26,9 @@ android/app/signatures/
 ios/.symlinks/
 *.apk
 *.aab
+apps/*/android/.gradle
+apps/*/ios/.gradle
+
+# Firebase Configuration keys
+google-services.json
+GoogleService-Info.plist
