@@ -36,6 +36,11 @@ import com.familylink.buddy.child.data.VolumeState
 import android.media.AudioManager
 import android.provider.Settings
 import java.util.Locale
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
+import android.app.usage.UsageStats
+import android.content.pm.PackageManager
+import java.util.Calendar
 
 class WidgetUpdateService : Service() {
 
@@ -55,6 +60,8 @@ class WidgetUpdateService : Service() {
     private var dbObserverJob: Job? = null
     private var isScreenOn = true
     private var localHttpServer: LocalHttpServer? = null
+    private var foregroundMonitorJob: Job? = null
+    private var foregroundLockedApp: AppUsage? = null
 
     // Overlay state variables
     private var windowManager: WindowManager? = null
@@ -119,6 +126,7 @@ class WidgetUpdateService : Service() {
             triggerMockRocketLaunch()
         } else {
             startTicker()
+            startForegroundMonitor()
         }
 
         return START_STICKY
@@ -128,6 +136,7 @@ class WidgetUpdateService : Service() {
         super.onDestroy()
         unregisterReceiver(screenReceiver)
         hideOverlay()
+        stopForegroundMonitor()
         firestoreListenerRegistration?.remove()
         firestoreListenerRegistration = null
         serviceScope.cancel()
@@ -177,13 +186,35 @@ class WidgetUpdateService : Service() {
                 }
 
                 if (currentData.totalRemainingMinutes > 0) {
-                    val updatedAppUsages = currentData.appUsages.map { app ->
+                    val updatedAppUsages = if (checkUsageAccessPermission()) {
+                        try {
+                            val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                            val calendar = Calendar.getInstance()
+                            calendar.set(Calendar.HOUR_OF_DAY, 0)
+                            calendar.set(Calendar.MINUTE, 0)
+                            calendar.set(Calendar.SECOND, 0)
+                            val startTime = calendar.timeInMillis
+                            val endTime = System.currentTimeMillis()
+                            
+                            val usageStats = usageStatsManager?.queryAndAggregateUsageStats(startTime, endTime)
+                            currentData.appUsages.map { app ->
+                                val timeInForegroundMs = usageStats?.get(app.packageName)?.totalTimeInForeground ?: 0L
+                                val usedMin = (timeInForegroundMs / (1000 * 60)).toInt()
+                                app.copy(usedMinutes = usedMin)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error querying usage stats in ticker", e)
+                            currentData.appUsages
+                        }
+                    } else {
                         // Simulate usage incrementing by 1 minute for active apps
-                        val shouldIncrement = app.packageName == "com.google.android.youtube" || 
-                                              app.packageName == "com.mojang.minecraftpe"
-                        if (shouldIncrement && app.usedMinutes < app.limitMinutes) {
-                            app.copy(usedMinutes = app.usedMinutes + 1)
-                        } else app
+                        currentData.appUsages.map { app ->
+                            val shouldIncrement = app.packageName == "com.google.android.youtube" || 
+                                                  app.packageName == "com.mojang.minecraftpe"
+                            if (shouldIncrement && app.usedMinutes < app.limitMinutes) {
+                                app.copy(usedMinutes = app.usedMinutes + 1)
+                            } else app
+                        }
                     }
 
                     val updatedData = currentData.copy(
@@ -199,8 +230,9 @@ class WidgetUpdateService : Service() {
                     FamilyBuddyWidget().updateAll(applicationContext)
                 }
                 
-                // For MVP testing, decrement every 10 seconds instead of 60 seconds so changes are visible
-                delay(10_000)
+                // Use 10s intervals for fast emulator testing; otherwise, use real-time 60s intervals
+                val tickInterval = if (com.familylink.buddy.child.BuildConfig.USE_EMULATOR) 10_000L else 60_000L
+                delay(tickInterval)
             }
         }
     }
@@ -221,40 +253,101 @@ class WidgetUpdateService : Service() {
         }
     }
 
-    private fun handleTimeDataChanged(data: FamilyTimeData) {
-        val remaining = data.totalRemainingMinutes
-        val lockedApp = data.appUsages.firstOrNull { it.remainingMinutes <= 0 }
+    private fun getHomePackageName(): String {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        return resolveInfo?.activityInfo?.packageName ?: ""
+    }
 
-        if ((remaining <= 3 && remaining > 0) || lockedApp != null) {
-            if (isMockRocketRunning) {
-                if (remaining == 1) {
-                    // Ignore background DB checks while mock rocket simulation is explicitly active
-                    return
-                } else {
-                    isMockRocketRunning = false
+    private fun getForegroundPackageName(): String? {
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return null
+        val time = System.currentTimeMillis()
+        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 1000 * 60, time)
+        if (!stats.isNullOrEmpty()) {
+            val sortedStats = stats.sortedBy { it.lastTimeUsed }
+            val active = sortedStats.lastOrNull { 
+                it.packageName != packageName && 
+                it.packageName != "com.android.systemui"
+            }
+            if (active != null) {
+                val homePkg = getHomePackageName()
+                if (active.packageName != homePkg) {
+                    return active.packageName
                 }
             }
-            
-            if (lockedApp != null) {
+        }
+        return null
+    }
+
+    private fun checkForegroundAndLockState(data: FamilyTimeData) {
+        val remaining = data.totalRemainingMinutes
+        val foregroundPkg = getForegroundPackageName()
+
+        // Find if foreground app is locked
+        val fgLockedApp = if (foregroundPkg != null) {
+            data.appUsages.firstOrNull { it.packageName == foregroundPkg && it.remainingMinutes <= 0 }
+        } else {
+            null
+        }
+
+        val shouldShow = (remaining <= 0) || (remaining <= 3 && remaining > 0) || (fgLockedApp != null)
+
+        if (shouldShow) {
+            if (fgLockedApp != null) {
+                foregroundLockedApp = fgLockedApp
+                overlaySecondsRemaining = 0
+            } else if (remaining <= 0) {
+                foregroundLockedApp = null
                 overlaySecondsRemaining = 0
             } else {
+                foregroundLockedApp = null
                 overlaySecondsRemaining = remaining * 60
             }
 
             if (!isOverlayShown) {
                 showOverlay()
-            } else {
-                if (lockedApp == null) {
-                    val expectedSeconds = remaining * 60
-                    if (Math.abs(overlaySecondsRemaining - expectedSeconds) > 15) {
-                        overlaySecondsRemaining = expectedSeconds
-                    }
-                }
             }
         } else {
+            foregroundLockedApp = null
             isMockRocketRunning = false
             hideOverlay()
         }
+    }
+
+    private fun startForegroundMonitor() {
+        if (foregroundMonitorJob?.isActive == true) return
+        foregroundMonitorJob = serviceScope.launch {
+            while (isActive) {
+                if (isScreenOn) {
+                    val currentData = repository.familyTimeData.first()
+                    withContext(Dispatchers.Main) {
+                        checkForegroundAndLockState(currentData)
+                    }
+                }
+                delay(1000) // check every 1s
+            }
+        }
+    }
+
+    private fun stopForegroundMonitor() {
+        foregroundMonitorJob?.cancel()
+        foregroundMonitorJob = null
+    }
+
+    private fun checkUsageAccessPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.noteOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            packageName
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun handleTimeDataChanged(data: FamilyTimeData) {
+        checkForegroundAndLockState(data)
     }
 
     private fun triggerMockRocketLaunch() {
@@ -504,12 +597,13 @@ class WidgetUpdateService : Service() {
             while (isActive && isOverlayShown) {
                 // Fetch current DB details to check for active app locks
                 val currentData = repository.familyTimeData.first()
-                val lockedApp = currentData.appUsages.firstOrNull { it.remainingMinutes <= 0 }
+                val fgLocked = foregroundLockedApp
+                val isDeviceLocked = currentData.totalRemainingMinutes <= 0
 
-                if (lockedApp != null) {
-                    // App Lock State: Show app name reason and LOCK status
+                if (fgLocked != null || isDeviceLocked) {
+                    // App or Device Lock State: Show LOCK status and correct label
                     overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = getString(R.string.text_locked)
-                    countdownLabel?.text = lockedApp.appName
+                    countdownLabel?.text = fgLocked?.appName ?: getString(R.string.lock_reason_device)
 
                     animationContainer?.visibility = View.VISIBLE
                     launchpadImage?.visibility = View.GONE

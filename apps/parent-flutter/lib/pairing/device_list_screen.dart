@@ -259,11 +259,53 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                                 style: TextStyle(color: Color(0xFF475569), fontSize: 13),
                               ),
                             ],
-                            const SizedBox(height: 4),
-                            const Icon(
-                              Icons.arrow_forward_ios,
-                              color: Color(0xFF475569),
-                              size: 14,
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 18),
+                                  onPressed: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        backgroundColor: const Color(0xFF1E293B),
+                                        title: const Text('Gerät entkoppeln?', style: TextStyle(color: Colors.white)),
+                                        content: Text(
+                                          'Möchten Sie das Gerät von $name wirklich entkoppeln?',
+                                          style: const TextStyle(color: Color(0xFF94A3B8)),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
+                                            onPressed: () => Navigator.of(ctx).pop(),
+                                          ),
+                                          TextButton(
+                                            child: const Text('Entkoppeln', style: TextStyle(color: Color(0xFFEF4444))),
+                                            onPressed: () async {
+                                              Navigator.of(ctx).pop();
+                                              await FirebaseFirestore.instance.collection('pairings').doc(childToken).delete();
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(content: Text('$name wurde entkoppelt.')),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: Color(0xFF475569),
+                                  size: 14,
+                                ),
+                              ],
                             ),
                           ],
                         ),

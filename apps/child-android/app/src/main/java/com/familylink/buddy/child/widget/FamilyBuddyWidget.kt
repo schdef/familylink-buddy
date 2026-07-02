@@ -126,9 +126,24 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                         )
                     )
                 } else {
-                    data.appUsages.take(2).forEach { app ->
-                        AppUsageRow(app)
-                        Spacer(modifier = GlanceModifier.height(6.dp))
+                    val activeApps = data.appUsages
+                        .filter { it.usedMinutes > 0 || it.limitMinutes < 1440 }
+                        .sortedByDescending { it.usedMinutes }
+                        .take(3)
+
+                    if (activeApps.isEmpty()) {
+                        Text(
+                            text = context.getString(R.string.widget_no_limits),
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF64748B)),
+                                fontSize = 11.sp
+                            )
+                        )
+                    } else {
+                        activeApps.forEach { app ->
+                            AppUsageRow(app, remainingMinutes, remainingPercent)
+                            Spacer(modifier = GlanceModifier.height(6.dp))
+                        }
                     }
                 }
             }
@@ -136,14 +151,26 @@ class FamilyBuddyWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun AppUsageRow(app: AppUsage) {
-        val appPercent = if (app.limitMinutes > 0) {
-            ((app.limitMinutes - app.usedMinutes).toFloat() / app.limitMinutes.toFloat()).coerceIn(0f, 1f)
-        } else 0f
+    private fun AppUsageRow(app: AppUsage, deviceRemainingMinutes: Int, deviceRemainingPercent: Float) {
+        val isUnlimited = app.limitMinutes >= 1440
+
+        val actualRemaining = if (isUnlimited) {
+            deviceRemainingMinutes
+        } else {
+            minOf(app.remainingMinutes, deviceRemainingMinutes)
+        }
+
+        val appPercent = if (isUnlimited) {
+            deviceRemainingPercent
+        } else {
+            if (app.limitMinutes > 0) {
+                ((app.limitMinutes - app.usedMinutes).toFloat() / app.limitMinutes.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+        }
 
         val progressColor = when {
-            app.remainingMinutes <= 3 -> Color(0xFFEF4444)  // Red alert when under 3 mins
-            app.remainingMinutes <= 10 -> Color(0xFFF59E0B) // Orange warning
+            actualRemaining <= 3 -> Color(0xFFEF4444)  // Red alert when under 3 mins
+            actualRemaining <= 10 -> Color(0xFFF59E0B) // Orange warning
             else -> Color(0xFF10B981)                       // Green normal
         }
 
@@ -162,7 +189,11 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
-                    text = LocalContext.current.getString(R.string.widget_app_remaining, app.remainingMinutes),
+                    text = if (isUnlimited) {
+                        LocalContext.current.getString(R.string.widget_app_unlimited, actualRemaining)
+                    } else {
+                        LocalContext.current.getString(R.string.widget_app_remaining, actualRemaining)
+                    },
                     style = TextStyle(
                         color = ColorProvider(progressColor),
                         fontSize = 11.sp

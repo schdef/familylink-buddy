@@ -27,6 +27,7 @@ import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.service.WidgetUpdateService
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 import android.provider.Settings
 import android.net.Uri
@@ -45,12 +46,16 @@ import com.google.firebase.ktx.Firebase
 import androidx.compose.ui.graphics.asImageBitmap
 import com.familylink.buddy.child.data.QrCodeGenerator
 import android.util.Log
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
+import java.util.Calendar
 
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var repository: FamilyTimeRepository
     private val canDrawOverlaysState = mutableStateOf(false)
+    private val hasUsageAccessState = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -219,6 +224,46 @@ class MainActivity : ComponentActivity() {
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                                     ) {
                                         Text(stringResource(R.string.perm_btn), color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Usage Access Permission Warning Card
+                        val hasUsageAccess by hasUsageAccessState
+                        if (!hasUsageAccess) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF3A2D1C))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Nutzungsdaten-Zugriff benötigt",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFF59E0B)
+                                    )
+                                    Text(
+                                        text = "Diese App benötigt Zugriff auf die Nutzungsstatistiken, um installierte Apps und deren Nutzungszeiten im Widget anzuzeigen und Zeitlimits durchzusetzen.",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFFE2E8F0),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                                                data = Uri.parse("package:$packageName")
+                                            }
+                                            try {
+                                                startActivity(intent)
+                                            } catch (e: Exception) {
+                                                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
+                                    ) {
+                                        Text("Zugriff erlauben", color = Color.White)
                                     }
                                 }
                             }
@@ -535,12 +580,114 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun checkUsageAccessPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.noteOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            packageName
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun refreshRealAppUsageData() {
+        if (!checkUsageAccessPermission()) {
+            return
+        }
+
+        lifecycleScopeLaunch {
+            try {
+                val currentData = repository.familyTimeData.first()
+                val pm = packageManager
+                
+                val mainIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+                val resolvedInfos = pm.queryIntentActivities(mainIntent, 0)
+                
+                val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+                val calendar = Calendar.getInstance()
+                calendar.set(Calendar.HOUR_OF_DAY, 0)
+                calendar.set(Calendar.MINUTE, 0)
+                calendar.set(Calendar.SECOND, 0)
+                val startTime = calendar.timeInMillis
+                val endTime = System.currentTimeMillis()
+                
+                val usageStats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+                
+                val excludedPackages = setOf(
+                    "com.android.settings",
+                    "com.android.vending",
+                    "com.google.android.packageinstaller",
+                    "com.android.contacts",
+                    "com.google.android.contacts",
+                    "com.android.dialer",
+                    "com.google.android.dialer",
+                    "com.android.deskclock",
+                    "com.google.android.deskclock",
+                    "com.android.calculator2",
+                    "com.google.android.calculator",
+                    "com.familylink.buddy.child",
+                    "com.android.systemui",
+                    "com.google.android.inputmethod.latin"
+                )
+
+                val filteredInfos = resolvedInfos.filter { resolveInfo ->
+                    val pkgName = resolveInfo.activityInfo.packageName
+                    if (excludedPackages.contains(pkgName)) return@filter false
+                    
+                    val appInfo = try {
+                        pm.getApplicationInfo(pkgName, 0)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (appInfo != null) {
+                        val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                        if (isSystemApp) {
+                            val allowedSystemPackages = listOf("youtube", "chrome", "gallery", "photos", "maps", "spotify", "anton")
+                            return@filter allowedSystemPackages.any { pkgName.lowercase().contains(it) }
+                        }
+                    }
+                    true
+                }
+
+                val updatedAppUsages = filteredInfos.map { resolveInfo ->
+                    val pkgName = resolveInfo.activityInfo.packageName
+                    val appLabel = resolveInfo.loadLabel(pm).toString()
+                    
+                    val timeInForegroundMs = usageStats[pkgName]?.totalTimeInForeground ?: 0L
+                    val usedMin = (timeInForegroundMs / (1000 * 60)).toInt()
+                    
+                    val existing = currentData.appUsages.firstOrNull { it.packageName == pkgName }
+                    val limitMin = existing?.limitMinutes ?: 1440
+                    
+                    AppUsage(
+                        packageName = pkgName,
+                        appName = appLabel,
+                        usedMinutes = usedMin,
+                        limitMinutes = limitMin
+                    )
+                }
+                
+                val newData = currentData.copy(appUsages = updatedAppUsages)
+                repository.updateFamilyTimeData(newData)
+                FamilyBuddyWidget().updateAll(applicationContext)
+                
+                Log.d("MainActivity", "Successfully refreshed real app usages: ${updatedAppUsages.size} apps")
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error refreshing app usages", e)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         canDrawOverlaysState.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else {
             true
+        }
+        hasUsageAccessState.value = checkUsageAccessPermission()
+        if (hasUsageAccessState.value) {
+            refreshRealAppUsageData()
         }
     }
 

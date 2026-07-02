@@ -6,6 +6,7 @@ import '../auth/sign_in_screen.dart';
 import '../pairing/pairing_repository.dart';
 import 'volume_repository.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 
 class VolumeControlScreen extends StatefulWidget {
@@ -168,6 +169,45 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
+            tooltip: 'Gerät entkoppeln',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E293B),
+                  title: const Text('Gerät entkoppeln?', style: TextStyle(color: Colors.white)),
+                  content: Text(
+                    'Möchten Sie das Gerät von ${widget.device.name} wirklich entkoppeln?',
+                    style: const TextStyle(color: Color(0xFF94A3B8)),
+                  ),
+                  actions: [
+                    TextButton(
+                      child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                    TextButton(
+                      child: const Text('Entkoppeln', style: TextStyle(color: Color(0xFFEF4444))),
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        await FirebaseFirestore.instance
+                            .collection('pairings')
+                            .doc(widget.device.fcmToken)
+                            .delete();
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('${widget.device.name} wurde entkoppelt.')),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xFF94A3B8)),
             onPressed: () {
