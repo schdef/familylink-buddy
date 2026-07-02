@@ -885,9 +885,13 @@ class WidgetUpdateService : Service() {
     }
 
     private fun setStreamVolume(audioManager: AudioManager, stream: Int, level: Int) {
-        val max = audioManager.getStreamMaxVolume(stream)
-        val clamped = level.coerceIn(0, max)
-        audioManager.setStreamVolume(stream, clamped, AudioManager.FLAG_SHOW_UI)
+        try {
+            val max = audioManager.getStreamMaxVolume(stream)
+            val clamped = level.coerceIn(0, max)
+            audioManager.setStreamVolume(stream, clamped, AudioManager.FLAG_SHOW_UI)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set volume for stream $stream: ${e.message}", e)
+        }
     }
 
     private fun updateScreenTimeData(remaining: Int, limit: Int, appUsagesJsonStr: String) {

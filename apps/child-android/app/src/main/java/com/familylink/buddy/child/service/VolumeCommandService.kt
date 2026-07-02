@@ -143,10 +143,14 @@ class VolumeCommandService : FirebaseMessagingService() {
     }
 
     private fun setVolume(audioManager: AudioManager, stream: Int, level: Int) {
-        val max = audioManager.getStreamMaxVolume(stream)
-        val clamped = level.coerceIn(0, max)
-        audioManager.setStreamVolume(stream, clamped, 0)
-        Log.d(TAG, "Set stream $stream to $clamped (max $max)")
+        try {
+            val max = audioManager.getStreamMaxVolume(stream)
+            val clamped = level.coerceIn(0, max)
+            audioManager.setStreamVolume(stream, clamped, 0)
+            Log.d(TAG, "Set stream $stream to $clamped (max $max)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set volume for stream $stream: ${e.message}", e)
+        }
     }
 
     private fun reportVolumeToParent(parentToken: String?) {

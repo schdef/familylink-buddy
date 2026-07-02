@@ -104,18 +104,22 @@ class VolumeRepository extends ChangeNotifier {
   static const _fcmServerKey = 'YOUR_FCM_SERVER_KEY';
 
   Future<void> initialize() async {
-    final messaging = FirebaseMessaging.instance;
+    try {
+      final messaging = FirebaseMessaging.instance;
 
-    // Request permission for notifications
-    await messaging.requestPermission();
+      // Request permission for notifications
+      await messaging.requestPermission();
 
-    // Store our own FCM token (parent token for child to reply to)
-    _parentFcmToken = await messaging.getToken();
-    debugPrint('Parent FCM token: $_parentFcmToken');
+      // Store our own FCM token (parent token for child to reply to)
+      _parentFcmToken = await messaging.getToken();
+      debugPrint('Parent FCM token: $_parentFcmToken');
 
-    // Listen for incoming volume reports from child
-    FirebaseMessaging.onMessage.listen(_handleIncomingMessage);
-    FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
+      // Listen for incoming volume reports from child
+      FirebaseMessaging.onMessage.listen(_handleIncomingMessage);
+      FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
+    } catch (e) {
+      debugPrint('FCM initialization failed (falling back to Firestore direct sync): $e');
+    }
   }
 
   void _handleIncomingMessage(RemoteMessage message) {
