@@ -35,6 +35,9 @@ import com.familylink.buddy.child.data.AppUsage
 import com.familylink.buddy.child.data.VolumeState
 import android.media.AudioManager
 import android.provider.Settings
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import java.util.Locale
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
@@ -109,6 +112,7 @@ class WidgetUpdateService : Service() {
         }
 
         startFirestoreListener()
+        registerVolumeObserver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -139,6 +143,7 @@ class WidgetUpdateService : Service() {
         stopForegroundMonitor()
         firestoreListenerRegistration?.remove()
         firestoreListenerRegistration = null
+        unregisterVolumeObserver()
         serviceScope.cancel()
         localHttpServer?.stop()
         Log.d(TAG, "Service destroyed")
@@ -744,6 +749,7 @@ class WidgetUpdateService : Service() {
 
     private var firestoreListenerRegistration: ListenerRegistration? = null
     private var lastExecutedCommandTimestamp: Long = 0
+    private var volumeObserver: ContentObserver? = null
 
     private fun startFirestoreListener() {
         serviceScope.launch {
@@ -755,6 +761,51 @@ class WidgetUpdateService : Service() {
                     }
                 }
             }
+        }
+    }
+
+    private fun registerVolumeObserver() {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                super.onChange(selfChange)
+                serviceScope.launch {
+                    val volumeState = repository.volumeState.first()
+                    val token = volumeState.deviceToken
+                    if (token.isNotEmpty()) {
+                        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        val report = hashMapOf(
+                            "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+                            "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
+                            "alarmVolume" to audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
+                            "maxMediaVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                            "maxRingtoneVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
+                            "maxAlarmVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                        )
+                        try {
+                            val db = FirebaseFirestore.getInstance()
+                            db.collection("pairings").document(token).update("volumeReport", report)
+                            Log.d(TAG, "Local physical volume change detected and reported to Firestore")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to update Firestore volume report on local change", e)
+                        }
+                    }
+                }
+            }
+        }
+        contentResolver.registerContentObserver(
+            android.provider.Settings.System.CONTENT_URI,
+            true,
+            observer
+        )
+        volumeObserver = observer
+        Log.d(TAG, "Registered system volume ContentObserver")
+    }
+
+    private fun unregisterVolumeObserver() {
+        volumeObserver?.let {
+            contentResolver.unregisterContentObserver(it)
+            volumeObserver = null
+            Log.d(TAG, "Unregistered system volume ContentObserver")
         }
     }
 
