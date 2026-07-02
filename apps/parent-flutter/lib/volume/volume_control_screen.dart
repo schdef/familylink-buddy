@@ -35,6 +35,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
   final Map<String, double> _localValues = {};
+  final Map<String, DateTime> _lastSetTimes = {};
 
   @override
   void initState() {
@@ -60,7 +61,13 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   void _onRepositoryUpdate() {
     if (mounted) {
       setState(() {
-        _localValues.clear();
+        _localValues.removeWhere((streamName, localVal) {
+          int repoVal = -1;
+          if (streamName == 'MEDIA') repoVal = _volumeRepository.volumeState.mediaVolume;
+          if (streamName == 'RINGTONE') repoVal = _volumeRepository.volumeState.ringtoneVolume;
+          if (streamName == 'ALARM') repoVal = _volumeRepository.volumeState.alarmVolume;
+          return repoVal == localVal.toInt();
+        });
       });
     }
   }
@@ -91,7 +98,13 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     required String streamName,
     required ValueChanged<double> onChanged,
   }) {
-    final double displayValue = _localValues[streamName] ?? (value >= 0 ? value.toDouble() : 0);
+    final double? localVal = _localValues[streamName];
+    final DateTime? lastSet = _lastSetTimes[streamName];
+    final bool useLocal = localVal != null &&
+        lastSet != null &&
+        DateTime.now().difference(lastSet).inSeconds < 3;
+
+    final double displayValue = useLocal ? localVal : (value >= 0 ? value.toDouble() : 0);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -148,6 +161,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
               onChanged: (val) {
                 setState(() {
                   _localValues[streamName] = val;
+                  _lastSetTimes[streamName] = DateTime.now();
                 });
               },
               onChangeEnd: (val) {

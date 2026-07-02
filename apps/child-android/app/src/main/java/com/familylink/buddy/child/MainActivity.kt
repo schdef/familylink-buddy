@@ -46,6 +46,7 @@ import com.google.firebase.ktx.Firebase
 import androidx.compose.ui.graphics.asImageBitmap
 import com.familylink.buddy.child.data.QrCodeGenerator
 import android.util.Log
+import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import java.util.Calendar
@@ -56,6 +57,17 @@ class MainActivity : ComponentActivity() {
     private lateinit var repository: FamilyTimeRepository
     private val canDrawOverlaysState = mutableStateOf(false)
     private val hasUsageAccessState = mutableStateOf(false)
+
+    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        @Suppress("DEPRECATION")
+        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,7 +130,7 @@ class MainActivity : ComponentActivity() {
                     val scope = rememberCoroutineScope()
                     val familyData by repository.familyTimeData.collectAsState(initial = FamilyTimeData())
                     val volumeState by repository.volumeState.collectAsState(initial = VolumeState())
-                    var serviceRunning by remember { mutableStateOf(true) }
+                    var serviceRunning by remember { mutableStateOf(isServiceRunning(WidgetUpdateService::class.java)) }
                     val hasOverlayPermission by canDrawOverlaysState
 
                     var pairingCode by remember { mutableStateOf("Lade...") }
@@ -550,11 +562,13 @@ class MainActivity : ComponentActivity() {
                             Switch(
                                 checked = serviceRunning,
                                 onCheckedChange = { running ->
-                                    serviceRunning = running
-                                    if (running) {
-                                        startUpdateService()
-                                    } else {
-                                        stopUpdateService()
+                                    if (running != serviceRunning) {
+                                        serviceRunning = running
+                                        if (running) {
+                                            startUpdateService()
+                                        } else {
+                                            stopUpdateService()
+                                        }
                                     }
                                 },
                                 colors = SwitchDefaults.colors(

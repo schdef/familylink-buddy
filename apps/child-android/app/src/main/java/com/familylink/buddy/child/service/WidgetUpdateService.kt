@@ -94,6 +94,56 @@ class WidgetUpdateService : Service() {
         }
     }
 
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == "android.media.VOLUME_CHANGED_ACTION") {
+                Log.d(TAG, "Volume change broadcast received")
+                serviceScope.launch {
+                    val volumeState = repository.volumeState.first()
+                    val token = volumeState.deviceToken
+                    if (token.isNotEmpty()) {
+                        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        val mediaVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        val ringtoneVol = audioManager.getStreamVolume(AudioManager.STREAM_RING)
+                        val alarmVol = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+                        val maxMedia = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        val maxRingtone = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
+                        val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+
+                        val localState = VolumeState(
+                            mediaVolume = mediaVol,
+                            ringtoneVolume = ringtoneVol,
+                            alarmVolume = alarmVol,
+                            maxMediaVolume = maxMedia,
+                            maxRingtoneVolume = maxRingtone,
+                            maxAlarmVolume = maxAlarm,
+                            isMuted = mediaVol == 0,
+                            deviceToken = token
+                        )
+                        // Update local repository so the child UI changes instantly
+                        repository.updateVolumeState(localState)
+
+                        // Update Firestore report so parent gets notified
+                        try {
+                            val db = FirebaseFirestore.getInstance()
+                            db.collection("pairings").document(token).update("volumeReport", hashMapOf(
+                                "mediaVolume" to mediaVol,
+                                "ringtoneVolume" to ringtoneVol,
+                                "alarmVolume" to alarmVol,
+                                "maxMediaVolume" to maxMedia,
+                                "maxRingtoneVolume" to maxRingtone,
+                                "maxAlarmVolume" to maxAlarm
+                            ))
+                            Log.d(TAG, "Broadcast volume change synced to Firestore: $mediaVol")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to update Firestore in volume BroadcastReceiver", e)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         repository = FamilyTimeRepository(applicationContext)
@@ -104,6 +154,9 @@ class WidgetUpdateService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         registerReceiver(screenReceiver, filter)
+
+        val volumeFilter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        registerReceiver(volumeReceiver, volumeFilter)
 
         startDatabaseObserver()
 
@@ -139,6 +192,7 @@ class WidgetUpdateService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(screenReceiver)
+        unregisterReceiver(volumeReceiver)
         hideOverlay()
         stopForegroundMonitor()
         firestoreListenerRegistration?.remove()
@@ -773,17 +827,37 @@ class WidgetUpdateService : Service() {
                     val token = volumeState.deviceToken
                     if (token.isNotEmpty()) {
                         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                        val report = hashMapOf(
-                            "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
-                            "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
-                            "alarmVolume" to audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
-                            "maxMediaVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-                            "maxRingtoneVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
-                            "maxAlarmVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                        val mediaVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        val ringtoneVol = audioManager.getStreamVolume(AudioManager.STREAM_RING)
+                        val alarmVol = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+                        val maxMedia = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        val maxRingtone = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
+                        val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+
+                        val localState = VolumeState(
+                            mediaVolume = mediaVol,
+                            ringtoneVolume = ringtoneVol,
+                            alarmVolume = alarmVol,
+                            maxMediaVolume = maxMedia,
+                            maxRingtoneVolume = maxRingtone,
+                            maxAlarmVolume = maxAlarm,
+                            isMuted = mediaVol == 0,
+                            deviceToken = token
                         )
+                        // Update local repository so the child UI changes instantly
+                        repository.updateVolumeState(localState)
+
+                        // Update Firestore report so parent gets notified
                         try {
                             val db = FirebaseFirestore.getInstance()
-                            db.collection("pairings").document(token).update("volumeReport", report)
+                            db.collection("pairings").document(token).update("volumeReport", hashMapOf(
+                                "mediaVolume" to mediaVol,
+                                "ringtoneVolume" to ringtoneVol,
+                                "alarmVolume" to alarmVol,
+                                "maxMediaVolume" to maxMedia,
+                                "maxRingtoneVolume" to maxRingtone,
+                                "maxAlarmVolume" to maxAlarm
+                            ))
                             Log.d(TAG, "Local physical volume change detected and reported to Firestore")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to update Firestore volume report on local change", e)
