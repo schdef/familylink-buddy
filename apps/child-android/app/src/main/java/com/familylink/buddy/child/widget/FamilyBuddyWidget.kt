@@ -128,7 +128,8 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                 } else {
                     val activeApps = data.appUsages
                         .filter { it.usedMinutes > 0 || it.limitMinutes < 1440 }
-                        .sortedByDescending { it.usedMinutes }
+                        .sortedWith(compareByDescending<AppUsage> { it.limitMinutes < 1440 }
+                            .thenByDescending { it.usedMinutes })
                         .take(3)
 
                     if (activeApps.isEmpty()) {

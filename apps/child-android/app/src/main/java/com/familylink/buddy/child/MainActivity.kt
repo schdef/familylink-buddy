@@ -681,7 +681,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 
-                val newData = currentData.copy(appUsages = updatedAppUsages)
+                // Preserve existing app limits for apps that are not in the current launcher list (e.g. Minecraft or other configured limits)
+                val updatedPackageNames = updatedAppUsages.map { it.packageName }.toSet()
+                val preservedUsages = currentData.appUsages.filter { 
+                    it.packageName !in updatedPackageNames && it.limitMinutes < 1440 
+                }
+                val finalAppUsages = updatedAppUsages + preservedUsages
+                
+                val newData = currentData.copy(appUsages = finalAppUsages)
                 repository.updateFamilyTimeData(newData)
                 FamilyBuddyWidget().updateAll(applicationContext)
                 

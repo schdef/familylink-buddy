@@ -351,22 +351,48 @@ class WidgetUpdateService : Service() {
             null
         }
 
-        val shouldShow = (remaining <= 0) || (remaining <= 3 && remaining > 0) || (fgLockedApp != null)
+        // Find if foreground app is going to be locked (remaining minutes <= 3 and > 0)
+        val fgGoingToLockApp = if (foregroundPkg != null && fgLockedApp == null) {
+            data.appUsages.firstOrNull { 
+                it.packageName == foregroundPkg && 
+                it.limitMinutes < 1440 && 
+                it.remainingMinutes <= 3 && 
+                it.remainingMinutes > 0 
+            }
+        } else {
+            null
+        }
+
+        val shouldShow = (remaining <= 0) || (remaining <= 3 && remaining > 0) || (fgLockedApp != null) || (fgGoingToLockApp != null)
 
         if (shouldShow) {
+            val previousAppPkg = foregroundLockedApp?.packageName
+            val previousRemaining = overlaySecondsRemaining
+
             if (fgLockedApp != null) {
                 foregroundLockedApp = fgLockedApp
                 overlaySecondsRemaining = 0
             } else if (remaining <= 0) {
                 foregroundLockedApp = null
                 overlaySecondsRemaining = 0
+            } else if (fgGoingToLockApp != null) {
+                foregroundLockedApp = fgGoingToLockApp
+                if (!isOverlayShown || previousAppPkg != fgGoingToLockApp.packageName) {
+                    overlaySecondsRemaining = fgGoingToLockApp.remainingMinutes * 60
+                }
             } else {
                 foregroundLockedApp = null
-                overlaySecondsRemaining = remaining * 60
+                if (!isOverlayShown) {
+                    overlaySecondsRemaining = remaining * 60
+                }
             }
 
             if (!isOverlayShown) {
                 showOverlay()
+            } else {
+                if (foregroundLockedApp?.packageName != previousAppPkg || Math.abs(overlaySecondsRemaining - previousRemaining) > 5) {
+                    overlaySecondsRemainingFloat = overlaySecondsRemaining.toFloat()
+                }
             }
         } else {
             foregroundLockedApp = null
@@ -659,7 +685,7 @@ class WidgetUpdateService : Service() {
                 val fgLocked = foregroundLockedApp
                 val isDeviceLocked = currentData.totalRemainingMinutes <= 0
 
-                if (fgLocked != null || isDeviceLocked) {
+                if (isDeviceLocked || (fgLocked != null && fgLocked.remainingMinutes <= 0)) {
                     // App or Device Lock State: Show LOCK status and correct label
                     overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = getString(R.string.text_locked)
                     countdownLabel?.text = fgLocked?.appName ?: getString(R.string.lock_reason_device)
@@ -683,6 +709,7 @@ class WidgetUpdateService : Service() {
 
                 } else {
                     val t = overlaySecondsRemainingFloat
+                    val labelPrefix = fgLocked?.appName ?: getString(R.string.lock_reason_device)
 
                     // 1. Update Countdown Text once per second
                     val displaySeconds = Math.ceil(t.toDouble()).toInt().coerceAtLeast(0)
@@ -701,7 +728,7 @@ class WidgetUpdateService : Service() {
                             launchpadImage?.visibility = View.VISIBLE
                             rocketImage?.visibility = View.VISIBLE
 
-                            countdownLabel?.text = "${getString(R.string.lock_reason_device)}: ${getString(R.string.rocket_preparing)}"
+                            countdownLabel?.text = "$labelPrefix: ${getString(R.string.rocket_preparing)}"
 
                             val containerHeight = animationContainer?.height ?: 0
                             val rocketHeight = rocketImage?.height ?: 0
@@ -721,7 +748,7 @@ class WidgetUpdateService : Service() {
                             launchpadImage?.visibility = View.VISIBLE
                             rocketImage?.visibility = View.VISIBLE
 
-                            countdownLabel?.text = "${getString(R.string.lock_reason_device)}: ${getString(R.string.rocket_launching)}"
+                            countdownLabel?.text = "$labelPrefix: ${getString(R.string.rocket_launching)}"
 
                             val progress = (20f - t) / 10f // 0.0 to 1.0
 
@@ -746,7 +773,7 @@ class WidgetUpdateService : Service() {
                             earthImage?.visibility = View.VISIBLE
                             rocketImage?.visibility = View.VISIBLE
 
-                            countdownLabel?.text = "${getString(R.string.lock_reason_device)}: ${getString(R.string.rocket_orbit)}"
+                            countdownLabel?.text = "$labelPrefix: ${getString(R.string.rocket_orbit)}"
 
                             val progress = (10f - t) / 10f // 0.0 to 1.0
                             val angle = progress * 2f * Math.PI.toFloat()
@@ -769,7 +796,7 @@ class WidgetUpdateService : Service() {
                         }
                     } else {
                         animationContainer?.visibility = View.GONE
-                        countdownLabel?.text = getString(R.string.lock_reason_device)
+                        countdownLabel?.text = labelPrefix
                     }
 
                     if (t <= 0f) {
