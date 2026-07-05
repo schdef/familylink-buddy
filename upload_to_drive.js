@@ -19,7 +19,7 @@ console.log('und trägt die Download-Links in Ihr Firestore-Dokument ein.');
 console.log('Sie können in wenigen Sekunden einen Token erzeugen:');
 console.log('1. Öffnen Sie: \x1b[34mhttps://developers.google.com/oauthplayground\x1b[0m');
 console.log('2. Fügen Sie die folgenden zwei Scopes getrennt durch ein Leerzeichen hinzu:');
-console.log('   👉 \x1b[32mhttps://www.googleapis.com/auth/drive https://www.googleapis.com/auth/datastore\x1b[0m');
+console.log('   👉 \x1b[32mhttps://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/datastore\x1b[0m');
 console.log('3. Klicken Sie "Authorize APIs" und melden Sie sich an.');
 console.log('4. Klicken Sie "Exchange authorization code for tokens" und kopieren Sie den Token.');
 console.log('\x1b[36m%s\x1b[0m', '================================================================');
