@@ -21,12 +21,15 @@ android {
         }
         val useEmulatorProp = project.findProperty("useEmulator")?.toString() ?: "false"
         buildConfigField("boolean", "USE_EMULATOR", useEmulatorProp)
+        ndk {
+            abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
