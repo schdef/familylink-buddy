@@ -9,6 +9,7 @@ import '../auth/google_sign_in_service.dart';
 import '../auth/sign_in_screen.dart';
 import '../time_bank/time_bank_screen.dart';
 import '../comms/comms_screen.dart';
+import '../updater/updater_service.dart';
 
 class DeviceListScreen extends StatefulWidget {
   final GoogleSignInAccount? account;
@@ -20,6 +21,14 @@ class DeviceListScreen extends StatefulWidget {
 }
 
 class _DeviceListScreenState extends State<DeviceListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdaterService.checkForUpdates(context);
+    });
+  }
+
   Future<void> _handleSignOut() async {
     await GoogleSignInService.signOut();
     if (mounted) {

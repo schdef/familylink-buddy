@@ -65,6 +65,13 @@ import com.familylink.buddy.child.data.BonusTask
 import com.familylink.buddy.child.data.RewardItem
 import com.familylink.buddy.child.data.RewardClaim
 import kotlinx.coroutines.delay
+import java.net.URL
+import java.net.HttpURLConnection
+import java.io.FileOutputStream
+import java.io.File
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+
 
 
 class Particle(var x: Float, var y: Float, val vx: Float, val vy: Float, val size: Float, val color: Color) {
@@ -219,6 +226,139 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val scope = rememberCoroutineScope()
+
+                    // In-App Auto-Updater State (Option A)
+                    var showUpdateDialog by remember { mutableStateOf(false) }
+                    var updateDownloadUrl by remember { mutableStateOf("") }
+                    var updateVersionName by remember { mutableStateOf("") }
+                    var downloadProgress by remember { mutableStateOf(-1f) }
+
+                    LaunchedEffect(Unit) {
+                        try {
+                            val db = FirebaseFirestore.getInstance()
+                            db.collection("app_metadata").document("releases")
+                                .get()
+                                .addOnSuccessListener { doc ->
+                                    if (doc.exists()) {
+                                        val childData = doc.get("child") as? Map<String, Any>
+                                        if (childData != null) {
+                                            val remoteVersionCode = (childData["versionCode"] as? Number)?.toLong() ?: 0L
+                                            val remoteUrl = childData["downloadUrl"] as? String ?: ""
+                                            val remoteName = childData["versionName"] as? String ?: ""
+                                            
+                                            val pInfo = packageManager.getPackageInfo(packageName, 0)
+                                            val localVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                                pInfo.longVersionCode
+                                            } else {
+                                                pInfo.versionCode.toLong()
+                                            }
+                                            
+                                            if (remoteVersionCode > localVersionCode && remoteUrl.isNotEmpty()) {
+                                                updateDownloadUrl = remoteUrl
+                                                updateVersionName = remoteName
+                                                showUpdateDialog = true
+                                            }
+                                        }
+                                    }
+                                }
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Update check failed", e)
+                        }
+                    }
+
+                    if (showUpdateDialog) {
+                        AlertDialog(
+                            onDismissRequest = { },
+                            title = {
+                                Text(
+                                    text = "Update Verfügbar 🚀",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            text = {
+                                Column {
+                                    Text(
+                                        text = "Eine neue Version von FamilyLink Buddy Child ($updateVersionName) ist verfügbar. Bitte installieren Sie das Update, um fortzufahren.",
+                                        fontSize = 14.sp,
+                                        color = Color.White
+                                    )
+                                    if (downloadProgress >= 0f) {
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        LinearProgressIndicator(
+                                            progress = downloadProgress,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Herunterladen: ${(downloadProgress * 100).toInt()}%",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (downloadProgress < 0f) {
+                                            downloadProgress = 0f
+                                            scope.launch(Dispatchers.IO) {
+                                                try {
+                                                    val urlConnection = URL(updateDownloadUrl).openConnection() as HttpURLConnection
+                                                    urlConnection.connect()
+                                                    if (urlConnection.responseCode == HttpURLConnection.HTTP_OK) {
+                                                        val fileLength = urlConnection.contentLength
+                                                        val inputStream = urlConnection.inputStream
+                                                        val cacheFile = File(cacheDir, "update.apk")
+                                                        val outputStream = FileOutputStream(cacheFile)
+                                                        
+                                                        val buffer = ByteArray(4096)
+                                                        var totalBytesRead = 0L
+                                                        var bytesRead: Int
+                                                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                                            totalBytesRead += bytesRead
+                                                            if (fileLength > 0) {
+                                                                downloadProgress = totalBytesRead.toFloat() / fileLength.toFloat()
+                                                            }
+                                                            outputStream.write(buffer, 0, bytesRead)
+                                                        }
+                                                        outputStream.flush()
+                                                        outputStream.close()
+                                                        inputStream.close()
+                                                        
+                                                        // Trigger installation
+                                                        val apkUri = FileProvider.getUriForFile(
+                                                            this@MainActivity,
+                                                            "com.familylink.buddy.child.fileprovider",
+                                                            cacheFile
+                                                        )
+                                                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                        }
+                                                        startActivity(installIntent)
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.e("MainActivity", "Error downloading update", e)
+                                                    downloadProgress = -1f
+                                                }
+                                            }
+                                        }
+                                    },
+                                    enabled = downloadProgress < 0f,
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Text(text = "Download & Installieren", color = Color.Black)
+                                }
+                            },
+                            dismissButton = null
+                        )
+                    }
+
                     val familyData by repository.familyTimeData.collectAsState(initial = FamilyTimeData())
                     val volumeState by repository.volumeState.collectAsState(initial = VolumeState())
                     val timeBankState by repository.timeBankState.collectAsState(initial = TimeBankState())

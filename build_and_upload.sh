@@ -18,12 +18,13 @@ echo "Step 1: Kompiliere APKs als Release..."
 ./build_release.sh
 
 echo ""
-echo "Step 2: Google Drive Upload Methode wählen"
+echo "Step 2: Upload-Ziel wählen"
 echo "----------------------------------------------------------"
-echo "1) Drag & Drop (Kein Token nötig - Ordner & Finder öffnen sich)"
-echo "2) Programmatischer API Upload (Google API Token benötigt)"
+echo "1) Google Drive: Drag & Drop (Kein Token nötig)"
+echo "2) Google Drive: API Upload (API Token benötigt)"
+echo "3) Firebase: Self-Hosted Auto-Updater Upload (API Token benötigt)"
 echo "----------------------------------------------------------"
-read -p "Auswahl [1 oder 2]: " choice
+read -p "Auswahl [1, 2 oder 3]: " choice
 
 if [ "$choice" = "1" ] || [ -z "$choice" ]; then
     echo "Öffne Google Drive Ordner im Browser..."
@@ -32,7 +33,10 @@ if [ "$choice" = "1" ] || [ -z "$choice" ]; then
     open -R apps/child-android/app/build/outputs/apk/release/app-release.apk
     open -R apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk
     echo "👉 Ziehen Sie einfach die beiden APKs aus dem Finder in Ihren Browser-Tab!"
-else
-    # 3. Trigger upload utility
+elif [ "$choice" = "2" ]; then
+    # Trigger GDrive upload utility
     node upload_to_drive.js
+else
+    # Trigger Firebase storage/firestore upload utility
+    node upload_to_firebase.js
 fi
