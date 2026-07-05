@@ -14,11 +14,16 @@ import 'package:flutter/foundation.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase App
-  await Firebase.initializeApp();
-
   const useEmulator = String.fromEnvironment('USE_EMULATOR') == 'true';
   if (useEmulator) {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: 'AIzaSyDZsqoZitT74-scNBcxkGBIc60pLmkWaZo',
+        appId: '1:260707499739:android:8e68a6feffbfa2700c56fe',
+        messagingSenderId: '260707499739',
+        projectId: 'dev~familylink-buddy',
+      ),
+    );
     try {
       final host = defaultTargetPlatform == TargetPlatform.android ? '10.0.2.2' : 'localhost';
       FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
@@ -26,6 +31,8 @@ void main() async {
     } catch (e) {
       debugPrint('Firestore emulator redirection failed: $e');
     }
+  } else {
+    await Firebase.initializeApp();
   }
 
   runApp(
