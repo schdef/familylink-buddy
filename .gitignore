@@ -32,3 +32,6 @@ apps/*/ios/.gradle
 # Firebase Configuration keys
 google-services.json
 GoogleService-Info.plist
+
+# Local developer token cache
+.token_cache

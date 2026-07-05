@@ -48,6 +48,27 @@ function getParentVersion() {
   };
 }
 
+const TOKEN_CACHE_FILE = path.join(__dirname, '.token_cache');
+
+function getCachedToken() {
+  if (fs.existsSync(TOKEN_CACHE_FILE)) {
+    const stats = fs.statSync(TOKEN_CACHE_FILE);
+    const ageInMinutes = (Date.now() - stats.mtimeMs) / 1000 / 60;
+    if (ageInMinutes < 50) { // Google access tokens expire after 60 minutes
+      return fs.readFileSync(TOKEN_CACHE_FILE, 'utf8').trim();
+    }
+  }
+  return null;
+}
+
+function saveToken(token) {
+  try {
+    fs.writeFileSync(TOKEN_CACHE_FILE, token, 'utf8');
+  } catch (e) {
+    // Ignore cache write errors
+  }
+}
+
 const childVer = getChildVersion();
 const parentVer = getParentVersion();
 
@@ -55,35 +76,41 @@ console.log(`Auto-detektierte Versionen:`);
 console.log(`📱 Child App:  Code ${childVer.code}, Name ${childVer.name}`);
 console.log(`👨 Parent App: Code ${parentVer.code}, Name ${parentVer.name}\n`);
 
-rl.question('Geben Sie Ihren Google Access Token ein: ', (token) => {
-  token = token.trim();
-  if (!token) {
-    console.error('Ungültiger Token. Vorgang abgebrochen.');
-    rl.close();
-    process.exit(1);
+const filesToUpload = [
+  {
+    path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/app-release.apk'),
+    name: 'child-app-release.apk',
+    key: 'child',
+    versionCode: childVer.code,
+    versionName: childVer.name,
+    mime: 'application/vnd.android.package-archive'
+  },
+  {
+    path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk'),
+    name: 'parent-app-release.apk',
+    key: 'parent',
+    versionCode: parentVer.code,
+    versionName: parentVer.name,
+    mime: 'application/vnd.android.package-archive'
   }
+];
 
-  const filesToUpload = [
-    {
-      path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/app-release.apk'),
-      name: 'child-app-release.apk',
-      key: 'child',
-      versionCode: childVer.code,
-      versionName: childVer.name,
-      mime: 'application/vnd.android.package-archive'
-    },
-    {
-      path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk'),
-      name: 'parent-app-release.apk',
-      key: 'parent',
-      versionCode: parentVer.code,
-      versionName: parentVer.name,
-      mime: 'application/vnd.android.package-archive'
+const cachedToken = getCachedToken();
+if (cachedToken) {
+  console.log('Verwende zwischengespeicherten Google Access Token...');
+  runUploads(filesToUpload, cachedToken);
+} else {
+  rl.question('Geben Sie Ihren Google Access Token ein: ', (token) => {
+    token = token.trim();
+    if (!token) {
+      console.error('Ungültiger Token. Vorgang abgebrochen.');
+      rl.close();
+      process.exit(1);
     }
-  ];
-
-  runUploads(filesToUpload, token);
-});
+    saveToken(token);
+    runUploads(filesToUpload, token);
+  });
+}
 
 async function runUploads(files, token) {
   const results = {};
