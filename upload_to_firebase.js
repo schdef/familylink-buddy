@@ -4,7 +4,7 @@ const https = require('https');
 const readline = require('readline');
 
 const PROJECT_ID = 'familylink-buddy';
-const BUCKET_NAME = `${PROJECT_ID}.appspot.com`;
+const BUCKET_NAME = `familylink-buddy.firebasestorage.app`;
 
 const rl = readline.createInterface({
   input: process.stdin,
