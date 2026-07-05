@@ -7,6 +7,7 @@ import '../volume/volume_control_screen.dart';
 import '../volume/volume_repository.dart';
 import '../auth/google_sign_in_service.dart';
 import '../auth/sign_in_screen.dart';
+import '../time_bank/time_bank_screen.dart';
 
 class DeviceListScreen extends StatefulWidget {
   final GoogleSignInAccount? account;
@@ -148,6 +149,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
 
               // Calculate active status (online if seen in the last 60 seconds)
               final isOnline = DateTime.now().difference(lastSeen).inSeconds < 60;
+              final pendingClaimsCount = data['pendingClaimsCount'] as int? ?? 0;
 
               // Parse volume levels summary
               final report = data['volumeReport'] as Map<dynamic, dynamic>?;
@@ -229,6 +231,55 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                                       fontSize: 13,
                                     ),
                                   ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF6366F1),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.timer, size: 14),
+                                    label: const Text('Zeitkonto ⏳', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    onPressed: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => TimeBankScreen(
+                                            account: widget.account,
+                                            device: PairedDevice(
+                                              name: name,
+                                              fcmToken: childToken,
+                                              lastSeen: lastSeen,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  if (pendingClaimsCount > 0) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEF4444),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '$pendingClaimsCount Belohnung!',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],

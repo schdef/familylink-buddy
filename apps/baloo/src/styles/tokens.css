@@ -1,0 +1,58 @@
+/* src/styles/tokens.css */
+:root {
+  /* Colors - ADHD-friendly calm palette */
+  --color-bg-primary: #FDFCFB;      /* Warm soft off-white/cream */
+  --color-bg-secondary: #F4F2EE;    /* Soft beige-gray */
+  --color-bg-tertiary: #EAE6DF;     /* Muted neutral for inactive elements */
+  
+  --color-text-primary: #2D2B2A;    /* Soft charcoal (reduces glare/strain) */
+  --color-text-secondary: #6E6A66;  /* Calm medium gray */
+  --color-text-muted: #95908A;      /* Light placeholder/disabled text */
+  
+  /* Feedback Colors (Muted, clear, non-neon) */
+  --color-success: #4D8066;         /* Calm sage green */
+  --color-success-bg: #EDF5F1;      /* Very soft green background */
+  --color-success-border: #BCD6C9;  /* Muted green border */
+  
+  --color-error: #B55A5A;           /* Soft rose-red */
+  --color-error-bg: #FAF0F0;        /* Very soft red background */
+  --color-error-border: #E8C1C1;    /* Muted red border */
+  
+  --color-warning: #C78D2B;         /* Warm amber/gold */
+  --color-warning-bg: #FAF5EB;      /* Very soft gold background */
+  --color-warning-border: #E6D0A8;  /* Muted gold border */
+  
+  --color-info: #467194;            /* Slate blue */
+  --color-info-bg: #EEF3F7;         /* Very soft blue background */
+  --color-info-border: #BDD0E0;     /* Muted blue border */
+
+  /* Borders & Shadows */
+  --color-border-primary: #DCD9D3;
+  --color-border-secondary: #C8C4BD;
+  --color-shadow: rgba(45, 43, 42, 0.06) 0 4px 12px;
+  --color-shadow-hover: rgba(45, 43, 42, 0.12) 0 8px 20px;
+  
+  /* Fonts & Spacing */
+  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', monospace;
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+  
+  /* Transitions */
+  --transition-fast: all 0.15s ease-out;
+  --transition-normal: all 0.25s ease-out;
+  
+  /* App constraints */
+  --max-width-app: 800px;           /* Clean tablet-friendly width */
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: none !important;
+    --transition-normal: none !important;
+  }
+}

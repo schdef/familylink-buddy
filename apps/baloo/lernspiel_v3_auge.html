@@ -1,0 +1,583 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-sans,sans-serif);}
+.app{padding:0.5rem 0;}
+.top-bar{display:flex;align-items:center;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap;}
+.logo{width:34px;height:34px;border-radius:10px;background:#1D9E75;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex-shrink:0;}
+.app-title{font-size:16px;font-weight:500;color:var(--color-text-primary);}
+.mode-tabs{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;}
+.tab{padding:6px 12px;border-radius:20px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s;}
+.tab.on{background:#1D9E75;color:#fff;border-color:#1D9E75;}
+.screen{display:none;} .screen.on{display:block;}
+.prog-bar{height:5px;background:var(--color-border-tertiary);border-radius:3px;margin-bottom:1.25rem;}
+.prog-fill{height:5px;border-radius:3px;background:#1D9E75;transition:width 0.4s;}
+.score-row{display:flex;align-items:center;gap:8px;margin-bottom:1rem;}
+.stars{font-size:18px;letter-spacing:1px;}
+.score-num{font-size:13px;color:var(--color-text-secondary);margin-left:auto;}
+
+.vocab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-bottom:1rem;}
+.vocab-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:12px;overflow:hidden;}
+.vocab-card svg{width:100%;height:90px;display:block;}
+.vocab-body{padding:8px 10px;}
+.vocab-term{font-size:13px;font-weight:500;color:var(--color-text-primary);}
+.vocab-def{font-size:11px;color:var(--color-text-secondary);margin-top:2px;line-height:1.4;}
+
+.quiz-wrap{max-width:500px;margin:0 auto;}
+.q-svg-box{width:100%;height:170px;border-radius:12px;overflow:hidden;margin-bottom:1rem;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;}
+.q-svg-box svg{width:100%;height:100%;}
+.q-text{font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:1rem;line-height:1.4;}
+.q-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.q-opt{padding:15px 10px;border-radius:10px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);font-size:16px;cursor:pointer;text-align:center;font-weight:500;transition:all 0.12s;display:flex;align-items:center;justify-content:center;}
+.q-opt svg{width:48px;height:48px;border-radius:6px;}
+.q-opt:hover:not(:disabled){background:var(--color-background-secondary);border-color:#1D9E75;}
+.q-opt.correct{background:#EAF3DE;border-color:#97C459;color:#27500A;}
+.q-opt.wrong{background:#FCEBEB;border-color:#F09595;color:#791F1F;}
+.fb{padding:10px 14px;border-radius:10px;font-size:14px;font-weight:500;margin:0.75rem 0;display:none;}
+.fb.ok{background:#EAF3DE;color:#085041;display:block;}
+.fb.nok{background:#FCEBEB;color:#791F1F;display:block;}
+.next-btn{width:100%;padding:12px;border-radius:10px;background:#1D9E75;color:#fff;border:none;font-size:15px;font-weight:500;cursor:pointer;display:none;margin-top:0.5rem;}
+.next-btn.show{display:block;}
+
+.mem-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:460px;margin:0 auto 1rem;}
+.mem-card{aspect-ratio:0.85;border-radius:10px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);cursor:pointer;position:relative;overflow:hidden;transition:all 0.2s;}
+.mem-front,.mem-back{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;}
+.mem-front{background:var(--color-background-secondary);}
+.mem-back{display:none;background:var(--color-background-primary);}
+.mem-back svg{width:100%;height:62%;border-radius:6px;}
+.mem-back .mem-label{font-size:10px;font-weight:500;color:var(--color-text-primary);text-align:center;line-height:1.2;}
+.mem-card.flip .mem-front{display:none;} .mem-card.flip .mem-back{display:flex;}
+.mem-card.matched{border-color:#97C459;background:#EAF3DE;}
+.mem-card.matched .mem-back{background:#EAF3DE;}
+.mem-front-icon{font-size:22px;color:var(--color-text-secondary);}
+
+.ghost-btn{padding:8px 18px;border-radius:8px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);font-size:13px;cursor:pointer;}
+.result-box{text-align:center;padding:1.5rem;background:var(--color-background-secondary);border-radius:12px;}
+.result-big{font-size:24px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px;}
+.result-sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1rem;}
+.result-btns{display:flex;gap:8px;justify-content:center;}
+
+.buchstaben-wrap{max-width:500px;margin:0 auto;}
+.b-svg-box{width:100%;height:140px;border-radius:12px;overflow:hidden;margin-bottom:1rem;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;}
+.b-hint-box{background:var(--color-background-secondary);border-radius:10px;padding:10px 14px;margin-bottom:1rem;font-size:13px;color:var(--color-text-secondary);}
+.b-slots{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;min-height:44px;align-items:center;}
+.b-slot{width:36px;height:44px;border-radius:8px;border:2px solid var(--color-border-secondary);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500;color:var(--color-text-primary);background:var(--color-background-primary);cursor:pointer;transition:all 0.12s;}
+.b-slot.filled{border-color:#1D9E75;background:#E1F5EE;}
+.b-slot.ok-s{border-color:#97C459;background:#EAF3DE;color:#27500A;}
+.b-slot.nok-s{border-color:#F09595;background:#FCEBEB;color:#791F1F;}
+.b-tiles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem;}
+.b-tile{width:36px;height:44px;border-radius:8px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500;color:var(--color-text-primary);cursor:pointer;transition:all 0.12s;}
+.b-tile:hover:not(.used){background:var(--color-background-secondary);}
+.b-tile.used{opacity:0.2;cursor:default;}
+.b-action-row{display:flex;gap:8px;margin-bottom:0.5rem;}
+.hint-btn{padding:8px 14px;border-radius:8px;border:0.5px solid #EF9F27;background:#FAEEDA;color:#633806;font-size:13px;cursor:pointer;font-weight:500;}
+.solve-btn{padding:8px 14px;border-radius:8px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);font-size:13px;cursor:pointer;}
+.b-dots{display:flex;gap:4px;margin-bottom:1rem;}
+.b-dot{width:10px;height:10px;border-radius:50%;background:var(--color-border-tertiary);}
+.b-dot.done{background:#1D9E75;}
+
+.puz-outer{max-width:500px;margin:0 auto;}
+.puz-task{background:#E1F5EE;border-radius:10px;padding:10px 14px;margin-bottom:1rem;font-size:14px;font-weight:500;color:#085041;text-align:center;}
+.puz-arena{position:relative;width:320px;height:320px;margin:0 auto 1rem;background:var(--color-background-secondary);border-radius:16px;border:0.5px solid var(--color-border-tertiary);}
+.puz-piece{position:absolute;cursor:grab;user-select:none;transition:filter 0.15s;}
+.puz-piece:active{cursor:grabbing;}
+.puz-piece.snapped{cursor:default;filter:none;}
+.puz-piece.highlight{filter:drop-shadow(0 0 6px #1D9E75);}
+.puz-tray{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;padding:12px;background:var(--color-background-secondary);border-radius:12px;border:0.5px solid var(--color-border-tertiary);min-height:100px;margin-bottom:1rem;}
+.puz-action-row{display:flex;gap:8px;margin-bottom:0.75rem;justify-content:center;}
+.puz-hint-btn{padding:9px 18px;border-radius:8px;border:0.5px solid #EF9F27;background:#FAEEDA;color:#633806;font-size:13px;cursor:pointer;font-weight:500;}
+.puz-solve-btn{padding:9px 18px;border-radius:8px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);font-size:13px;cursor:pointer;}
+.puz-progress-row{display:flex;align-items:center;gap:8px;margin-bottom:0.75rem;}
+.puz-score-txt{font-size:13px;color:var(--color-text-secondary);}
+</style>
+
+<div class="app">
+<h2 class="sr-only">LernSpiel – Das Auge visuell lernen</h2>
+<div class="top-bar">
+  <div class="logo"><i class="ti ti-books" aria-hidden="true" style="font-size:17px;"></i></div>
+  <div class="app-title">Das Auge</div>
+  <div class="mode-tabs">
+    <button class="tab on" onclick="switchTab('vocab',this)">Bilder</button>
+    <button class="tab" onclick="switchTab('quiz',this)">Quiz</button>
+    <button class="tab" onclick="switchTab('memory',this)">Memory</button>
+    <button class="tab" onclick="switchTab('buchstaben',this)">Wörter</button>
+    <button class="tab" onclick="switchTab('puzzle',this)">Puzzle</button>
+  </div>
+</div>
+
+<div class="screen on" id="s-vocab"><div class="vocab-grid" id="vocab-grid"></div></div>
+<div class="screen" id="s-quiz">
+  <div class="score-row"><span class="stars" id="q-stars">☆☆☆☆☆</span><span class="score-num" id="q-score">0 / 0</span></div>
+  <div class="prog-bar"><div class="prog-fill" id="q-prog" style="width:0%"></div></div>
+  <div class="quiz-wrap" id="quiz-area"></div>
+</div>
+<div class="screen" id="s-memory">
+  <div class="score-row"><span style="font-size:13px;color:var(--color-text-secondary);">Paare gefunden:</span><span class="score-num" id="mem-score">0 / 7</span></div>
+  <div class="mem-grid" id="mem-grid"></div>
+  <div id="mem-result"></div>
+</div>
+<div class="screen" id="s-buchstaben">
+  <div class="b-dots" id="b-dots"></div>
+  <div class="prog-bar"><div class="prog-fill" id="b-prog" style="width:0%"></div></div>
+  <div class="buchstaben-wrap" id="buchstaben-area"></div>
+</div>
+<div class="screen" id="s-puzzle">
+  <div class="puz-outer" id="puzzle-area"></div>
+</div>
+</div>
+
+<script>
+const CARDS = [
+  {
+    term:'Pupille', def:'Schwarze Öffnung – lässt Licht rein',
+    color:'#1D9E75', bg:'#E1F5EE',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#E1F5EE"/>
+      <ellipse cx="80" cy="45" rx="35" ry="35" fill="#7F77DD" opacity="0.9"/>
+      <ellipse cx="80" cy="45" rx="20" ry="20" fill="#2C2C2A"/>
+      <ellipse cx="80" cy="45" rx="8" ry="8" fill="#1a1a18"/>
+      <ellipse cx="73" cy="38" rx="4" ry="3" fill="white" opacity="0.6"/>
+      <text x="80" y="82" text-anchor="middle" font-size="9" fill="#085041" font-weight="500">Pupille = Lichtöffnung</text>
+    </svg>`
+  },
+  {
+    term:'Linse', def:'Bündelt Licht – macht Bilder scharf',
+    color:'#185FA5', bg:'#E6F1FB',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#E6F1FB"/>
+      <line x1="20" y1="30" x2="65" y2="43" stroke="#EF9F27" stroke-width="2" stroke-dasharray="3,2"/>
+      <line x1="20" y1="60" x2="65" y2="47" stroke="#EF9F27" stroke-width="2" stroke-dasharray="3,2"/>
+      <ellipse cx="75" cy="45" rx="10" ry="20" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5"/>
+      <line x1="85" y1="45" x2="140" y2="45" stroke="#EF9F27" stroke-width="2.5" stroke-dasharray="3,2"/>
+      <circle cx="140" cy="45" r="5" fill="#E24B4A" opacity="0.7"/>
+      <text x="75" y="85" text-anchor="middle" font-size="9" fill="#0C447C" font-weight="500">Linse = Lichtbündelung</text>
+    </svg>`
+  },
+  {
+    term:'Netzhaut', def:'Nimmt Bilder auf – wie ein Fotofilm',
+    color:'#BA7517', bg:'#FAEEDA',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#FAEEDA"/>
+      <path d="M110,15 Q140,45 110,75" fill="none" stroke="#EF9F27" stroke-width="10" stroke-linecap="round"/>
+      <path d="M110,15 Q140,45 110,75" fill="none" stroke="#FAC775" stroke-width="6" stroke-linecap="round"/>
+      <line x1="113" y1="25" x2="130" y2="30" stroke="#BA7517" stroke-width="1" opacity="0.5"/>
+      <line x1="115" y1="38" x2="135" y2="40" stroke="#BA7517" stroke-width="1" opacity="0.5"/>
+      <line x1="115" y1="50" x2="135" y2="52" stroke="#BA7517" stroke-width="1" opacity="0.5"/>
+      <line x1="113" y1="62" x2="130" y2="60" stroke="#BA7517" stroke-width="1" opacity="0.5"/>
+      <rect x="30" y="20" width="50" height="50" rx="4" fill="none" stroke="#BA7517" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="55" y="50" text-anchor="middle" font-size="18" fill="#BA7517">📷</text>
+      <line x1="80" y1="45" x2="108" y2="45" stroke="#633806" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="75" y="85" text-anchor="middle" font-size="9" fill="#633806" font-weight="500">Netzhaut = Bildempfänger</text>
+    </svg>`
+  },
+  {
+    term:'Sehnerv', def:'Schickt Bilder ans Gehirn',
+    color:'#D85A30', bg:'#FAECE7',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#FAECE7"/>
+      <ellipse cx="40" cy="45" rx="25" ry="25" fill="#F0997B" stroke="#D85A30" stroke-width="1.5"/>
+      <ellipse cx="40" cy="45" rx="14" ry="14" fill="#2C2C2A"/>
+      <ellipse cx="35" cy="40" rx="4" ry="3" fill="white" opacity="0.5"/>
+      <path d="M65,45 Q95,30 110,45 Q125,60 145,45" fill="none" stroke="#D85A30" stroke-width="4" stroke-linecap="round"/>
+      <path d="M65,45 Q95,35 110,45 Q125,55 145,45" fill="none" stroke="#F0997B" stroke-width="2" stroke-linecap="round"/>
+      <ellipse cx="148" cy="45" rx="10" ry="12" fill="#AFA9EC" stroke="#7F77DD" stroke-width="1"/>
+      <text x="80" y="82" text-anchor="middle" font-size="9" fill="#712B13" font-weight="500">Sehnerv = Gehirn-Leitung</text>
+    </svg>`
+  },
+  {
+    term:'Hornhaut', def:'Schützende Scheibe vorne am Auge',
+    color:'#534AB7', bg:'#EEEDFE',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#EEEDFE"/>
+      <ellipse cx="85" cy="45" rx="30" ry="30" fill="#D3D1C7" opacity="0.5"/>
+      <ellipse cx="85" cy="45" rx="30" ry="30" fill="none" stroke="#B4B2A9" stroke-width="2"/>
+      <ellipse cx="85" cy="45" rx="18" ry="18" fill="#7F77DD" opacity="0.7"/>
+      <ellipse cx="85" cy="45" rx="9" ry="9" fill="#2C2C2A"/>
+      <path d="M56,35 Q48,45 56,55" fill="none" stroke="#AFA9EC" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+      <path d="M56,35 Q48,45 56,55" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+      <text x="80" y="85" text-anchor="middle" font-size="9" fill="#3C3489" font-weight="500">Hornhaut = Schutzscheibe</text>
+    </svg>`
+  },
+  {
+    term:'Glaskörper', def:'Füllt das Auge – wie Gelee',
+    color:'#0F6E56', bg:'#E1F5EE',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#E1F5EE"/>
+      <ellipse cx="80" cy="45" rx="32" ry="32" fill="#9FE1CB" opacity="0.5" stroke="#1D9E75" stroke-width="1.5"/>
+      <ellipse cx="80" cy="45" rx="24" ry="24" fill="#5DCAA5" opacity="0.35"/>
+      <ellipse cx="80" cy="45" rx="14" ry="14" fill="#1D9E75" opacity="0.25"/>
+      <ellipse cx="70" cy="35" rx="6" ry="4" fill="white" opacity="0.5"/>
+      <ellipse cx="88" cy="52" rx="4" ry="3" fill="white" opacity="0.3"/>
+      <text x="80" y="85" text-anchor="middle" font-size="9" fill="#085041" font-weight="500">Glaskörper = Gelee-Füllung</text>
+    </svg>`
+  },
+  {
+    term:'Regenbogenhaut', def:'Bunte Fläche um die Pupille',
+    color:'#D4537E', bg:'#FBEAF0',
+    svg:`<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="90" fill="#FBEAF0"/>
+      <ellipse cx="80" cy="45" rx="32" ry="32" fill="#ED93B1" stroke="#D4537E" stroke-width="2"/>
+      <ellipse cx="80" cy="45" rx="32" ry="32" fill="none" stroke="#993556" stroke-width="0.5" stroke-dasharray="2,3"/>
+      <path d="M80,13 Q112,45 80,77" fill="none" stroke="#993556" stroke-width="1" opacity="0.4"/>
+      <path d="M80,13 Q48,45 80,77" fill="none" stroke="#F4C0D1" stroke-width="1" opacity="0.6"/>
+      <path d="M48,25 Q80,13 112,25" fill="none" stroke="#993556" stroke-width="1" opacity="0.4"/>
+      <path d="M48,65 Q80,77 112,65" fill="none" stroke="#F4C0D1" stroke-width="1" opacity="0.6"/>
+      <ellipse cx="80" cy="45" rx="12" ry="12" fill="#2C2C2A"/>
+      <ellipse cx="74" cy="39" rx="4" ry="3" fill="white" opacity="0.5"/>
+      <text x="80" y="87" text-anchor="middle" font-size="8" fill="#72243E" font-weight="500">Regenbogenhaut = Iris</text>
+    </svg>`
+  }
+];
+
+function shuffle(a){return [...a].sort(()=>Math.random()-0.5);}
+function switchTab(name,btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+  document.getElementById('s-'+name).classList.add('on');
+  btn.classList.add('on');
+  if(name==='quiz') initQuiz();
+  if(name==='memory') initMemory();
+  if(name==='buchstaben') initBuchstaben();
+  if(name==='puzzle') initPuzzle();
+  if(name==='vocab') initVocab();
+}
+
+function initVocab(){
+  const grid=document.getElementById('vocab-grid');
+  grid.innerHTML='';
+  CARDS.forEach(c=>{
+    const card=document.createElement('div'); card.className='vocab-card';
+    card.innerHTML=c.svg;
+    const body=document.createElement('div'); body.className='vocab-body';
+    body.innerHTML=`<div class="vocab-term">${c.term}</div><div class="vocab-def">${c.def}</div>`;
+    card.appendChild(body); grid.appendChild(card);
+  });
+}
+
+let qIdx=0,qRight=0,qDone=0;
+let qOrder=[];
+function initQuiz(){
+  qIdx=0;qRight=0;qDone=0;
+  qOrder=shuffle([...Array(CARDS.length).keys()]);
+  updateQStars(0,0);
+  renderQuizQ();
+}
+function renderQuizQ(){
+  const area=document.getElementById('quiz-area');
+  if(qIdx>=CARDS.length){showQuizResult();return;}
+  const c=CARDS[qOrder[qIdx]];
+  document.getElementById('q-prog').style.width=Math.round((qIdx/CARDS.length)*100)+'%';
+  area.innerHTML='';
+  const svgBox=document.createElement('div'); svgBox.className='q-svg-box'; svgBox.innerHTML=c.svg; area.appendChild(svgBox);
+  const qt=document.createElement('div'); qt.className='q-text'; qt.textContent='Was zeigt dieses Bild? Welcher Teil des Auges ist das?'; area.appendChild(qt);
+  const wrongs=shuffle(CARDS.filter((_,i)=>i!==qOrder[qIdx])).slice(0,3);
+  const opts=shuffle([c,...wrongs]);
+  const optsDiv=document.createElement('div'); optsDiv.className='q-opts';
+  opts.forEach(opt=>{
+    const btn=document.createElement('button'); btn.className='q-opt';
+    btn.innerHTML=`<span>${opt.term}</span>`;
+    btn.onclick=()=>checkQuizOpt(btn,opt.term,c.term,area);
+    optsDiv.appendChild(btn);
+  });
+  area.appendChild(optsDiv);
+  const fb=document.createElement('div'); fb.className='fb'; fb.id='q-fb'; area.appendChild(fb);
+  const nb=document.createElement('button'); nb.className='next-btn'; nb.textContent='Weiter →'; nb.onclick=()=>{qIdx++;renderQuizQ();}; nb.id='q-nb'; area.appendChild(nb);
+}
+function checkQuizOpt(btn,chosen,correct,area){
+  qDone++;
+  area.querySelectorAll('.q-opt').forEach(b=>b.disabled=true);
+  const fb=document.getElementById('q-fb');
+  if(chosen===correct){qRight++;btn.classList.add('correct');fb.textContent='Super! Richtig!';fb.className='fb ok';}
+  else{btn.classList.add('wrong');area.querySelectorAll('.q-opt').forEach(b=>{if(b.querySelector('span')?.textContent===correct)b.classList.add('correct');});fb.textContent='Fast! Richtig wäre: '+correct;fb.className='fb nok';}
+  updateQStars(qRight,qDone);
+  document.getElementById('q-nb').classList.add('show');
+}
+function updateQStars(r,t){const p=t===0?0:r/t;const s=Math.round(p*5);document.getElementById('q-stars').textContent='★'.repeat(s)+'☆'.repeat(5-s);document.getElementById('q-score').textContent=r+' / '+t;}
+function showQuizResult(){const pct=Math.round((qRight/CARDS.length)*100);document.getElementById('quiz-area').innerHTML=`<div class="result-box"><div class="result-big">${qRight} von ${CARDS.length} richtig!</div><div class="result-sub">${pct>=80?'Fantastisch!':pct>=50?'Gut gemacht!':'Probier nochmal!'}</div><div class="result-btns"><button class="ghost-btn" onclick="initQuiz()">Nochmal</button></div></div>`;}
+
+function initMemory(){
+  let matched=0,flipped=[],locked=false;
+  document.getElementById('mem-score').textContent='0 / '+CARDS.length;
+  document.getElementById('mem-result').innerHTML='';
+  const pairs=[];
+  CARDS.forEach((c,i)=>{pairs.push({id:'T'+i,pair:i,type:'term',c});pairs.push({id:'D'+i,pair:i,type:'def',c});});
+  const all=shuffle(pairs);
+  const grid=document.getElementById('mem-grid'); grid.innerHTML='';
+  all.forEach(p=>{
+    const el=document.createElement('div'); el.className='mem-card';
+    const front=document.createElement('div'); front.className='mem-front';
+    front.innerHTML='<div class="mem-front-icon"><i class="ti ti-eye" aria-hidden="true"></i></div>';
+    const back=document.createElement('div'); back.className='mem-back';
+    if(p.type==='term'){back.innerHTML=`<div style="font-size:20px;color:var(--color-text-secondary);"><i class="ti ti-books" aria-hidden="true"></i></div><div class="mem-label" style="font-size:11px;font-weight:600;word-break:break-word;text-align:center;margin-top:4px;">${p.c.term}</div>`;}
+    else{back.innerHTML=`<div style="font-size:13px;text-align:center;padding:4px;color:var(--color-text-primary);">${p.c.def}</div><div class="mem-label" style="font-size:9px;color:var(--color-text-secondary);">Was ist das?</div>`;}
+    el.appendChild(front);el.appendChild(back);
+    el.dataset.pair=p.pair;el.dataset.id=p.id;
+    el.addEventListener('click',()=>{
+      if(locked||el.classList.contains('flip')||el.classList.contains('matched'))return;
+      el.classList.add('flip');flipped.push(el);
+      if(flipped.length===2){locked=true;const[a,b]=flipped;
+        if(a.dataset.pair===b.dataset.pair&&a.dataset.id!==b.dataset.id){a.classList.add('matched');b.classList.add('matched');matched++;document.getElementById('mem-score').textContent=matched+' / '+CARDS.length;flipped=[];locked=false;if(matched===CARDS.length){document.getElementById('mem-result').innerHTML=`<div class="result-box" style="margin-top:1rem;"><div class="result-big">Alle Paare!</div><div class="result-sub">Großartig!</div><div class="result-btns"><button class="ghost-btn" onclick="initMemory()">Nochmal</button></div></div>`;}}
+        else{setTimeout(()=>{a.classList.remove('flip');b.classList.remove('flip');flipped=[];locked=false;},900);}
+      }
+    });
+    grid.appendChild(el);
+  });
+}
+
+let bIdx=0,bSolved=0,bOrder=[],bSlotData=[],bHintsUsed=0;
+function initBuchstaben(){bIdx=0;bSolved=0;bHintsUsed=0;bOrder=shuffle([...Array(CARDS.length).keys()]);const dots=document.getElementById('b-dots');dots.innerHTML=CARDS.map((_,i)=>`<div class="b-dot" id="bd-${i}"></div>`).join('');renderBuchstabenQ();}
+function renderBuchstabenQ(){
+  document.getElementById('b-prog').style.width=Math.round((bSolved/CARDS.length)*100)+'%';
+  [...document.querySelectorAll('.b-dot')].forEach((d,i)=>d.classList.toggle('done',i<bSolved));
+  const area=document.getElementById('buchstaben-area');
+  if(bIdx>=CARDS.length){area.innerHTML=`<div class="result-box"><div class="result-big">${bSolved} von ${CARDS.length} Wörtern!</div><div class="result-sub">${bSolved===CARDS.length?'Alle richtig!':'Weiter üben!'}</div><div class="result-btns"><button class="ghost-btn" onclick="initBuchstaben()">Nochmal</button></div></div>`;return;}
+  const c=CARDS[bOrder[bIdx]];
+  const word=c.term.toUpperCase();
+  bSlotData=Array(word.length).fill(null);
+  area.innerHTML='';
+  const svgBox=document.createElement('div'); svgBox.className='b-svg-box'; svgBox.innerHTML=c.svg; area.appendChild(svgBox);
+  const hint=document.createElement('div'); hint.className='b-hint-box'; hint.textContent=c.def; area.appendChild(hint);
+  const slotsDiv=document.createElement('div'); slotsDiv.className='b-slots'; slotsDiv.id='b-slots';
+  word.split('').forEach((_,i)=>{const s=document.createElement('div');s.className='b-slot';s.id='bsl-'+i;s.dataset.idx=i;s.onclick=()=>removeFromBSlot(i);slotsDiv.appendChild(s);});
+  area.appendChild(slotsDiv);
+  const wrongL=shuffle('ABCDEFGHIJKLMNOPRSTUVWXYZ'.split('').filter(l=>!word.split('').includes(l))).slice(0,4);
+  const allL=shuffle([...word.split(''),...wrongL]);
+  const tilesDiv=document.createElement('div'); tilesDiv.className='b-tiles'; tilesDiv.id='b-tiles';
+  allL.forEach((l,i)=>{const t=document.createElement('div');t.className='b-tile';t.textContent=l;t.dataset.ti=i;t.onclick=()=>addToBSlot(l,i,word,c.term);tilesDiv.appendChild(t);});
+  area.appendChild(tilesDiv);
+  const actionRow=document.createElement('div'); actionRow.className='b-action-row';
+  const hb=document.createElement('button'); hb.className='hint-btn'; hb.innerHTML='<i class="ti ti-bulb" aria-hidden="true"></i> Tipp'; hb.onclick=()=>giveBHint(word);
+  const sb=document.createElement('button'); sb.className='solve-btn'; sb.textContent='Auflösung'; sb.onclick=()=>solveBWord(word,c.term);
+  actionRow.appendChild(hb); actionRow.appendChild(sb); area.appendChild(actionRow);
+  const fb=document.createElement('div'); fb.className='fb'; fb.id='b-fb'; area.appendChild(fb);
+  const nb=document.createElement('button'); nb.className='next-btn'; nb.id='b-nb'; nb.textContent=bIdx<CARDS.length-1?'Nächstes Wort →':'Ergebnis'; nb.onclick=()=>{bIdx++;renderBuchstabenQ();}; area.appendChild(nb);
+}
+function addToBSlot(letter,tileIdx,word,term){const ne=bSlotData.indexOf(null);if(ne===-1)return;const tile=document.querySelector(`.b-tile[data-ti="${tileIdx}"]`);if(tile.classList.contains('used'))return;tile.classList.add('used');bSlotData[ne]={letter,tileIdx};const slot=document.getElementById('bsl-'+ne);slot.textContent=letter;slot.classList.add('filled');if(bSlotData.indexOf(null)===-1)checkBWord(word,term);}
+function removeFromBSlot(idx){if(!bSlotData[idx])return;const{tileIdx}=bSlotData[idx];const tile=document.querySelector(`.b-tile[data-ti="${tileIdx}"]`);if(tile)tile.classList.remove('used');bSlotData[idx]=null;const slot=document.getElementById('bsl-'+idx);slot.textContent='';slot.classList.remove('filled','ok-s','nok-s');document.getElementById('b-fb').className='fb';document.getElementById('b-nb').classList.remove('show');}
+function checkBWord(word,term){const guessed=bSlotData.map(s=>s?s.letter:'').join('');const fb=document.getElementById('b-fb');const slots=document.querySelectorAll('.b-slot');if(guessed===word){slots.forEach(s=>s.classList.add('ok-s'));fb.textContent='Richtig! Das ist die/der '+term+'!';fb.className='fb ok';bSolved++;document.getElementById('b-nb').classList.add('show');}else{slots.forEach((s,i)=>s.classList.add(guessed[i]===word[i]?'ok-s':'nok-s'));fb.textContent='Fast! Versuche es nochmal.';fb.className='fb nok';setTimeout(()=>{slots.forEach(s=>s.classList.remove('ok-s','nok-s','filled'));slots.forEach(s=>s.textContent='');document.querySelectorAll('.b-tile').forEach(t=>t.classList.remove('used'));bSlotData.fill(null);fb.className='fb';},1200);}}
+function giveBHint(word){const ne=bSlotData.indexOf(null);if(ne===-1)return;const correctL=word[ne];const tile=[...document.querySelectorAll('.b-tile')].find(t=>!t.classList.contains('used')&&t.textContent===correctL);if(tile){addToBSlot(correctL,parseInt(tile.dataset.ti),word,'');}}
+function solveBWord(word,term){bSlotData.fill(null);document.querySelectorAll('.b-slot').forEach((s,i)=>{s.textContent=word[i];s.classList.add('filled','ok-s');bSlotData[i]={letter:word[i],tileIdx:-1};});document.querySelectorAll('.b-tile').forEach(t=>t.classList.add('used'));const fb=document.getElementById('b-fb');fb.textContent='Auflösung: '+term+' – '+CARDS[bOrder[bIdx]].def;fb.className='fb ok';bSolved++;document.getElementById('b-nb').classList.add('show');}
+
+const EYE_PIECES = [
+  {
+    id:'sclera', name:'Lederhaut', color:'#f0ece0', stroke:'#b4b2a9',
+    hint:'Die weiße Außenhülle des Augapfels',
+    targetX:80, targetY:80,
+    draw:(x,y,s)=>`<ellipse cx="${x}" cy="${y}" rx="${52*s}" ry="${50*s}" fill="#f0ece0" stroke="#b4b2a9" stroke-width="${1.5*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><ellipse cx="40" cy="40" rx="36" ry="34" fill="#f0ece0" stroke="#b4b2a9" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#5F5E5A">Lederhaut</text></svg>`
+  },
+  {
+    id:'choroid', name:'Aderhaut', color:'#c45230', stroke:'#993C1D',
+    hint:'Liegt zwischen Lederhaut und Netzhaut – versorgt das Auge mit Blut',
+    targetX:80, targetY:80,
+    draw:(x,y,s)=>`<ellipse cx="${x}" cy="${y}" rx="${46*s}" ry="${44*s}" fill="#D85A30" opacity="0.7" stroke="#993C1D" stroke-width="${1*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><ellipse cx="40" cy="40" rx="32" ry="30" fill="#D85A30" opacity="0.8" stroke="#993C1D" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#712B13">Aderhaut</text></svg>`
+  },
+  {
+    id:'retina', name:'Netzhaut', color:'#EF9F27', stroke:'#BA7517',
+    hint:'Nimmt Bilder auf wie ein Fotofilm',
+    targetX:80, targetY:80,
+    draw:(x,y,s)=>`<ellipse cx="${x}" cy="${y}" rx="${40*s}" ry="${38*s}" fill="#FAC775" opacity="0.6" stroke="#EF9F27" stroke-width="${1.5*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><ellipse cx="40" cy="40" rx="28" ry="26" fill="#FAC775" opacity="0.8" stroke="#EF9F27" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#633806">Netzhaut</text></svg>`
+  },
+  {
+    id:'vitreous', name:'Glaskörper', color:'#9FE1CB', stroke:'#1D9E75',
+    hint:'Füllt den Innenraum des Auges – wie Gelee',
+    targetX:80, targetY:80,
+    draw:(x,y,s)=>`<ellipse cx="${x}" cy="${y}" rx="${32*s}" ry="${30*s}" fill="#9FE1CB" opacity="0.5" stroke="#1D9E75" stroke-width="${1*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><ellipse cx="40" cy="40" rx="24" ry="22" fill="#9FE1CB" opacity="0.7" stroke="#1D9E75" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#085041">Glaskörper</text></svg>`
+  },
+  {
+    id:'lens', name:'Linse', color:'#85B7EB', stroke:'#185FA5',
+    hint:'Bündelt das Licht für scharfe Bilder',
+    targetX:63, targetY:80,
+    draw:(x,y,s)=>`<ellipse cx="${x}" cy="${y}" rx="${9*s}" ry="${18*s}" fill="#85B7EB" opacity="0.85" stroke="#185FA5" stroke-width="${1.5*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><ellipse cx="40" cy="40" rx="12" ry="24" fill="#85B7EB" stroke="#185FA5" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#0C447C">Linse</text></svg>`
+  },
+  {
+    id:'iris', name:'Regenbogenhaut', color:'#ED93B1', stroke:'#D4537E',
+    hint:'Die bunte Fläche um die Pupille',
+    targetX:47, targetY:80,
+    draw:(x,y,s)=>`<circle cx="${x}" cy="${y}" r="${17*s}" fill="#ED93B1" stroke="#D4537E" stroke-width="${1.5*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><circle cx="40" cy="40" r="22" fill="#ED93B1" stroke="#D4537E" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="7" fill="#72243E">Regenbogenhaut</text></svg>`
+  },
+  {
+    id:'pupil', name:'Pupille', color:'#2C2C2A', stroke:'#2C2C2A',
+    hint:'Schwarze Öffnung – lässt Licht rein',
+    targetX:47, targetY:80,
+    draw:(x,y,s)=>`<circle cx="${x}" cy="${y}" r="${8*s}" fill="#1a1a18"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><circle cx="40" cy="40" r="20" fill="#2C2C2A"/><circle cx="33" cy="33" r="5" fill="white" opacity="0.4"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#444441">Pupille</text></svg>`
+  },
+  {
+    id:'cornea', name:'Hornhaut', color:'#AFA9EC', stroke:'#534AB7',
+    hint:'Schützende transparente Scheibe vorne',
+    targetX:32, targetY:80,
+    draw:(x,y,s)=>`<path d="M${x},${y-18*s} Q${x-20*s},${y} ${x},${y+18*s}" fill="none" stroke="#AFA9EC" stroke-width="${6*s}" stroke-linecap="round" opacity="0.8"/><path d="M${x},${y-18*s} Q${x-20*s},${y} ${x},${y+18*s}" fill="none" stroke="white" stroke-width="${2.5*s}" stroke-linecap="round" opacity="0.6"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><path d="M45,15 Q20,40 45,65" fill="none" stroke="#AFA9EC" stroke-width="10" stroke-linecap="round" opacity="0.9"/><path d="M45,15 Q20,40 45,65" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" opacity="0.7"/><text x="40" y="76" text-anchor="middle" font-size="8" fill="#3C3489">Hornhaut</text></svg>`
+  },
+  {
+    id:'opticnerve', name:'Sehnerv', color:'#D85A30', stroke:'#993C1D',
+    hint:'Leitet Signale vom Auge ans Gehirn',
+    targetX:118, targetY:80,
+    draw:(x,y,s)=>`<rect x="${x-4*s}" y="${y-20*s}" width="${18*s}" height="${40*s}" rx="${4*s}" fill="#D85A30" opacity="0.8" stroke="#993C1D" stroke-width="${1*s}"/>`,
+    drawSmall:()=>`<svg viewBox="0 0 80 80" width="70" height="70"><rect x="20" y="20" width="40" height="40" rx="6" fill="#D85A30" opacity="0.85" stroke="#993C1D" stroke-width="2"/><text x="40" y="74" text-anchor="middle" font-size="8" fill="#712B13">Sehnerv</text></svg>`
+  }
+];
+
+let puzPieces=[], puzSnapped=0, puzCurrentTarget=0, puzDragEl=null, puzOffX=0, puzOffY=0;
+
+function initPuzzle(){
+  puzSnapped=0; puzCurrentTarget=0;
+  const area=document.getElementById('puzzle-area');
+  area.innerHTML='';
+
+  const taskDiv=document.createElement('div'); taskDiv.className='puz-task'; taskDiv.id='puz-task';
+  taskDiv.textContent='Lege das Auge zusammen! Fange mit der Lederhaut an.'; area.appendChild(taskDiv);
+
+  const progRow=document.createElement('div'); progRow.className='puz-progress-row';
+  const pb=document.createElement('div'); pb.className='prog-bar'; pb.style.flex='1';
+  const pf=document.createElement('div'); pf.className='prog-fill'; pf.id='puz-pf'; pf.style.width='0%';
+  pb.appendChild(pf); progRow.appendChild(pb);
+  const pt=document.createElement('span'); pt.className='puz-score-txt'; pt.id='puz-pt'; pt.textContent='0 / '+EYE_PIECES.length;
+  progRow.appendChild(pt); area.appendChild(progRow);
+
+  const arena=document.createElement('div'); arena.className='puz-arena'; arena.id='puz-arena'; area.appendChild(arena);
+
+  const tray=document.createElement('div'); tray.className='puz-tray'; tray.id='puz-tray'; area.appendChild(tray);
+
+  const actRow=document.createElement('div'); actRow.className='puz-action-row';
+  const hb=document.createElement('button'); hb.className='puz-hint-btn'; hb.innerHTML='<i class="ti ti-bulb" aria-hidden="true"></i> Tipp'; hb.onclick=givePuzHint;
+  const sb=document.createElement('button'); sb.className='puz-solve-btn'; sb.textContent='Auflösung'; sb.onclick=solvePuzzle;
+  actRow.appendChild(hb); actRow.appendChild(sb); area.appendChild(actRow);
+
+  const fb=document.createElement('div'); fb.className='fb'; fb.id='puz-fb'; area.appendChild(fb);
+
+  const S=1.05;
+  EYE_PIECES.forEach((p,i)=>{
+    const el=document.createElement('div'); el.className='puz-piece'; el.id='pp-'+p.id;
+    el.dataset.idx=i; el.dataset.snapped='0';
+    el.innerHTML=p.drawSmall();
+    el.style.cssText='position:relative;cursor:grab;user-select:none;';
+    tray.appendChild(el);
+    el.addEventListener('mousedown',startDrag);
+    el.addEventListener('touchstart',startDragTouch,{passive:false});
+  });
+
+  updatePuzTask();
+}
+
+function updatePuzTask(){
+  if(puzCurrentTarget>=EYE_PIECES.length){
+    document.getElementById('puz-task').textContent='Das Auge ist fertig! Super gemacht!';
+    document.getElementById('puz-fb').textContent='';
+    document.getElementById('puz-fb').className='fb';
+    return;
+  }
+  const p=EYE_PIECES[puzCurrentTarget];
+  document.getElementById('puz-task').textContent='Lege jetzt: '+p.name+' – '+p.hint;
+}
+
+function startDrag(e){
+  const el=e.currentTarget;
+  if(el.dataset.snapped==='1') return;
+  e.preventDefault();
+  puzDragEl=el;
+  const rect=el.getBoundingClientRect();
+  puzOffX=e.clientX-rect.left; puzOffY=e.clientY-rect.top;
+  moveToDrag(e.clientX,e.clientY);
+  document.addEventListener('mousemove',onDragMove);
+  document.addEventListener('mouseup',onDragEnd);
+}
+function startDragTouch(e){
+  const el=e.currentTarget;
+  if(el.dataset.snapped==='1') return;
+  e.preventDefault();
+  puzDragEl=el;
+  const t=e.touches[0];
+  const rect=el.getBoundingClientRect();
+  puzOffX=t.clientX-rect.left; puzOffY=t.clientY-rect.top;
+  moveToDrag(t.clientX,t.clientY);
+  document.addEventListener('touchmove',onDragMoveT,{passive:false});
+  document.addEventListener('touchend',onDragEndT);
+}
+function moveToDrag(cx,cy){
+  if(!puzDragEl) return;
+  const arena=document.getElementById('puz-arena');
+  const ar=arena.getBoundingClientRect();
+  let x=cx-ar.left-puzOffX; let y=cy-ar.top-puzOffY;
+  if(puzDragEl.parentElement!==arena){
+    puzDragEl.style.position='absolute';
+    puzDragEl.style.zIndex='100';
+    arena.appendChild(puzDragEl);
+  }
+  puzDragEl.style.left=x+'px'; puzDragEl.style.top=y+'px';
+}
+function onDragMove(e){moveToDrag(e.clientX,e.clientY);}
+function onDragMoveT(e){e.preventDefault();moveToDrag(e.touches[0].clientX,e.touches[0].clientY);}
+function onDragEnd(){dropPiece();document.removeEventListener('mousemove',onDragMove);document.removeEventListener('mouseup',onDragEnd);}
+function onDragEndT(){dropPiece();document.removeEventListener('touchmove',onDragMoveT);document.removeEventListener('touchend',onDragEndT);}
+
+function dropPiece(){
+  if(!puzDragEl) return;
+  const el=puzDragEl; puzDragEl=null;
+  const arena=document.getElementById('puz-arena');
+  const ar=arena.getBoundingClientRect();
+  const er=el.getBoundingClientRect();
+  const cx=er.left+er.width/2-ar.left;
+  const cy=er.top+er.height/2-ar.top;
+  const centerX=ar.width/2; const centerY=ar.height/2;
+  const dist=Math.sqrt((cx-centerX)**2+(cy-centerY)**2);
+  const idx=parseInt(el.dataset.idx);
+  const fb=document.getElementById('puz-fb');
+
+  if(idx===puzCurrentTarget && dist<80){
+    el.style.left=(centerX-35)+'px'; el.style.top=(centerY-35)+'px';
+    el.style.cursor='default'; el.style.zIndex=idx+1+'';
+    el.dataset.snapped='1'; el.classList.add('snapped');
+    el.style.pointerEvents='none';
+    puzSnapped++;
+    document.getElementById('puz-pf').style.width=Math.round((puzSnapped/EYE_PIECES.length)*100)+'%';
+    document.getElementById('puz-pt').textContent=puzSnapped+' / '+EYE_PIECES.length;
+    fb.textContent='Richtig! '+EYE_PIECES[idx].name+' sitzt!'; fb.className='fb ok';
+    puzCurrentTarget++;
+    setTimeout(()=>{updatePuzTask();if(puzCurrentTarget>=EYE_PIECES.length){fb.textContent='Fantastisch! Du hast das Auge komplett zusammengesetzt!';fb.className='fb ok';}else{fb.className='fb';}},1200);
+  } else {
+    if(idx!==puzCurrentTarget){
+      fb.textContent='Noch nicht! Lege zuerst: '+EYE_PIECES[puzCurrentTarget].name; fb.className='fb nok';
+    } else {
+      fb.textContent='Fast! Lege das Teil in die Mitte des Auges.'; fb.className='fb nok';
+    }
+    document.getElementById('puz-tray').appendChild(el);
+    el.style.position='relative'; el.style.left=''; el.style.top=''; el.style.zIndex='';
+  }
+}
+
+function givePuzHint(){
+  if(puzCurrentTarget>=EYE_PIECES.length) return;
+  const p=EYE_PIECES[puzCurrentTarget];
+  const fb=document.getElementById('puz-fb');
+  fb.textContent='Tipp: Ziehe die '+p.name+' ('+p.hint+') in die Mitte!';
+  fb.className='fb ok';
+  const el=document.getElementById('pp-'+p.id);
+  if(el){ el.classList.add('highlight'); setTimeout(()=>el.classList.remove('highlight'),2000); }
+}
+
+function solvePuzzle(){
+  const arena=document.getElementById('puz-arena');
+  const ar={width:320,height:320};
+  for(let i=puzCurrentTarget;i<EYE_PIECES.length;i++){
+    const el=document.getElementById('pp-'+EYE_PIECES[i].id);
+    if(!el||el.dataset.snapped==='1') continue;
+    el.style.position='absolute'; el.style.left=(ar.width/2-35)+'px'; el.style.top=(ar.height/2-35)+'px';
+    el.style.zIndex=i+1+''; el.style.cursor='default'; el.dataset.snapped='1'; el.style.pointerEvents='none';
+    if(el.parentElement!==arena) arena.appendChild(el);
+  }
+  puzSnapped=EYE_PIECES.length; puzCurrentTarget=EYE_PIECES.length;
+  document.getElementById('puz-pf').style.width='100%';
+  document.getElementById('puz-pt').textContent=EYE_PIECES.length+' / '+EYE_PIECES.length;
+  document.getElementById('puz-task').textContent='Das Auge ist vollständig zusammengesetzt!';
+  document.getElementById('puz-fb').textContent='So sieht ein vollständiges Auge aus!'; document.getElementById('puz-fb').className='fb ok';
+}
+
+initVocab();
+</script>

@@ -21,6 +21,9 @@ Open by design. Every family owns its data.
 ### Principle 7
 One codebase. Hosted and self-hosted users receive exactly the same features.
 
+### Principle 8
+German is the default language, based on device settings. All other languages are optional extra features that can be enabled via the settings. English is the fallback. When switching the language, all UI elements should update immediately. 
+
 ---
 
 # Performance Principles

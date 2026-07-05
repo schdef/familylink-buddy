@@ -60,4 +60,16 @@
     <string name="volume_alarm_label">Alarm</string>
     <string name="volume_device_id_label">Device ID (for pairing)</string>
     <string name="volume_copy_btn">Copy Device ID</string>
+
+    <!-- Time Coins Strings -->
+    <string name="time_bank_card_title">⏳ My Time Account</string>
+    <string name="time_bank_balance">%1$d Time Coins</string>
+    <string name="time_bank_tasks_section">🌟 Tasks (Earn)</string>
+    <string name="time_bank_rewards_section">🎁 Rewards (Spend)</string>
+    <string name="time_bank_buy_btn">Buy (%1$d Coins)</string>
+    <string name="time_bank_welcome">Welcome to your Time Account! ⏳</string>
+    <string name="time_bank_zero_coins">Earn coins for awesome rewards! 🎁</string>
+    <string name="time_bank_pending">Waiting for parent...</string>
+    <string name="time_bank_completed">Done!</string>
+    <string name="time_bank_claimed">Claimed! 🎮</string>
 </resources>

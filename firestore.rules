@@ -6,6 +6,19 @@ service cloud.firestore {
     }
     match /pairings/{childToken} {
       allow read, write: if true;
+
+      match /time_bank_transactions/{transactionId} {
+        allow read, write: if true;
+      }
+      match /time_bank_tasks/{taskId} {
+        allow read, write: if true;
+      }
+      match /time_bank_rewards/{rewardId} {
+        allow read, write: if true;
+      }
+      match /time_bank_claims/{claimId} {
+        allow read, write: if true;
+      }
     }
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

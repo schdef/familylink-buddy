@@ -60,4 +60,16 @@
     <string name="volume_alarm_label">Wecker</string>
     <string name="volume_device_id_label">Geräte-ID (zum Koppeln)</string>
     <string name="volume_copy_btn">Geräte-ID kopieren</string>
+
+    <!-- Time Coins Strings -->
+    <string name="time_bank_card_title">⏳ Mein Zeitkonto</string>
+    <string name="time_bank_balance">%1$d Time Coins</string>
+    <string name="time_bank_tasks_section">🌟 Aufgaben (Verdienen)</string>
+    <string name="time_bank_rewards_section">🎁 Belohnungen (Ausgeben)</string>
+    <string name="time_bank_buy_btn">Kaufen (%1$d Coins)</string>
+    <string name="time_bank_welcome">Willkommen bei deinem Zeitkonto! ⏳</string>
+    <string name="time_bank_zero_coins">Verdiene Coins für tolle Belohnungen! 🎁</string>
+    <string name="time_bank_pending">Warten auf Eltern...</string>
+    <string name="time_bank_completed">Erledigt!</string>
+    <string name="time_bank_claimed">Gekauft! 🎮</string>
 </resources>

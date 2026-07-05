@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import android.provider.Settings
 import android.net.Uri
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import android.content.Context
 import android.media.AudioManager
 import android.content.ClipboardManager
@@ -50,13 +51,111 @@ import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import java.util.Calendar
+import androidx.compose.ui.draw.rotate
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.familylink.buddy.child.data.TimeBankState
+import com.familylink.buddy.child.data.BonusTask
+import com.familylink.buddy.child.data.RewardItem
+import com.familylink.buddy.child.data.RewardClaim
+import kotlinx.coroutines.delay
 
+
+class Particle(var x: Float, var y: Float, val vx: Float, val vy: Float, val size: Float, val color: Color) {
+    fun update() {
+        x += vx
+        y += vy
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var repository: FamilyTimeRepository
     private val canDrawOverlaysState = mutableStateOf(false)
     private val hasUsageAccessState = mutableStateOf(false)
+
+    private fun playCoinSound() {
+        try {
+            val sampleRate = 8000
+            val duration1 = 0.08
+            val duration2 = 0.18
+            val numSamples1 = (duration1 * sampleRate).toInt()
+            val numSamples2 = (duration2 * sampleRate).toInt()
+            val sample1 = DoubleArray(numSamples1)
+            val sample2 = DoubleArray(numSamples2)
+            val generatedSnd = ByteArray(2 * (numSamples1 + numSamples2))
+
+            for (i in 0 until numSamples1) {
+                sample1[i] = Math.sin(2 * Math.PI * i / (sampleRate / 1300.0))
+            }
+            for (i in 0 until numSamples2) {
+                sample2[i] = Math.sin(2 * Math.PI * i / (sampleRate / 1800.0))
+            }
+
+            var idx = 0
+            for (i in 0 until numSamples1) {
+                val valSample = (sample1[i] * 32767).toInt()
+                generatedSnd[idx++] = (valSample and 0x00ff).toByte()
+                generatedSnd[idx++] = (valSample and 0xff00 ushr 8).toByte()
+            }
+            for (i in 0 until numSamples2) {
+                val valSample = (sample2[i] * 32767).toInt()
+                generatedSnd[idx++] = (valSample and 0x00ff).toByte()
+                generatedSnd[idx++] = (valSample and 0xff00 ushr 8).toByte()
+            }
+
+            val audioTrack = android.media.AudioTrack(
+                android.media.AudioManager.STREAM_MUSIC,
+                sampleRate,
+                android.media.AudioFormat.CHANNEL_OUT_MONO,
+                android.media.AudioFormat.ENCODING_PCM_16BIT,
+                generatedSnd.size,
+                android.media.AudioTrack.MODE_STATIC
+            )
+            audioTrack.write(generatedSnd, 0, generatedSnd.size)
+            audioTrack.play()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error playing synth coin sound", e)
+        }
+    }
+
+    private fun playJingleSound() {
+        try {
+            val sampleRate = 8000
+            val duration = 0.12
+            val numSamples = (duration * sampleRate).toInt()
+            val generatedSnd = ByteArray(2 * numSamples * 3)
+
+            val freqs = doubleArrayOf(523.25, 659.25, 783.99)
+            var idx = 0
+            for (f in freqs) {
+                for (i in 0 until numSamples) {
+                    val value = Math.sin(2 * Math.PI * i / (sampleRate / f))
+                    val valSample = (value * 32767).toInt()
+                    generatedSnd[idx++] = (valSample and 0x00ff).toByte()
+                    generatedSnd[idx++] = (valSample and 0xff00 ushr 8).toByte()
+                }
+            }
+
+            val audioTrack = android.media.AudioTrack(
+                android.media.AudioManager.STREAM_MUSIC,
+                sampleRate,
+                android.media.AudioFormat.CHANNEL_OUT_MONO,
+                android.media.AudioFormat.ENCODING_PCM_16BIT,
+                generatedSnd.size,
+                android.media.AudioTrack.MODE_STATIC
+            )
+            audioTrack.write(generatedSnd, 0, generatedSnd.size)
+            audioTrack.play()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error playing synth complete jingle", e)
+        }
+    }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
         val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -73,16 +172,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         repository = FamilyTimeRepository(applicationContext)
 
-        // Initialize Firebase emulators in debug mode if USE_EMULATOR build flag is set
-        try {
-            if (BuildConfig.USE_EMULATOR) {
-                Firebase.firestore.useEmulator("10.0.2.2", 8080)
-                Firebase.functions.useEmulator("10.0.2.2", 5001)
-                Log.d("MainActivity", "Firebase clients redirected to local emulators (10.0.2.2)")
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to connect to Firebase emulators", e)
-        }
+        // Firebase emulators are initialized globally in FamilyLinkBuddyApplication.java
 
         // Request notification permission if Android 13+
         requestNotificationPermission()
@@ -130,6 +220,13 @@ class MainActivity : ComponentActivity() {
                     val scope = rememberCoroutineScope()
                     val familyData by repository.familyTimeData.collectAsState(initial = FamilyTimeData())
                     val volumeState by repository.volumeState.collectAsState(initial = VolumeState())
+                    val timeBankState by repository.timeBankState.collectAsState(initial = TimeBankState())
+                    var timeBankTasks by remember { mutableStateOf<List<BonusTask>>(emptyList()) }
+                    var timeBankRewards by remember { mutableStateOf<List<RewardItem>>(emptyList()) }
+                    
+                    val showConfetti = remember { mutableStateOf(false) }
+                    val particles = remember { mutableStateListOf<Particle>() }
+
                     var serviceRunning by remember { mutableStateOf(isServiceRunning(WidgetUpdateService::class.java)) }
                     val hasOverlayPermission by canDrawOverlaysState
 
@@ -170,6 +267,39 @@ class MainActivity : ComponentActivity() {
                                         pairingCode = "Fehler"
                                         Log.e("MainActivity", "Pairing registration failed", e)
                                     }
+
+                                // Add snap listeners for Time Coins features
+                                db.collection("pairings").document(token)
+                                    .addSnapshotListener { snapshot, _ ->
+                                        if (snapshot != null && snapshot.exists()) {
+                                            val balance = (snapshot.getLong("timeBankBalance") ?: 0L).toInt()
+                                            val enabled = snapshot.getBoolean("timeBankEnabled") ?: false
+                                            val visible = snapshot.getBoolean("timeBankChildVisible") ?: false
+                                            lifecycleScopeLaunch {
+                                                repository.updateTimeBankState(TimeBankState(enabled, visible, balance))
+                                            }
+                                        }
+                                    }
+
+                                db.collection("pairings").document(token).collection("time_bank_tasks")
+                                    .orderBy("sortOrder")
+                                    .addSnapshotListener { snapshot, _ ->
+                                        if (snapshot != null) {
+                                            timeBankTasks = snapshot.documents.mapNotNull { doc ->
+                                                doc.toObject(BonusTask::class.java)?.copy(id = doc.id)
+                                            }
+                                        }
+                                    }
+
+                                db.collection("pairings").document(token).collection("time_bank_rewards")
+                                    .orderBy("sortOrder")
+                                    .addSnapshotListener { snapshot, _ ->
+                                        if (snapshot != null) {
+                                            timeBankRewards = snapshot.documents.mapNotNull { doc ->
+                                                doc.toObject(RewardItem::class.java)?.copy(id = doc.id)
+                                            }
+                                        }
+                                    }
                             } catch (e: Exception) {
                                 pairingCode = "Fehler"
                                 Log.e("MainActivity", "Firestore write error", e)
@@ -182,12 +312,64 @@ class MainActivity : ComponentActivity() {
                         startUpdateService()
                     }
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    val context = LocalContext.current
+                    DisposableEffect(context) {
+                        val receiver = object : android.content.BroadcastReceiver() {
+                            override fun onReceive(ctx: Context, intent: Intent) {
+                                if (intent.action == WidgetUpdateService.ACTION_COIN_AWARD) {
+                                    showConfetti.value = true
+                                    playCoinSound()
+                                }
+                            }
+                        }
+                        val filter = android.content.IntentFilter(WidgetUpdateService.ACTION_COIN_AWARD)
+                        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+                        onDispose {
+                            context.unregisterReceiver(receiver)
+                        }
+                    }
+
+                    LaunchedEffect(showConfetti.value) {
+                        if (showConfetti.value) {
+                            particles.clear()
+                            for (i in 0..100) {
+                                particles.add(Particle(
+                                    x = (100..900).random().toFloat(),
+                                    y = -50f,
+                                    vx = (-6..6).random().toFloat(),
+                                    vy = (8..22).random().toFloat(),
+                                    size = (15..35).random().toFloat(),
+                                    color = listOf(Color(0xFFFFD700), Color(0xFFFFC000), Color(0xFFFFA500), Color(0xFFFFE082)).random()
+                                ))
+                            }
+                            val startTime = System.currentTimeMillis()
+                            while (System.currentTimeMillis() - startTime < 2500) {
+                                delay(16)
+                                particles.forEach { it.update() }
+                            }
+                            showConfetti.value = false
+                        }
+                    }
+
+                    var wasVisibleBefore by remember { mutableStateOf(false) }
+                    LaunchedEffect(timeBankState.isChildVisible) {
+                        if (timeBankState.isChildVisible && !wasVisibleBefore) {
+                            showConfetti.value = true
+                            playCoinSound()
+                            wasVisibleBefore = true
+                        } else if (!timeBankState.isChildVisible) {
+                            wasVisibleBefore = false
+                        }
+                    }
+
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                         Text(
                             text = stringResource(R.string.main_title),
                             fontSize = 28.sp,
@@ -313,6 +495,299 @@ class MainActivity : ComponentActivity() {
                                             text = stringResource(R.string.main_app_status, app.remainingMinutes.toString(), app.usedMinutes, app.limitMinutes),
                                             color = Color.White
                                         )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 1. Time Bank Card (only when timeBankState.isChildVisible is true)
+                        if (timeBankState.isChildVisible) {
+                            var coinRotation by remember { mutableStateOf(0f) }
+                            val rotationAnim by animateFloatAsState(
+                                targetValue = coinRotation,
+                                animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
+                            )
+                            var activeTimerTaskId by remember { mutableStateOf<String?>(null) }
+                            var timerSecondsRemaining by remember { mutableStateOf(0) }
+
+                            // Timer countdown execution
+                            LaunchedEffect(activeTimerTaskId, timerSecondsRemaining) {
+                                if (activeTimerTaskId != null && timerSecondsRemaining > 0) {
+                                    delay(1000L)
+                                    timerSecondsRemaining--
+                                    if (timerSecondsRemaining == 0) {
+                                        // Complete task
+                                        val task = timeBankTasks.firstOrNull { it.id == activeTimerTaskId }
+                                        if (task != null) {
+                                            val db = FirebaseFirestore.getInstance()
+                                            val token = volumeState.deviceToken
+                                            if (token.isNotEmpty()) {
+                                                val pairingDoc = db.collection("pairings").document(token)
+                                                val txRef = pairingDoc.collection("time_bank_transactions").document()
+                                                val batch = db.batch()
+                                                batch.update(pairingDoc, "timeBankBalance", com.google.firebase.firestore.FieldValue.increment(task.reward.toLong()))
+                                                batch.set(txRef, hashMapOf(
+                                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                    "type" to "TASK_COMPLETE",
+                                                    "amount" to task.reward,
+                                                    "description" to task.title,
+                                                    "emoji" to task.emoji,
+                                                    "awardedBy" to "timer",
+                                                    "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                                                ))
+                                                batch.commit()
+                                                playJingleSound()
+                                                showConfetti.value = true
+                                            }
+                                        }
+                                        activeTimerTaskId = null
+                                    }
+                                }
+                            }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = stringResource(R.string.time_bank_card_title),
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White,
+                                        modifier = Modifier.align(Alignment.Start)
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Fidget Coin Balance Circle
+                                    Box(
+                                        modifier = Modifier
+                                            .size(110.dp)
+                                            .rotate(rotationAnim)
+                                            .background(
+                                                Brush.radialGradient(
+                                                    colors = listOf(Color(0xFFF59E0B), Color(0xFFD97706))
+                                                ),
+                                                shape = CircleShape
+                                            )
+                                            .clickable {
+                                                coinRotation += 360f
+                                                playCoinSound()
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "${timeBankState.balance}",
+                                                fontSize = 32.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                            Text(
+                                                text = "Coins ⏳",
+                                                fontSize = 12.sp,
+                                                color = Color.White.copy(alpha = 0.8f),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+
+                                    // Low Coins pulsing warning indicator
+                                    if (timeBankState.balance in 1..5) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Noch ${timeBankState.balance} Coins übrig! ⏳ Wieder aufladen?",
+                                            color = Color(0xFFEF4444),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(24.dp))
+
+                                    // Tasks section (max 3)
+                                    Text(
+                                        text = stringResource(R.string.time_bank_tasks_section),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF66FCF1),
+                                        modifier = Modifier.align(Alignment.Start)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    val visibleTasks = timeBankTasks.take(3)
+                                    if (visibleTasks.isEmpty()) {
+                                        Text(
+                                            text = stringResource(R.string.time_bank_zero_coins),
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFC5C6C7),
+                                            modifier = Modifier.align(Alignment.Start)
+                                        )
+                                    } else {
+                                        visibleTasks.forEach { task ->
+                                            val isRunning = activeTimerTaskId == task.id
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(text = task.emoji, fontSize = 20.sp)
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(text = task.title, color = Color.White, fontSize = 13.sp)
+                                                }
+                                                if (task.hasDuration) {
+                                                    Button(
+                                                        onClick = {
+                                                            if (isRunning) {
+                                                                activeTimerTaskId = null
+                                                            } else {
+                                                                activeTimerTaskId = task.id
+                                                                timerSecondsRemaining = task.durationMinutes * 60
+                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = if (isRunning) Color(0xFFEF4444) else Color(0xFF45A29E)
+                                                        ),
+                                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                                        modifier = Modifier.height(30.dp)
+                                                    ) {
+                                                        if (isRunning) {
+                                                            val mins = timerSecondsRemaining / 60
+                                                            val secs = timerSecondsRemaining % 60
+                                                            Text(
+                                                                text = String.format("%02d:%02d", mins, secs),
+                                                                fontSize = 11.sp,
+                                                                color = Color.White
+                                                            )
+                                                        } else {
+                                                            Text(
+                                                                text = "${task.durationMinutes} Min Start",
+                                                                fontSize = 11.sp,
+                                                                color = Color.White
+                                                            )
+                                                        }
+                                                    }
+                                                } else {
+                                                    Button(
+                                                        onClick = {
+                                                            val db = FirebaseFirestore.getInstance()
+                                                            val token = volumeState.deviceToken
+                                                            if (token.isNotEmpty()) {
+                                                                    val pairingDoc = db.collection("pairings").document(token)
+                                                                    val txRef = pairingDoc.collection("time_bank_transactions").document()
+                                                                    val batch = db.batch()
+                                                                    batch.update(pairingDoc, "timeBankBalance", com.google.firebase.firestore.FieldValue.increment(task.reward.toLong()))
+                                                                    batch.set(txRef, hashMapOf(
+                                                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                                        "type" to "TASK_COMPLETE",
+                                                                        "amount" to task.reward,
+                                                                        "description" to task.title,
+                                                                        "emoji" to task.emoji,
+                                                                        "awardedBy" to "child",
+                                                                        "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                                                                    ))
+                                                                    batch.commit()
+                                                                    playJingleSound()
+                                                                    showConfetti.value = true
+                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E)),
+                                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                                        modifier = Modifier.height(30.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "+${task.reward} Coins",
+                                                            fontSize = 11.sp,
+                                                            color = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Rewards section (max 3)
+                                    Text(
+                                        text = stringResource(R.string.time_bank_rewards_section),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF66FCF1),
+                                        modifier = Modifier.align(Alignment.Start)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    val visibleRewards = timeBankRewards.take(3)
+                                    if (visibleRewards.isEmpty()) {
+                                        Text(
+                                            text = "Keine Belohnungen vorhanden.",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFC5C6C7),
+                                            modifier = Modifier.align(Alignment.Start)
+                                        )
+                                    } else {
+                                        visibleRewards.forEach { reward ->
+                                            val canAfford = timeBankState.balance >= reward.cost
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(text = reward.emoji, fontSize = 20.sp)
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(text = reward.title, color = Color.White, fontSize = 13.sp)
+                                                }
+                                                Button(
+                                                    onClick = {
+                                                        val db = FirebaseFirestore.getInstance()
+                                                        val token = volumeState.deviceToken
+                                                        if (token.isNotEmpty() && canAfford) {
+                                                            val pairingDoc = db.collection("pairings").document(token)
+                                                            val txRef = pairingDoc.collection("time_bank_transactions").document()
+                                                            val claimRef = pairingDoc.collection("time_bank_claims").document()
+                                                            
+                                                            val batch = db.batch()
+                                                            batch.update(pairingDoc, "timeBankBalance", com.google.firebase.firestore.FieldValue.increment(-reward.cost.toLong()))
+                                                            batch.update(pairingDoc, "pendingClaimsCount", com.google.firebase.firestore.FieldValue.increment(1))
+                                                            batch.set(txRef, hashMapOf(
+                                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                                "type" to "SPEND",
+                                                                "amount" to -reward.cost,
+                                                                "description" to reward.title,
+                                                                "emoji" to reward.emoji,
+                                                                "awardedBy" to "child",
+                                                                "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                                                            ))
+                                                            batch.set(claimRef, hashMapOf(
+                                                                "rewardId" to reward.id,
+                                                                "title" to reward.title,
+                                                                "emoji" to reward.emoji,
+                                                                "cost" to reward.cost,
+                                                                "status" to "PENDING",
+                                                                "claimedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                                            ))
+                                                            batch.commit()
+                                                            playCoinSound()
+                                                            showConfetti.value = true
+                                                        }
+                                                    },
+                                                    enabled = canAfford,
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "${reward.cost} Coins",
+                                                        fontSize = 11.sp,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -577,10 +1052,24 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
                         }
+
+                        // Particle overlay Canvas
+                        if (showConfetti.value) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                particles.forEach { particle ->
+                                    drawCircle(
+                                        color = particle.color,
+                                        radius = particle.size / 2f,
+                                        center = androidx.compose.ui.geometry.Offset(particle.x, particle.y)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
     }
 
     private fun startUpdateService() {

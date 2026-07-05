@@ -41,6 +41,23 @@ class FamilyTimeRepository(private val context: Context) {
             )
         }
 
+    val timeBankState: Flow<TimeBankState> = context.dataStore.data
+        .map { preferences ->
+            TimeBankState(
+                isEnabled = preferences[KEY_TIME_BANK_ENABLED] ?: false,
+                isChildVisible = preferences[KEY_TIME_BANK_CHILD_VISIBLE] ?: false,
+                balance = preferences[KEY_TIME_BANK_BALANCE] ?: 0
+            )
+        }
+
+    suspend fun updateTimeBankState(state: TimeBankState) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_TIME_BANK_ENABLED] = state.isEnabled
+            preferences[KEY_TIME_BANK_CHILD_VISIBLE] = state.isChildVisible
+            preferences[KEY_TIME_BANK_BALANCE] = state.balance
+        }
+    }
+
     suspend fun updateFamilyTimeData(data: FamilyTimeData) {
         context.dataStore.edit { preferences ->
             preferences[KEY_REMAINING_MINUTES] = data.totalRemainingMinutes
@@ -82,6 +99,9 @@ class FamilyTimeRepository(private val context: Context) {
         private val KEY_VOLUME_ALARM_MAX = intPreferencesKey("volume_alarm_max")
         private val KEY_VOLUME_MUTED = booleanPreferencesKey("volume_muted")
         private val KEY_DEVICE_TOKEN = stringPreferencesKey("device_token")
+        private val KEY_TIME_BANK_ENABLED = booleanPreferencesKey("time_bank_enabled")
+        private val KEY_TIME_BANK_CHILD_VISIBLE = booleanPreferencesKey("time_bank_child_visible")
+        private val KEY_TIME_BANK_BALANCE = intPreferencesKey("time_bank_balance")
 
         fun serializeAppUsages(usages: List<AppUsage>): String {
             return usages.joinToString("|") {

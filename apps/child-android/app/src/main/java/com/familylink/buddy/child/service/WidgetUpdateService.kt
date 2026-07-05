@@ -55,6 +55,7 @@ class WidgetUpdateService : Service() {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_MOCK_ROCKET = "ACTION_MOCK_ROCKET"
+        const val ACTION_COIN_AWARD = "com.familylink.buddy.child.ACTION_COIN_AWARD"
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -830,6 +831,7 @@ class WidgetUpdateService : Service() {
 
     private var firestoreListenerRegistration: ListenerRegistration? = null
     private var lastExecutedCommandTimestamp: Long = 0
+    private var lastExecutedCoinAwardTimestamp: Long = 0
     private var volumeObserver: ContentObserver? = null
 
     private fun startFirestoreListener() {
@@ -913,13 +915,6 @@ class WidgetUpdateService : Service() {
     private fun registerFirestoreListener(token: String) {
         firestoreListenerRegistration?.remove()
         try {
-            if (com.familylink.buddy.child.BuildConfig.USE_EMULATOR) {
-                try {
-                    FirebaseFirestore.getInstance().useEmulator("10.0.2.2", 8080)
-                } catch (e: IllegalStateException) {
-                    // Already initialized
-                }
-            }
             val db = FirebaseFirestore.getInstance()
             firestoreListenerRegistration = db.collection("pairings").document(token)
                 .addSnapshotListener { snapshot, error ->
@@ -962,6 +957,55 @@ class WidgetUpdateService : Service() {
             if (remaining >= 0) {
                 updateScreenTimeData(remaining, limit, appUsagesJsonStr)
             }
+        }
+
+        // 3. Process Time Coins State
+        val timeBankEnabled = data["timeBankEnabled"] as? Boolean ?: false
+        val timeBankChildVisible = data["timeBankChildVisible"] as? Boolean ?: false
+        val timeBankBalance = (data["timeBankBalance"] as? Number)?.toInt() ?: 0
+
+        serviceScope.launch {
+            val repoState = com.familylink.buddy.child.data.TimeBankState(
+                isEnabled = timeBankEnabled,
+                isChildVisible = timeBankChildVisible,
+                balance = timeBankBalance
+            )
+            repository.updateTimeBankState(repoState)
+            FamilyBuddyWidget().updateAll(applicationContext)
+        }
+
+        // 4. Process Coin Award
+        val coinAwardMap = data["coinAward"] as? Map<*, *>
+        if (coinAwardMap != null) {
+            val amount = (coinAwardMap["amount"] as? Number)?.toInt() ?: 0
+            val description = coinAwardMap["description"] as? String ?: ""
+            val emoji = coinAwardMap["emoji"] as? String ?: "⏳"
+            val timestampObj = coinAwardMap["timestamp"] as? Timestamp
+            val timestamp = timestampObj?.seconds ?: 0L
+
+            if (timestamp > lastExecutedCoinAwardTimestamp) {
+                lastExecutedCoinAwardTimestamp = timestamp
+                triggerCoinAwardFeedback(amount, description, emoji)
+            }
+        }
+    }
+
+    private fun triggerCoinAwardFeedback(amount: Int, description: String, emoji: String) {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val isInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+            powerManager.isInteractive
+        } else {
+            @Suppress("DEPRECATION")
+            powerManager.isScreenOn
+        }
+
+        if (isInteractive) {
+            val intent = Intent(ACTION_COIN_AWARD).apply {
+                putExtra("amount", amount)
+                putExtra("description", description)
+                putExtra("emoji", emoji)
+            }
+            sendBroadcast(intent)
         }
     }
 

@@ -20,20 +20,26 @@ import java.util.*
 
 import kotlinx.coroutines.flow.first
 
+import androidx.glance.action.actionStartActivity
+import androidx.glance.action.clickable
+import com.familylink.buddy.child.data.TimeBankState
+import com.familylink.buddy.child.MainActivity
+
 class FamilyBuddyWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repository = FamilyTimeRepository(context.applicationContext)
         val dataState = repository.familyTimeData.first()
+        val timeBankState = repository.timeBankState.first()
 
         provideContent {
             // Build the widget UI
-            WidgetContent(context, dataState)
+            WidgetContent(context, dataState, timeBankState)
         }
     }
 
     @Composable
-    private fun WidgetContent(context: Context, data: FamilyTimeData) {
+    private fun WidgetContent(context: Context, data: FamilyTimeData, timeBankState: TimeBankState) {
         val remainingMinutes = data.totalRemainingMinutes
         val limitMinutes = data.totalLimitMinutes
         val lastUpdated = data.lastUpdatedMillis
@@ -146,6 +152,35 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                             Spacer(modifier = GlanceModifier.height(6.dp))
                         }
                     }
+                }
+            }
+
+            if (timeBankState.isChildVisible) {
+                Spacer(modifier = GlanceModifier.height(10.dp))
+                Row(
+                    modifier = GlanceModifier
+                        .fillMaxWidth()
+                        .background(ColorProvider(Color(0xFF1E293B)))
+                        .padding(8.dp)
+                        .clickable(actionStartActivity<MainActivity>()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⏳ ${timeBankState.balance} Coins",
+                        style = TextStyle(
+                            color = ColorProvider(Color(0xFFFFD700)),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Spacer(modifier = GlanceModifier.defaultWeight())
+                    Text(
+                        text = "Tippen zum Öffnen! 🎮",
+                        style = TextStyle(
+                            color = ColorProvider(Color(0xFF64748B)),
+                            fontSize = 9.sp
+                        )
+                    )
                 }
             }
         }

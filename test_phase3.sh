@@ -28,6 +28,14 @@ if [ "$USE_EMULATOR" = "true" ]; then
     echo "Ensuring port 8080 is clear from previous ADB forwards..."
     $ADB forward --remove tcp:8080 >/dev/null 2>&1 || true
 
+    echo "Checking for any process holding port 8080..."
+    PORT_PID=$(lsof -t -i :8080)
+    if [ -n "$PORT_PID" ]; then
+        echo "Killing leftover process $PORT_PID on port 8080..."
+        kill -9 $PORT_PID >/dev/null 2>&1 || true
+        sleep 1
+    fi
+
     echo "Starting Firebase Local Emulator Suite (Firestore)..."
     npx -y firebase-tools@latest emulators:start --only firestore > firebase-emulator.log 2>&1 &
 fi

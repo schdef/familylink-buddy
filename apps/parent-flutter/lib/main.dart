@@ -5,6 +5,7 @@ import 'auth/google_sign_in_service.dart';
 import 'auth/sign_in_screen.dart';
 import 'pairing/device_list_screen.dart';
 import 'volume/volume_repository.dart';
+import 'time_bank/time_bank_repository.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -31,6 +32,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => VolumeRepository()),
+        ChangeNotifierProvider(create: (_) => TimeBankRepository()),
       ],
       child: const FamilyLinkBuddyParentApp(),
     ),

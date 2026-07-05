@@ -1,0 +1,169 @@
+{
+  "id": "das-auge",
+  "title": {
+    "de": "Das Auge",
+    "en": "The Eye"
+  },
+  "description": {
+    "de": "Lerne die Teile des Auges visuell und spielerisch kennen",
+    "en": "Learn the parts of the eye visually and playfully"
+  },
+  "icon": "👁️",
+  "ageRange": [6, 12],
+  "difficulty": "Einfach",
+  "cards": [
+    {
+      "term": { "de": "Pupille", "en": "Pupil" },
+      "def": {
+        "de": "Schwarze Öffnung – lässt Licht rein",
+        "en": "Black opening – lets light in"
+      },
+      "color": "#1D9E75",
+      "bg": "#E1F5EE",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#E1F5EE\"/><ellipse cx=\"80\" cy=\"45\" rx=\"35\" ry=\"35\" fill=\"#7F77DD\" opacity=\"0.9\"/><ellipse cx=\"80\" cy=\"45\" rx=\"20\" ry=\"20\" fill=\"#2C2C2A\"/><ellipse cx=\"80\" cy=\"45\" rx=\"8\" ry=\"8\" fill=\"#1a1a18\"/><ellipse cx=\"73\" cy=\"38\" rx=\"4\" ry=\"3\" fill=\"white\" opacity=\"0.6\"/><text x=\"80\" y=\"82\" text-anchor=\"middle\" font-size=\"9\" fill=\"#085041\" font-weight=\"500\">Pupille = Lichtöffnung</text></svg>"
+    },
+    {
+      "term": { "de": "Linse", "en": "Lens" },
+      "def": {
+        "de": "Bündelt Licht – macht Bilder scharf",
+        "en": "Focuses light – makes images sharp"
+      },
+      "color": "#185FA5",
+      "bg": "#E6F1FB",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#E6F1FB\"/><line x1=\"20\" y1=\"30\" x2=\"65\" y2=\"43\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-dasharray=\"3,2\"/><line x1=\"20\" y1=\"60\" x2=\"65\" y2=\"47\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-dasharray=\"3,2\"/><ellipse cx=\"75\" cy=\"45\" rx=\"10\" ry=\"20\" fill=\"#85B7EB\" stroke=\"#185FA5\" stroke-width=\"1.5\"/><line x1=\"85\" y1=\"45\" x2=\"140\" y2=\"45\" stroke=\"#EF9F27\" stroke-width=\"2.5\" stroke-dasharray=\"3,2\"/><circle cx=\"140\" cy=\"45\" r=\"5\" fill=\"#E24B4A\" opacity=\"0.7\"/><text x=\"75\" y=\"85\" text-anchor=\"middle\" font-size=\"9\" fill=\"#0C447C\" font-weight=\"500\">Linse = Lichtbündelung</text></svg>"
+    },
+    {
+      "term": { "de": "Netzhaut", "en": "Retina" },
+      "def": {
+        "de": "Nimmt Bilder auf – wie ein Fotofilm",
+        "en": "Captures images – like a photo film"
+      },
+      "color": "#BA7517",
+      "bg": "#FAEEDA",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#FAEEDA\"/><path d=\"M110,15 Q140,45 110,75\" fill=\"none\" stroke=\"#EF9F27\" stroke-width=\"10\" stroke-linecap=\"round\"/><path d=\"M110,15 Q140,45 110,75\" fill=\"none\" stroke=\"#FAC775\" stroke-width=\"6\" stroke-linecap=\"round\"/><line x1=\"113\" y1=\"25\" x2=\"130\" y2=\"30\" stroke=\"#BA7517\" stroke-width=\"1\" opacity=\"0.5\"/><line x1=\"115\" y1=\"38\" x2=\"135\" y2=\"40\" stroke=\"#BA7517\" stroke-width=\"1\" opacity=\"0.5\"/><line x1=\"115\" y1=\"50\" x2=\"135\" y2=\"52\" stroke=\"#BA7517\" stroke-width=\"1\" opacity=\"0.5\"/><line x1=\"113\" y1=\"62\" x2=\"130\" y2=\"60\" stroke=\"#BA7517\" stroke-width=\"1\" opacity=\"0.5\"/><rect x=\"30\" y=\"20\" width=\"50\" height=\"50\" rx=\"4\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-dasharray=\"3,2\"/><text x=\"55\" y=\"50\" text-anchor=\"middle\" font-size=\"18\" fill=\"#BA7517\">📷</text><line x1=\"80\" y1=\"45\" x2=\"108\" y2=\"45\" stroke=\"#633806\" stroke-width=\"1.5\" stroke-dasharray=\"3,2\"/><text x=\"75\" y=\"85\" text-anchor=\"middle\" font-size=\"9\" fill=\"#633806\" font-weight=\"500\">Netzhaut = Bildempfänger</text></svg>"
+    },
+    {
+      "term": { "de": "Sehnerv", "en": "Optic Nerve" },
+      "def": {
+        "de": "Schickt Bilder ans Gehirn",
+        "en": "Sends images to the brain"
+      },
+      "color": "#D85A30",
+      "bg": "#FAECE7",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#FAECE7\"/><ellipse cx=\"40\" cy=\"45\" rx=\"25\" ry=\"25\" fill=\"#F0997B\" stroke=\"#D85A30\" stroke-width=\"1.5\"/><ellipse cx=\"40\" cy=\"45\" rx=\"14\" ry=\"14\" fill=\"#2C2C2A\"/><ellipse cx=\"35\" cy=\"40\" rx=\"4\" ry=\"3\" fill=\"white\" opacity=\"0.5\"/><path d=\"M65,45 Q95,30 110,45 Q125,60 145,45\" fill=\"none\" stroke=\"#D85A30\" stroke-width=\"4\" stroke-linecap=\"round\"/><path d=\"M65,45 Q95,35 110,45 Q125,55 145,45\" fill=\"none\" stroke=\"#F0997B\" stroke-width=\"2\" stroke-linecap=\"round\"/><ellipse cx=\"148\" cy=\"45\" rx=\"10\" ry=\"12\" fill=\"#AFA9EC\" stroke=\"#7F77DD\" stroke-width=\"1\"/><text x=\"80\" y=\"82\" text-anchor=\"middle\" font-size=\"9\" fill=\"#712B13\" font-weight=\"500\">Sehnerv = Gehirn-Leitung</text></svg>"
+    },
+    {
+      "term": { "de": "Hornhaut", "en": "Cornea" },
+      "def": {
+        "de": "Schützende Scheibe vorne am Auge",
+        "en": "Protective disc at the front of the eye"
+      },
+      "color": "#534AB7",
+      "bg": "#EEEDFE",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#EEEDFE\"/><ellipse cx=\"85\" cy=\"45\" rx=\"30\" ry=\"30\" fill=\"#D3D1C7\" opacity=\"0.5\"/><ellipse cx=\"85\" cy=\"45\" rx=\"30\" ry=\"30\" fill=\"none\" stroke=\"#B4B2A9\" stroke-width=\"2\"/><ellipse cx=\"85\" cy=\"45\" rx=\"18\" ry=\"18\" fill=\"#7F77DD\" opacity=\"0.7\"/><ellipse cx=\"85\" cy=\"45\" rx=\"9\" ry=\"9\" fill=\"#2C2C2A\"/><path d=\"M56,35 Q48,45 56,55\" fill=\"none\" stroke=\"#AFA9EC\" stroke-width=\"5\" stroke-linecap=\"round\" opacity=\"0.8\"/><path d=\"M56,35 Q48,45 56,55\" fill=\"none\" stroke=\"white\" stroke-width=\"2\" stroke-linecap=\"round\" opacity=\"0.6\"/><text x=\"80\" y=\"85\" text-anchor=\"middle\" font-size=\"9\" fill=\"#3C3489\" font-weight=\"500\">Hornhaut = Schutzscheibe</text></svg>"
+    },
+    {
+      "term": { "de": "Glaskörper", "en": "Vitreous Body" },
+      "def": {
+        "de": "Füllt das Auge – wie Gelee",
+        "en": "Fills the eye – like jelly"
+      },
+      "color": "#0F6E56",
+      "bg": "#E1F5EE",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#E1F5EE\"/><ellipse cx=\"80\" cy=\"45\" rx=\"32\" ry=\"32\" fill=\"#9FE1CB\" opacity=\"0.5\" stroke=\"#1D9E75\" stroke-width=\"1.5\"/><ellipse cx=\"80\" cy=\"45\" rx=\"24\" ry=\"24\" fill=\"#5DCAA5\" opacity=\"0.35\"/><ellipse cx=\"80\" cy=\"45\" rx=\"14\" ry=\"14\" fill=\"#1D9E75\" opacity=\"0.25\"/><ellipse cx=\"70\" cy=\"35\" rx=\"6\" ry=\"4\" fill=\"white\" opacity=\"0.5\"/><ellipse cx=\"88\" cy=\"52\" rx=\"4\" ry=\"3\" fill=\"white\" opacity=\"0.3\"/><text x=\"80\" y=\"85\" text-anchor=\"middle\" font-size=\"9\" fill=\"#085041\" font-weight=\"500\">Glaskörper = Gelee-Füllung</text></svg>"
+    },
+    {
+      "term": { "de": "Regenbogenhaut", "en": "Iris" },
+      "def": {
+        "de": "Bunte Fläche um die Pupille",
+        "en": "Colored area around the pupil"
+      },
+      "color": "#D4537E",
+      "bg": "#FBEAF0",
+      "svg": "<svg viewBox=\"0 0 160 90\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"160\" height=\"90\" fill=\"#FBEAF0\"/><ellipse cx=\"80\" cy=\"45\" rx=\"32\" ry=\"32\" fill=\"#ED93B1\" stroke=\"#D4537E\" stroke-width=\"2\"/><ellipse cx=\"80\" cy=\"45\" rx=\"32\" ry=\"32\" fill=\"none\" stroke=\"#993556\" stroke-width=\"0.5\" stroke-dasharray=\"2,3\"/><path d=\"M80,13 Q112,45 80,77\" fill=\"none\" stroke=\"#993556\" stroke-width=\"1\" opacity=\"0.4\"/><path d=\"M80,13 Q48,45 80,77\" fill=\"none\" stroke=\"#F4C0D1\" stroke-width=\"1\" opacity=\"0.6\"/><path d=\"M48,25 Q80,13 112,25\" fill=\"none\" stroke=\"#993556\" stroke-width=\"1\" opacity=\"0.4\"/><path d=\"M48,65 Q80,77 112,65\" fill=\"none\" stroke=\"#F4C0D1\" stroke-width=\"1\" opacity=\"0.6\"/><ellipse cx=\"80\" cy=\"45\" rx=\"12\" ry=\"12\" fill=\"#2C2C2A\"/><ellipse cx=\"74\" cy=\"39\" rx=\"4\" ry=\"3\" fill=\"white\" opacity=\"0.5\"/><text x=\"80\" y=\"87\" text-anchor=\"middle\" font-size=\"8\" fill=\"#72243E\" font-weight=\"500\">Regenbogenhaut = Iris</text></svg>"
+    }
+  ],
+  "puzzlePieces": [
+    {
+      "id": "sclera",
+      "name": { "de": "Lederhaut", "en": "Sclera" },
+      "hint": { "de": "Die weiße Außenhülle des Augapfels", "en": "The white outer shell of the eyeball" },
+      "targetX": 80,
+      "targetY": 80,
+      "color": "#f0ece0",
+      "stroke": "#b4b2a9"
+    },
+    {
+      "id": "choroid",
+      "name": { "de": "Aderhaut", "en": "Choroid" },
+      "hint": { "de": "Liegt zwischen Lederhaut und Netzhaut – versorgt das Auge mit Blut", "en": "Located between sclera and retina – supplies the eye with blood" },
+      "targetX": 80,
+      "targetY": 80,
+      "color": "#c45230",
+      "stroke": "#993C1D"
+    },
+    {
+      "id": "retina",
+      "name": { "de": "Netzhaut", "en": "Retina" },
+      "hint": { "de": "Nimmt Bilder auf wie ein Fotofilm", "en": "Captures images like a photo film" },
+      "targetX": 80,
+      "targetY": 80,
+      "color": "#EF9F27",
+      "stroke": "#BA7517"
+    },
+    {
+      "id": "vitreous",
+      "name": { "de": "Glaskörper", "en": "Vitreous Body" },
+      "hint": { "de": "Füllt den Innenraum des Auges – wie Gelee", "en": "Fills the inner chamber of the eye – like jelly" },
+      "targetX": 80,
+      "targetY": 80,
+      "color": "#9FE1CB",
+      "stroke": "#1D9E75"
+    },
+    {
+      "id": "lens",
+      "name": { "de": "Linse", "en": "Lens" },
+      "hint": { "de": "Bündelt das Licht für scharfe Bilder", "en": "Focuses light for sharp images" },
+      "targetX": 63,
+      "targetY": 80,
+      "color": "#85B7EB",
+      "stroke": "#185FA5"
+    },
+    {
+      "id": "iris",
+      "name": { "de": "Regenbogenhaut", "en": "Iris" },
+      "hint": { "de": "Die bunte Fläche um die Pupille", "en": "The colored area around the pupil" },
+      "targetX": 47,
+      "targetY": 80,
+      "color": "#ED93B1",
+      "stroke": "#D4537E"
+    },
+    {
+      "id": "pupil",
+      "name": { "de": "Pupille", "en": "Pupil" },
+      "hint": { "de": "Schwarze Öffnung – lässt Licht rein", "en": "Black opening – lets light in" },
+      "targetX": 47,
+      "targetY": 80,
+      "color": "#2C2C2A",
+      "stroke": "#2C2C2A"
+    },
+    {
+      "id": "cornea",
+      "name": { "de": "Hornhaut", "en": "Cornea" },
+      "hint": { "de": "Schützende transparente Scheibe vorne", "en": "Protective transparent disc at the front" },
+      "targetX": 32,
+      "targetY": 80,
+      "color": "#AFA9EC",
+      "stroke": "#534AB7"
+    },
+    {
+      "id": "opticnerve",
+      "name": { "de": "Sehnerv", "en": "Optic Nerve" },
+      "hint": { "de": "Leitet Signale vom Auge ans Gehirn", "en": "Transmits signals from eye to brain" },
+      "targetX": 118,
+      "targetY": 80,
+      "color": "#D85A30",
+      "stroke": "#993C1D"
+    }
+  ]
+}
