@@ -26,6 +26,7 @@ import com.familylink.buddy.child.data.FamilyTimeData
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.service.WidgetUpdateService
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
+import com.familylink.buddy.child.service.CommsActivity
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
@@ -485,7 +486,7 @@ class MainActivity : ComponentActivity() {
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                familyData.appUsages.forEach { app ->
+                                familyData.appUsages.filter { isPackageInstalled(applicationContext, it.packageName) }.forEach { app ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
@@ -910,6 +911,41 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Walkie-Talkie Comms Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "📡 Walkie-Talkie",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Sende oder empfange hier Sprachnachrichten mit deinen Eltern.",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFC5C6C7)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = {
+                                        val intent = Intent(applicationContext, CommsActivity::class.java)
+                                        startActivity(intent)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
+                                ) {
+                                    Text("Walkie-Talkie öffnen 🎙️", color = Color.White)
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(32.dp))
 
                         // Controls Block
@@ -996,6 +1032,24 @@ class MainActivity : ComponentActivity() {
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
                             ) {
                                 Text(stringResource(R.string.btn_mock_rocket))
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    val intent = Intent(applicationContext, CommsActivity::class.java).apply {
+                                        putExtra("action", "SIMULATE_RECEIVE")
+                                    }
+                                    startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF818CF8))
+                            ) {
+                                Text("Mock Walkie-Talkie Anruf 🎙️")
                             }
                         }
 
@@ -1237,6 +1291,16 @@ class MainActivity : ComponentActivity() {
         )
         lifecycleScopeLaunch {
             repository.updateVolumeState(state)
+        }
+    }
+
+    private fun isPackageInstalled(context: Context, packageName: String): Boolean {
+        if (packageName.isEmpty()) return false
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
         }
     }
 }

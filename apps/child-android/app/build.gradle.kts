@@ -89,6 +89,9 @@ dependencies {
     // QR Code Generation
     implementation("com.google.zxing:core:3.5.3")
 
+    // WebRTC for Walkie-Talkie Comms
+    implementation("io.github.webrtc-sdk:android:114.5735.10")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

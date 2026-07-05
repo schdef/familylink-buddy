@@ -1,6 +1,7 @@
 package com.familylink.buddy.child.widget
 
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,7 @@ import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import com.familylink.buddy.child.data.TimeBankState
 import com.familylink.buddy.child.MainActivity
+import com.familylink.buddy.child.service.CommsActivity
 
 class FamilyBuddyWidget : GlanceAppWidget() {
 
@@ -76,6 +78,19 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
+                )
+                Spacer(modifier = GlanceModifier.width(8.dp))
+                // 🎙️ Talk Action Button
+                Text(
+                    text = context.getString(R.string.widget_talk_action),
+                    style = TextStyle(
+                        color = ColorProvider(Color(0xFF818CF8)),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    modifier = GlanceModifier
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .clickable(actionStartActivity<CommsActivity>())
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
@@ -133,7 +148,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                     )
                 } else {
                     val activeApps = data.appUsages
-                        .filter { it.usedMinutes > 0 || it.limitMinutes < 1440 }
+                        .filter { (it.usedMinutes > 0 || it.limitMinutes < 1440) && isPackageInstalled(context, it.packageName) }
                         .sortedWith(compareByDescending<AppUsage> { it.limitMinutes < 1440 }
                             .thenByDescending { it.usedMinutes })
                         .take(3)
@@ -254,6 +269,16 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                     ) {}
                 }
             }
+        }
+    }
+
+    private fun isPackageInstalled(context: Context, packageName: String): Boolean {
+        if (packageName.isEmpty()) return false
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
         }
     }
 }

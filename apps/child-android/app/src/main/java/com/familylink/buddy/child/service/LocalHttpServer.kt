@@ -1,6 +1,7 @@
 package com.familylink.buddy.child.service
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.util.Log
 import com.familylink.buddy.child.data.FamilyTimeRepository
@@ -106,6 +107,18 @@ class LocalHttpServer(
                 }
 
                 sendHttpResponse(writer, 200, "OK", responseJson.toString())
+            } else if (firstLine.contains("/comms/walkie-talkie/simulate_receive")) {
+                try {
+                    val intent = Intent(context, CommsActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        putExtra("action", "SIMULATE_RECEIVE")
+                    }
+                    context.startActivity(intent)
+                    sendHttpResponse(writer, 200, "OK", "{\"status\":\"success\",\"mode\":\"simulated_receive\"}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting simulated comms overlay", e)
+                    sendHttpResponse(writer, 500, "Internal Server Error", "{\"error\":\"${e.message}\"}")
+                }
             } else {
                 sendHttpResponse(writer, 404, "Not Found", "{\"error\":\"Not Found\"}")
             }

@@ -72,4 +72,14 @@
     <string name="time_bank_pending">Warten auf Eltern...</string>
     <string name="time_bank_completed">Erledigt!</string>
     <string name="time_bank_claimed">Gekauft! 🎮</string>
+
+    <!-- Walkie-Talkie Strings -->
+    <string name="widget_talk_action">🎙️ Sprechen</string>
+    <string name="comms_overlay_title">Walkie-Talkie</string>
+    <string name="comms_overlay_connecting">Verbinde...</string>
+    <string name="comms_overlay_listening">Elternteil spricht...</string>
+    <string name="comms_overlay_recording">Du sprichst...</string>
+    <string name="comms_overlay_idle">Bereit</string>
+    <string name="comms_overlay_ok_btn">OK / Verstanden</string>
+    <string name="comms_overlay_hold_talk">Halten zum Sprechen</string>
 </resources>

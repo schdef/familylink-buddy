@@ -8,6 +8,7 @@ import '../volume/volume_repository.dart';
 import '../auth/google_sign_in_service.dart';
 import '../auth/sign_in_screen.dart';
 import '../time_bank/time_bank_screen.dart';
+import '../comms/comms_screen.dart';
 
 class DeviceListScreen extends StatefulWidget {
   final GoogleSignInAccount? account;
@@ -234,19 +235,21 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Row(
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF6366F1),
                                       foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                     ),
                                     icon: const Icon(Icons.timer, size: 14),
-                                    label: const Text('Zeitkonto ⏳', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    label: const Text('Zeitkonto ⏳', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                                     onPressed: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
@@ -262,8 +265,33 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                                       );
                                     },
                                   ),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF818CF8),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.mic, size: 14),
+                                    label: const Text('Comms 🎙️', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    onPressed: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => CommsScreen(
+                                            account: widget.account,
+                                            device: PairedDevice(
+                                              name: name,
+                                              fcmToken: childToken,
+                                              lastSeen: lastSeen,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
                                   if (pendingClaimsCount > 0) ...[
-                                    const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(

@@ -832,6 +832,7 @@ class WidgetUpdateService : Service() {
     private var firestoreListenerRegistration: ListenerRegistration? = null
     private var lastExecutedCommandTimestamp: Long = 0
     private var lastExecutedCoinAwardTimestamp: Long = 0
+    private var lastExecutedCommsSessionTimestamp: Long = 0
     private var volumeObserver: ContentObserver? = null
 
     private fun startFirestoreListener() {
@@ -986,6 +987,50 @@ class WidgetUpdateService : Service() {
             if (timestamp > lastExecutedCoinAwardTimestamp) {
                 lastExecutedCoinAwardTimestamp = timestamp
                 triggerCoinAwardFeedback(amount, description, emoji)
+            }
+        }
+
+        // 5. Process Walkie-Talkie Signaling Session Launch
+        val commsSessionId = data["activeCommsSessionId"] as? String
+        val commsTimestampObj = data["activeCommsSessionTimestamp"] as? Timestamp
+        val commsTimestamp = commsTimestampObj?.seconds ?: 0L
+
+        if (commsSessionId != null && commsTimestamp > lastExecutedCommsSessionTimestamp) {
+            lastExecutedCommsSessionTimestamp = commsTimestamp
+            try {
+                val intent = Intent(this, CommsActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra("action", "RECEIVE")
+                    putExtra("sessionId", commsSessionId)
+                }
+                
+                val pendingIntent = PendingIntent.getActivity(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                    .setContentTitle("Walkie-Talkie Anruf")
+                    .setContentText("Eingehender Sprachchat von Elternteil")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_CALL)
+                    .setFullScreenIntent(pendingIntent, true)
+                    .setAutoCancel(true)
+
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.notify(9005, builder.build())
+
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Direct background startActivity failed, relying on fullScreenIntent notification: ${e.message}")
+                }
+                Log.d(TAG, "Launched CommsActivity overlay signaling session $commsSessionId via fullScreenIntent")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch CommsActivity from background service", e)
             }
         }
     }
