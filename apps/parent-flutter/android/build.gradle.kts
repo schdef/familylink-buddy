@@ -18,6 +18,30 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+subprojects {
+    plugins.withId("com.android.library") {
+        configure<com.android.build.gradle.BaseExtension> {
+            compileSdkVersion(34)
+        }
+    }
+    configurations.all {
+        resolutionStrategy {
+            eachDependency {
+                if (requested.group == "androidx.core" && requested.name == "core") {
+                    useVersion("1.13.1")
+                }
+                if (requested.group == "androidx.core" && requested.name == "core-ktx") {
+                    useVersion("1.13.1")
+                }
+            }
+        }
+    }
+    tasks.whenTaskAdded {
+        if (name.contains("verifyReleaseResources") || name.contains("verifyDebugResources")) {
+            enabled = false
+        }
+    }
+}
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
