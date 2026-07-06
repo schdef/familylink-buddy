@@ -38,6 +38,7 @@ class WebRtcManager(
     private var localAudioTrack: org.webrtc.AudioTrack? = null
     private var sessionListener: ListenerRegistration? = null
     private var activeSessionId: String? = null
+    private var deviceToken: String? = null
 
     // Emulator simulate variables
     private var isSimulating = false
@@ -108,6 +109,7 @@ class WebRtcManager(
      */
     fun startListeningToSignaling(deviceToken: String, sessionId: String) {
         if (deviceToken.isEmpty() || sessionId.isEmpty()) return
+        this.deviceToken = deviceToken
         closeActiveSession()
         activeSessionId = sessionId
 
@@ -244,18 +246,20 @@ class WebRtcManager(
 
     private fun sendSdpResponse(type: String, sdp: String) {
         val sessionId = activeSessionId ?: return
+        val token = deviceToken ?: return
         val updates = mapOf(
             "type" to type,
             "sdp" to sdp,
             "timestamp" to com.google.firebase.Timestamp.now()
         )
         // Write to Firestore signaling collection so parent receives it
-        db.collection("pairings").document().collection("comms").document("signaling")
+        db.collection("pairings").document(token).collection("comms").document("signaling")
             .collection("sessions").document(sessionId).update(updates)
     }
 
     private fun sendIceCandidate(candidate: IceCandidate) {
         val sessionId = activeSessionId ?: return
+        val token = deviceToken ?: return
         val updates = mapOf(
             "type" to "ICE_CANDIDATE",
             "sdpMid" to candidate.sdpMid,
@@ -263,7 +267,7 @@ class WebRtcManager(
             "candidate" to candidate.sdp,
             "timestamp" to com.google.firebase.Timestamp.now()
         )
-        db.collection("pairings").document().collection("comms").document("signaling")
+        db.collection("pairings").document(token).collection("comms").document("signaling")
             .collection("sessions").document(sessionId).update(updates)
     }
 
