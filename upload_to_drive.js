@@ -95,22 +95,66 @@ const filesToUpload = [
   }
 ];
 
-const cachedToken = getCachedToken();
-if (cachedToken) {
-  console.log('Verwende zwischengespeicherten Google Access Token...');
-  runUploads(filesToUpload, cachedToken);
-} else {
-  rl.question('Geben Sie Ihren Google Access Token ein: ', (token) => {
-    token = token.trim();
-    if (!token) {
-      console.error('Ungültiger Token. Vorgang abgebrochen.');
-      rl.close();
-      process.exit(1);
+function clearTokenCache() {
+  try {
+    if (fs.existsSync(TOKEN_CACHE_FILE)) {
+      fs.unlinkSync(TOKEN_CACHE_FILE);
     }
-    saveToken(token);
-    runUploads(filesToUpload, token);
+  } catch (e) {
+    // Ignore cache clear errors
+  }
+}
+
+function validateToken(token) {
+  return new Promise((resolve) => {
+    const req = https.get(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${token}`, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      });
+    });
+    req.on('error', () => resolve(false));
   });
 }
+
+async function start() {
+  const cachedToken = getCachedToken();
+  let token = cachedToken;
+
+  if (token) {
+    console.log('Überprüfe zwischengespeicherten Google Access Token...');
+    const isValid = await validateToken(token);
+    if (!isValid) {
+      console.log('⚠️  Der zwischengespeicherte Google Access Token ist abgelaufen oder ungültig. Lösche Cache...');
+      clearTokenCache();
+      token = null;
+    } else {
+      console.log('✅ Zwischengespeicherter Google Access Token ist gültig!');
+    }
+  }
+
+  if (token) {
+    runUploads(filesToUpload, token);
+  } else {
+    rl.question('Geben Sie Ihren Google Access Token ein: ', (inputToken) => {
+      inputToken = inputToken.trim();
+      if (!inputToken) {
+        console.error('Ungültiger Token. Vorgang abgebrochen.');
+        rl.close();
+        process.exit(1);
+      }
+      saveToken(inputToken);
+      runUploads(filesToUpload, inputToken);
+    });
+  }
+}
+
+start();
 
 async function runUploads(files, token) {
   const results = {};
@@ -136,6 +180,11 @@ async function runUploads(files, token) {
       };
     } catch (err) {
       console.error(`❌ Fehler beim Upload von ${fileInfo.name}:`, err);
+      const errMsg = err.toString();
+      if (errMsg.includes('401') || errMsg.includes('Invalid Credentials') || errMsg.includes('UNAUTHENTICATED')) {
+        console.log('⚠️  Ungültiger Token erkannt. Lösche zwischengespeicherten Access Token...');
+        clearTokenCache();
+      }
     }
   }
 
