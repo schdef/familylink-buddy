@@ -55,7 +55,7 @@ function getCachedToken() {
     const stats = fs.statSync(TOKEN_CACHE_FILE);
     const ageInMinutes = (Date.now() - stats.mtimeMs) / 1000 / 60;
     if (ageInMinutes < 50) { // Google access tokens expire after 60 minutes
-      return fs.readFileSync(TOKEN_CACHE_FILE, 'utf8').trim();
+      return fs.readFileSync(TOKEN_CACHE_FILE, 'utf8').replace(/\s+/g, '');
     }
   }
   return null;
@@ -142,7 +142,7 @@ async function start() {
     runUploads(filesToUpload, token);
   } else {
     rl.question('Geben Sie Ihren Google Access Token ein: ', (inputToken) => {
-      inputToken = inputToken.trim();
+      inputToken = inputToken.replace(/\s+/g, '');
       if (!inputToken) {
         console.error('Ungültiger Token. Vorgang abgebrochen.');
         rl.close();
