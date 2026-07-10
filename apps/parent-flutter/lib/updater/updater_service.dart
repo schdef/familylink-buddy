@@ -138,13 +138,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
-      backgroundColor: const Color(0xFF1F2833),
+      backgroundColor: scheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
+      title: Text(
         'Update Verfügbar 🚀',
         style: TextStyle(
-          color: Color(0xFF66FCF1),
+          color: scheme.primary,
           fontWeight: FontWeight.bold,
           fontSize: 20,
         ),
@@ -155,19 +156,19 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         children: [
           Text(
             'Eine neue Version von FamilyLink Buddy Parent (${widget.versionName}) ist verfügbar. Bitte installieren Sie das Update, um fortzufahren.',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: scheme.onSurface.withOpacity(0.7), fontSize: 14),
           ),
           if (_progress >= 0.0) ...[
             const SizedBox(height: 20),
             LinearProgressIndicator(
               value: _progress,
               backgroundColor: Colors.white10,
-              color: const Color(0xFF66FCF1),
+              color: scheme.primary,
             ),
             const SizedBox(height: 8),
             Text(
               'Herunterladen: ${(_progress * 100).toInt()}%',
-              style: const TextStyle(color: Color(0xFF45A29E), fontSize: 12),
+              style: TextStyle(color: scheme.secondary, fontSize: 12),
             ),
           ],
         ],
@@ -177,7 +178,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           TextButton(
             onPressed: _startDownload,
             style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF66FCF1),
+              foregroundColor: scheme.primary,
             ),
             child: const Text('Download & Installieren'),
           ),

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Child brand identity: cyan/teal on near-black (matches MainActivity darkColorScheme) -->
+    <color name="child_bg">#0B0C10</color>
+    <color name="child_surface">#1F2833</color>
+    <color name="child_primary">#66FCF1</color>
+    <color name="child_teal">#45A29E</color>
+    <color name="child_text">#F8FAFC</color>
+    <color name="child_text_secondary">#E2E8F0</color>
+    <color name="child_muted">#94A3B8</color>
+    <color name="child_muted_dim">#64748B</color>
+    <color name="child_border">#475569</color>
+    <color name="child_green">#10B981</color>
+    <color name="child_pulse">#22C55E</color>
+    <color name="child_red">#EF4444</color>
+</resources>

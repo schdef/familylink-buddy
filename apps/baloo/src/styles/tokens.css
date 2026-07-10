@@ -46,7 +46,7 @@
   --transition-normal: all 0.25s ease-out;
   
   /* App constraints */
-  --max-width-app: 800px;           /* Clean tablet-friendly width */
+  --max-width-app: 640px;           /* Tightened per ADHD focus guidance (CLAUDE.md) */
 }
 
 /* Reduced motion preference */

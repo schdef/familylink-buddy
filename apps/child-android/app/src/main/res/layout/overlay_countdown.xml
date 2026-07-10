@@ -13,7 +13,7 @@
         android:layout_height="3dp"
         android:layout_centerHorizontal="true"
         android:layout_alignParentTop="true"
-        android:background="#475569" />
+        android:background="@color/child_border" />
 
     <!-- Left section: Countdown display -->
     <LinearLayout
@@ -31,7 +31,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="03:00"
-            android:textColor="#EF4444"
+            android:textColor="@color/child_red"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -40,7 +40,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/overlay_label"
-            android:textColor="#94A3B8"
+            android:textColor="@color/child_muted"
             android:textSize="9sp"
             android:textStyle="bold"
             android:textAllCaps="true" />
@@ -55,7 +55,7 @@
         android:layout_alignParentRight="true"
         android:layout_marginRight="8dp"
         android:background="@drawable/oval_button_bg"
-        android:textColor="#F8FAFC"
+        android:textColor="@color/child_text"
         android:text="+"
         android:textSize="18sp"
         android:textStyle="bold"
