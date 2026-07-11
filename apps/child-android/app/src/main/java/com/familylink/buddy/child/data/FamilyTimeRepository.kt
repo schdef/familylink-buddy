@@ -104,12 +104,42 @@ class FamilyTimeRepository(private val context: Context) {
         private val KEY_TIME_BANK_BALANCE = intPreferencesKey("time_bank_balance")
 
         fun serializeAppUsages(usages: List<AppUsage>): String {
-            return usages.joinToString("|") {
-                "${it.packageName};${it.appName};${it.usedMinutes};${it.limitMinutes}"
+            val array = org.json.JSONArray()
+            usages.forEach { app ->
+                val obj = org.json.JSONObject().apply {
+                    put("pkg", app.packageName)
+                    put("name", app.appName)
+                    put("used", app.usedMinutes)
+                    put("limit", app.limitMinutes)
+                }
+                array.put(obj)
             }
+            return array.toString()
         }
 
         fun deserializeAppUsages(serialized: String): List<AppUsage> {
+            if (serialized.isEmpty() || serialized == "[]") return emptyList()
+            // Legacy CSV format detection
+            if (!serialized.startsWith("[")) {
+                return deserializeLegacyCsv(serialized)
+            }
+            return try {
+                val array = org.json.JSONArray(serialized)
+                (0 until array.length()).map { i ->
+                    val obj = array.getJSONObject(i)
+                    AppUsage(
+                        packageName = obj.optString("pkg", ""),
+                        appName = obj.optString("name", ""),
+                        usedMinutes = obj.optInt("used", 0),
+                        limitMinutes = obj.optInt("limit", 0)
+                    )
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+        private fun deserializeLegacyCsv(serialized: String): List<AppUsage> {
             if (serialized.isEmpty()) return emptyList()
             return try {
                 serialized.split("|").mapNotNull {

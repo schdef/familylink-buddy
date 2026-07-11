@@ -5,7 +5,9 @@ data class FamilyTimeData(
     val totalLimitMinutes: Int = 120,
     val lastUpdatedMillis: Long = System.currentTimeMillis(),
     val appUsages: List<AppUsage> = emptyList()
-)
+) {
+    val safeRemainingMinutes: Int get() = totalRemainingMinutes.coerceAtLeast(0)
+}
 
 data class AppUsage(
     val packageName: String,

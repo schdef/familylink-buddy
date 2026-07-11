@@ -165,15 +165,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        @Suppress("DEPRECATION")
-        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
-            if (serviceClass.name == service.service.className) {
-                return true
-            }
-        }
-        return false
+    private fun isServiceRunning(): Boolean {
+        return getSharedPreferences("widget_service_prefs", Context.MODE_PRIVATE)
+            .getBoolean("service_running", false)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -368,7 +362,7 @@ class MainActivity : ComponentActivity() {
                     val showConfetti = remember { mutableStateOf(false) }
                     val particles = remember { mutableStateListOf<Particle>() }
 
-                    var serviceRunning by remember { mutableStateOf(isServiceRunning(WidgetUpdateService::class.java)) }
+                    var serviceRunning by remember { mutableStateOf(isServiceRunning()) }
                     val hasOverlayPermission by canDrawOverlaysState
 
                     var pairingCode by remember { mutableStateOf("Lade...") }

@@ -20,6 +20,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
@@ -31,10 +33,10 @@ class FamilyBuddyWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repository = FamilyTimeRepository(context.applicationContext)
-        val dataState = repository.familyTimeData.first()
-        val timeBankState = repository.timeBankState.first()
 
         provideContent {
+            val dataState by repository.familyTimeData.collectAsState(FamilyTimeData())
+            val timeBankState by repository.timeBankState.collectAsState(TimeBankState())
             // Build the widget UI
             WidgetContent(context, dataState, timeBankState)
         }
@@ -42,7 +44,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
 
     @Composable
     private fun WidgetContent(context: Context, data: FamilyTimeData, timeBankState: TimeBankState) {
-        val remainingMinutes = data.totalRemainingMinutes
+        val remainingMinutes = data.safeRemainingMinutes
         val limitMinutes = data.totalLimitMinutes
         val lastUpdated = data.lastUpdatedMillis
 
@@ -163,7 +165,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                         )
                     } else {
                         activeApps.forEach { app ->
-                            AppUsageRow(app, remainingMinutes, remainingPercent)
+                            AppUsageRow(app, remainingMinutes, remainingPercent, context)
                             Spacer(modifier = GlanceModifier.height(6.dp))
                         }
                     }
@@ -202,13 +204,13 @@ class FamilyBuddyWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun AppUsageRow(app: AppUsage, deviceRemainingMinutes: Int, deviceRemainingPercent: Float) {
+    private fun AppUsageRow(app: AppUsage, deviceRemainingMinutes: Int, deviceRemainingPercent: Float, context: Context) {
         val isUnlimited = app.limitMinutes >= 1440
 
         val actualRemaining = if (isUnlimited) {
-            deviceRemainingMinutes
+            deviceRemainingMinutes.coerceAtLeast(0)
         } else {
-            minOf(app.remainingMinutes, deviceRemainingMinutes)
+            minOf(app.remainingMinutes, deviceRemainingMinutes.coerceAtLeast(0))
         }
 
         val appPercent = if (isUnlimited) {
@@ -241,9 +243,9 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
                     text = if (isUnlimited) {
-                        LocalContext.current.getString(R.string.widget_app_unlimited, actualRemaining)
+                        context.getString(R.string.widget_app_unlimited, actualRemaining)
                     } else {
-                        LocalContext.current.getString(R.string.widget_app_remaining, actualRemaining)
+                        context.getString(R.string.widget_app_remaining, actualRemaining)
                     },
                     style = TextStyle(
                         color = ColorProvider(progressColor),

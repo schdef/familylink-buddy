@@ -141,15 +141,22 @@ async function start() {
   if (token) {
     runUploads(filesToUpload, token);
   } else {
-    rl.question('Geben Sie Ihren Google Access Token ein: ', (inputToken) => {
-      inputToken = inputToken.replace(/\s+/g, '');
-      if (!inputToken) {
-        console.error('Ungültiger Token. Vorgang abgebrochen.');
-        rl.close();
-        process.exit(1);
-      }
-      saveToken(inputToken);
-      runUploads(filesToUpload, inputToken);
+    let tokenBuffer = '';
+    let timeoutId = null;
+    console.log('Geben Sie Ihren Google Access Token ein:');
+    rl.on('line', (line) => {
+      tokenBuffer += line.trim();
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const finalToken = tokenBuffer.replace(/\s+/g, '');
+        if (!finalToken) {
+          console.error('Ungültiger Token. Vorgang abgebrochen.');
+          rl.close();
+          process.exit(1);
+        }
+        saveToken(finalToken);
+        runUploads(filesToUpload, finalToken);
+      }, 100);
     });
   }
 }

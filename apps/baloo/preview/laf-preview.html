@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FamilyLink Buddy — Look & Feel Preview</title>
+<style>
+  :root{
+    /* PARENT identity (indigo/violet on navy) */
+    --p-bg:#0F172A; --p-surface:#1E293B; --p-primary:#6366F1; --p-violet:#8B5CF6;
+    --p-text:#FFFFFF; --p-muted:#94A3B8; --p-border:#334155; --p-green:#10B981; --p-red:#EF4444;
+    /* CHILD identity (cyan/teal on near-black) */
+    --c-bg:#0B0C10; --c-surface:#1F2833; --c-primary:#66FCF1; --c-teal:#45A29E;
+    --c-text:#F8FAFC; --c-muted:#94A3B8; --c-border:#334155; --c-green:#10B981;
+    /* BALOO */
+    --b-bg:#FDFCFB; --b-text:#2D2B2A; --b-success:#4D8066; --b-muted:#6E6A66;
+    --font:'Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:var(--font);}
+  body{background:#ECEAE6;color:#222;padding:32px;line-height:1.45;}
+  h1{font-size:22px;margin-bottom:4px;}
+  .sub{color:#666;margin-bottom:28px;font-size:14px;}
+  .section{margin-bottom:40px;}
+  .section h2{font-size:16px;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+  .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;}
+  .tag.now{background:#FBE3E3;color:#B55A5A;}
+  .tag.fix{background:#E3F3EA;color:#4D8066;}
+  .row{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;}
+  .card-wrap{display:flex;flex-direction:column;gap:6px;}
+  .card-wrap .lbl{font-size:12px;color:#555;font-weight:600;}
+  .phone{width:240px;height:430px;border-radius:26px;padding:14px;position:relative;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.18);}
+  .dialog{width:260px;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.25);}
+  .widget{width:230px;border-radius:18px;padding:14px;box-shadow:0 6px 18px rgba(0,0,0,.22);}
+  .overlay{width:230px;height:90px;border-radius:14px;padding:10px;position:relative;box-shadow:0 6px 18px rgba(0,0,0,.3);}
+  /* generic bits */
+  .bar{height:8px;border-radius:999px;background:rgba(255,255,255,.15);overflow:hidden;margin-top:6px;}
+  .bar>i{display:block;height:100%;}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:600;font-size:12px;padding:9px 14px;border-radius:10px;border:none;cursor:pointer;}
+  .hdr{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;}
+  .dot{width:8px;height:8px;border-radius:50%;}
+  .big{font-size:24px;font-weight:800;}
+  .small{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+  .row2{display:flex;justify-content:space-between;font-size:11px;margin-top:6px;}
+  /* WEB baloo */
+  .web{width:340px;background:var(--b-bg);border-radius:16px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,.12);color:var(--b-text);}
+  .web .h{font-size:18px;font-weight:800;margin-bottom:4px;}
+  .web .p{font-size:12px;color:var(--b-muted);margin-bottom:14px;}
+  .web .chk{height:6px;border-radius:999px;background:#EAE6DF;overflow:hidden;margin-bottom:18px;}
+  .web .chk>i{display:block;height:100%;background:var(--b-success);width:60%;}
+  .web .gbtn{width:100%;background:var(--b-success);color:#fff;border:none;border-radius:12px;padding:11px;font-weight:700;font-size:13px;cursor:pointer;}
+  .badge{font-size:10px;padding:2px 7px;border-radius:999px;font-weight:700;}
+  /* note boxes */
+  .note{font-size:12px;color:#444;background:#fff;border-left:3px solid #ccc;padding:8px 12px;border-radius:0 8px 8px 0;margin-top:10px;max-width:520px;}
+  .note.fix{border-left-color:#4D8066;}
+  .note.now{border-left-color:#B55A5A;}
+</style>
+</head>
+<body>
+  <h1>FamilyLink Buddy — Look &amp; Feel Preview</h1>
+  <div class="sub">Three apps, two brand identities. Left = current state, Right = proposed fix. Magic colors → named design tokens.</div>
+
+  <!-- ============ CHILD WIDGET ============ -->
+  <div class="section">
+    <h2>① Child home-screen <b>Widget</b> &amp; <b>Lock Overlay</b> <span class="tag now">NOW wears parent's navy/indigo</span> <span class="tag fix">FIX uses child's cyan/teal</span></h2>
+    <div class="row">
+      <!-- widget now -->
+      <div class="card-wrap">
+        <div class="lbl">Widget — NOW (parent palette)</div>
+        <div class="widget" style="background:#0F172A;color:#F8FAFC;">
+          <div class="hdr" style="color:#94A3B8;"><span class="dot" style="background:#22C55E;"></span> FAMILYLINK BUDDY <span style="color:#818CF8;margin-left:auto;">🎙️ Sprechen</span></div>
+          <div class="big" style="color:#F8FAFC;">45 Min. verbleibend</div>
+          <div class="bar" style="width:220px;background:#1E293B;"><i style="width:36%;background:#6366F1;"></i></div>
+          <div style="margin-top:12px;font-size:12px;color:#E2E8F0;">YouTube <span style="float:right;color:#10B981;font-size:11px;">15 Min. übrig</span></div>
+          <div class="bar" style="width:220px;background:#1E293B;"><i style="width:50%;background:#10B981;"></i></div>
+          <div style="margin-top:10px;font-size:12px;color:#E2E8F0;">Minecraft <span style="float:right;color:#10B981;font-size:11px;">40 Min. übrig</span></div>
+          <div class="bar" style="width:220px;background:#1E293B;"><i style="width:64%;background:#10B981;"></i></div>
+        </div>
+      </div>
+      <!-- widget fix -->
+      <div class="card-wrap">
+        <div class="lbl">Widget — FIX (child palette)</div>
+        <div class="widget" style="background:var(--c-bg);color:var(--c-text);">
+          <div class="hdr" style="color:#94A3B8;"><span class="dot" style="background:#22C55E;"></span> FAMILYLINK BUDDY <span style="color:var(--c-primary);margin-left:auto;">🎙️ Sprechen</span></div>
+          <div class="big" style="color:var(--c-text);">45 Min. verbleibend</div>
+          <div class="bar" style="width:220px;background:var(--c-surface);"><i style="width:36%;background:var(--c-primary);"></i></div>
+          <div style="margin-top:12px;font-size:12px;color:#E2E8F0;">YouTube <span style="float:right;color:#10B981;font-size:11px;">15 Min. übrig</span></div>
+          <div class="bar" style="width:220px;background:var(--c-surface);"><i style="width:50%;background:var(--c-primary);"></i></div>
+          <div style="margin-top:10px;font-size:12px;color:#E2E8F0;">Minecraft <span style="float:right;color:#10B981;font-size:11px;">40 Min. übrig</span></div>
+          <div class="bar" style="width:220px;background:var(--c-surface);"><i style="width:64%;background:var(--c-primary);"></i></div>
+        </div>
+      </div>
+      <!-- overlay now -->
+      <div class="card-wrap">
+        <div class="lbl">Lock Overlay — NOW (parent palette)</div>
+        <div class="overlay" style="background:linear-gradient(135deg,#0F172A,#1E293B);color:#F8FAFC;">
+          <div style="position:absolute;top:6px;left:50%;width:32px;height:3px;background:#475569;transform:translateX(-50%);border-radius:2px;"></div>
+          <div style="position:absolute;left:14px;top:34px;">
+            <div class="big" style="font-size:22px;color:#EF4444;">03:00</div>
+            <div class="small" style="color:#94A3B8;">Noch Zeit</div>
+          </div>
+          <div style="position:absolute;right:10px;top:38px;width:32px;height:32px;border-radius:50%;background:#6366F1;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;">+</div>
+        </div>
+      </div>
+      <!-- overlay fix -->
+      <div class="card-wrap">
+        <div class="lbl">Lock Overlay — FIX (child palette)</div>
+        <div class="overlay" style="background:linear-gradient(135deg,#0B0C10,#1F2833);color:var(--c-text);">
+          <div style="position:absolute;top:6px;left:50%;width:32px;height:3px;background:#475569;transform:translateX(-50%);border-radius:2px;"></div>
+          <div style="position:absolute;left:14px;top:34px;">
+            <div class="big" style="font-size:22px;color:#EF4444;">03:00</div>
+            <div class="small" style="color:#94A3B8;">Noch Zeit</div>
+          </div>
+          <div style="position:absolute;right:10px;top:38px;width:32px;height:32px;border-radius:50%;background:var(--c-primary);color:#04201f;display:flex;align-items:center;justify-content:center;font-weight:800;">+</div>
+        </div>
+      </div>
+    </div>
+    <div class="note now">NOW: <code>widget_preview.xml</code> &amp; <code>overlay_countdown.xml</code> hardcode <code>#0F172A / #6366F1 / #818CF8</code> — the parent's identity.</div>
+    <div class="note fix">FIX: move every hex into <code>res/values/colors.xml</code> (e.g. <code>@color/child_bg</code>, <code>@color/child_primary</code>) and point the layouts at the child tokens.</div>
+  </div>
+
+  <!-- ============ PARENT UPDATER DIALOG ============ -->
+  <div class="section">
+    <h2>② Parent <b>Update dialog</b> <span class="tag now">NOW wears child's cyan/teal</span> <span class="tag fix">FIX uses parent's indigo</span></h2>
+    <div class="row">
+      <div class="card-wrap">
+        <div class="lbl">Dialog — NOW (child cyan #66FCF1)</div>
+        <div class="dialog" style="background:#1F2833;color:#fff;">
+          <div style="font-size:18px;font-weight:800;color:#66FCF1;">Update Verfügbar 🚀</div>
+          <p style="font-size:12px;color:#94A3B8;margin:10px 0;">Eine neue Version ist verfügbar. Bitte installieren.</p>
+          <div class="bar" style="background:rgba(255,255,255,.1);"><i style="width:45%;background:#66FCF1;"></i></div>
+          <div style="font-size:11px;color:#45A29E;margin-top:6px;">Herunterladen: 45%</div>
+          <button class="btn" style="margin-top:14px;width:100%;background:#66FCF1;color:#04201f;">Download &amp; Installieren</button>
+        </div>
+      </div>
+      <div class="card-wrap">
+        <div class="lbl">Dialog — FIX (parent indigo #6366F1)</div>
+        <div class="dialog" style="background:var(--p-surface);color:#fff;">
+          <div style="font-size:18px;font-weight:800;color:var(--p-primary);">Update Verfügbar 🚀</div>
+          <p style="font-size:12px;color:var(--p-muted);margin:10px 0;">Eine neue Version ist verfügbar. Bitte installieren.</p>
+          <div class="bar" style="background:rgba(255,255,255,.1);"><i style="width:45%;background:var(--p-primary);"></i></div>
+          <div style="font-size:11px;color:var(--p-violet);margin-top:6px;">Herunterladen: 45%</div>
+          <button class="btn" style="margin-top:14px;width:100%;background:var(--p-primary);color:#fff;">Download &amp; Installieren</button>
+        </div>
+      </div>
+    </div>
+    <div class="note now">NOW: <code>lib/updater/updater_service.dart</code> uses <code>0xFF66FCF1 / 0xFF45A29E / 0xFF1F2833</code> — the child's colors.</div>
+    <div class="note fix">FIX: route through <code>Theme.of(context).colorScheme.primary</code> (or the new <code>AppTheme</code>). One source of truth for the parent palette.</div>
+  </div>
+
+  <!-- ============ BALOO ============ -->
+  <div class="section">
+    <h2>③ Baloo web — <b>font load</b> &amp; <b>width tightening</b> <span class="tag fix">FIX</span></h2>
+    <div class="row">
+      <div class="card-wrap">
+        <div class="lbl">NOW — Outfit declared but never loaded → falls back to system-ui; 800px shell</div>
+        <div class="web" style="font-family:system-ui,sans-serif;">
+          <div class="h">Das Auge 👁️</div>
+          <div class="p">Lerne die Teile des Auges spielerisch kennen.</div>
+          <div class="chk"><i></i></div>
+          <button class="gbtn">Weiter</button>
+          <div style="margin-top:12px;"><span class="badge" style="background:#EDF5F1;color:#4D8066;">⭐ 12 Sterne</span></div>
+        </div>
+      </div>
+      <div class="card-wrap">
+        <div class="lbl">FIX — Outfit loaded from Google Fonts; 640px shell (per ADHD guideline)</div>
+        <div class="web" style="font-family:'Outfit',system-ui,sans-serif;border:2px solid #4D8066;">
+          <div class="h">Das Auge 👁️</div>
+          <div class="p">Lerne die Teile des Auges spielerisch kennen.</div>
+          <div class="chk"><i></i></div>
+          <button class="gbtn">Weiter</button>
+          <div style="margin-top:12px;"><span class="badge" style="background:#EDF5F1;color:#4D8066;">⭐ 12 Sterne</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="note fix">FIX: add <code>&lt;link&gt;</code> to Outfit in <code>index.html</code>; change <code>--max-width-app</code> 800px → 640px to match CLAUDE.md's ADHD focus guidance.</div>
+  </div>
+
+  <!-- ============ TOKEN MAP ============ -->
+  <div class="section">
+    <h2>④ Proposed shared token map (stops the drift)</h2>
+    <div class="row">
+      <div class="web" style="width:300px;background:#0F172A;color:#fff;">
+        <div class="hdr" style="color:#94A3B8;font-size:12px;font-weight:700;">PARENT tokens</div>
+        <div style="display:flex;gap:8px;margin:8px 0;">
+          <span style="width:34px;height:34px;border-radius:8px;background:#0F172A;border:1px solid #334;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#1E293B;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#6366F1;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#8B5CF6;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#10B981;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#EF4444;"></span>
+        </div>
+        <code style="font-size:11px;color:#94A3B8;">bg · surface · primary · violet · green · red</code>
+      </div>
+      <div class="web" style="width:300px;background:#0B0C10;color:#fff;">
+        <div class="hdr" style="color:#94A3B8;font-size:12px;font-weight:700;">CHILD tokens</div>
+        <div style="display:flex;gap:8px;margin:8px 0;">
+          <span style="width:34px;height:34px;border-radius:8px;background:#0B0C10;border:1px solid #333;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#1F2833;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#66FCF1;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#45A29E;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#10B981;"></span>
+          <span style="width:34px;height:34px;border-radius:8px;background:#EF4444;"></span>
+        </div>
+        <code style="font-size:11px;color:#94A3B8;">bg · surface · primary · teal · green · red</code>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -74,8 +74,10 @@ class WidgetUpdateService : Service() {
     private var isOverlayShown = false
     private var isMockRocketRunning = false
     private var overlaySecondsRemaining = 180
-    private var overlaySecondsRemainingFloat = 180f
+    private var overlayStartTimeMs = 0L
+    private var overlayTotalSeconds = 180
     private var overlayTickerJob: Job? = null
+    private var volumeReportJob: Job? = null
     private var currentSizePreset = 2 // 0 = Small, 1 = Medium, 2 = Large
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -95,58 +97,12 @@ class WidgetUpdateService : Service() {
         }
     }
 
-    private val volumeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == "android.media.VOLUME_CHANGED_ACTION") {
-                Log.d(TAG, "Volume change broadcast received")
-                serviceScope.launch {
-                    val volumeState = repository.volumeState.first()
-                    val token = volumeState.deviceToken
-                    if (token.isNotEmpty()) {
-                        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                        val mediaVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                        val ringtoneVol = audioManager.getStreamVolume(AudioManager.STREAM_RING)
-                        val alarmVol = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
-                        val maxMedia = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        val maxRingtone = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
-                        val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
 
-                        val localState = VolumeState(
-                            mediaVolume = mediaVol,
-                            ringtoneVolume = ringtoneVol,
-                            alarmVolume = alarmVol,
-                            maxMediaVolume = maxMedia,
-                            maxRingtoneVolume = maxRingtone,
-                            maxAlarmVolume = maxAlarm,
-                            isMuted = mediaVol == 0,
-                            deviceToken = token
-                        )
-                        // Update local repository so the child UI changes instantly
-                        repository.updateVolumeState(localState)
-
-                        // Update Firestore report so parent gets notified
-                        try {
-                            val db = FirebaseFirestore.getInstance()
-                            db.collection("pairings").document(token).update("volumeReport", hashMapOf(
-                                "mediaVolume" to mediaVol,
-                                "ringtoneVolume" to ringtoneVol,
-                                "alarmVolume" to alarmVol,
-                                "maxMediaVolume" to maxMedia,
-                                "maxRingtoneVolume" to maxRingtone,
-                                "maxAlarmVolume" to maxAlarm
-                            ))
-                            Log.d(TAG, "Broadcast volume change synced to Firestore: $mediaVol")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to update Firestore in volume BroadcastReceiver", e)
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     override fun onCreate() {
         super.onCreate()
+        getSharedPreferences("widget_service_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("service_running", true).apply()
         repository = FamilyTimeRepository(applicationContext)
         createNotificationChannel()
 
@@ -155,9 +111,6 @@ class WidgetUpdateService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         registerReceiver(screenReceiver, filter)
-
-        val volumeFilter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
-        registerReceiver(volumeReceiver, volumeFilter)
 
         startDatabaseObserver()
 
@@ -192,8 +145,9 @@ class WidgetUpdateService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        getSharedPreferences("widget_service_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("service_running", false).apply()
         unregisterReceiver(screenReceiver)
-        unregisterReceiver(volumeReceiver)
         hideOverlay()
         stopForegroundMonitor()
         firestoreListenerRegistration?.remove()
@@ -278,13 +232,12 @@ class WidgetUpdateService : Service() {
                     }
 
                     val updatedData = currentData.copy(
-                        totalRemainingMinutes = (currentData.totalRemainingMinutes - 1).coerceAtLeast(0),
                         appUsages = updatedAppUsages,
                         lastUpdatedMillis = System.currentTimeMillis()
                     )
 
                     repository.updateFamilyTimeData(updatedData)
-                    Log.d(TAG, "Ticker updated: ${updatedData.totalRemainingMinutes} min remaining")
+                    Log.d(TAG, "Ticker updated: ${updatedData.totalRemainingMinutes} min remaining (no local decrement)")
                     
                     // Force refresh all widget instances
                     FamilyBuddyWidget().updateAll(applicationContext)
@@ -324,21 +277,28 @@ class WidgetUpdateService : Service() {
     private fun getForegroundPackageName(): String? {
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return null
         val time = System.currentTimeMillis()
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 1000 * 60, time)
-        if (!stats.isNullOrEmpty()) {
-            val sortedStats = stats.sortedBy { it.lastTimeUsed }
-            val active = sortedStats.lastOrNull { 
-                it.packageName != packageName && 
-                it.packageName != "com.android.systemui"
-            }
-            if (active != null) {
-                val homePkg = getHomePackageName()
-                if (active.packageName != homePkg) {
-                    return active.packageName
-                }
-            }
-        }
-        return null
+        
+        // Kleineres Fenster + INTERVAL_BEST
+        val stats = usageStatsManager.queryUsageStats(
+            UsageStatsManager.INTERVAL_BEST, time - 10_000, time)
+        
+        // Erweiterter Filter für System-Packages
+        val systemPackages = setOf(
+            "com.android.systemui",
+            "com.android.launcher",
+            "com.android.launcher3", 
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",   // Samsung
+            "com.miui.home",                   // Xiaomi
+            "com.huawei.android.launcher",     // Huawei
+            packageName                        // eigene App
+        )
+        val homePkg = getHomePackageName()
+        
+        return stats
+            ?.filter { it.packageName !in systemPackages && it.packageName != homePkg }
+            ?.maxByOrNull { it.lastTimeUsed }
+            ?.packageName
     }
 
     private fun checkForegroundAndLockState(data: FamilyTimeData) {
@@ -389,10 +349,13 @@ class WidgetUpdateService : Service() {
             }
 
             if (!isOverlayShown) {
+                overlayTotalSeconds = overlaySecondsRemaining
+                overlayStartTimeMs = System.currentTimeMillis()
                 showOverlay()
             } else {
                 if (foregroundLockedApp?.packageName != previousAppPkg || Math.abs(overlaySecondsRemaining - previousRemaining) > 5) {
-                    overlaySecondsRemainingFloat = overlaySecondsRemaining.toFloat()
+                    overlayTotalSeconds = overlaySecondsRemaining
+                    overlayStartTimeMs = System.currentTimeMillis()
                 }
             }
         } else {
@@ -439,6 +402,8 @@ class WidgetUpdateService : Service() {
     private fun triggerMockRocketLaunch() {
         isMockRocketRunning = true
         overlaySecondsRemaining = 30
+        overlayTotalSeconds = 30
+        overlayStartTimeMs = System.currentTimeMillis()
         showOverlay()
         startOverlayCountdown()
         
@@ -613,9 +578,6 @@ class WidgetUpdateService : Service() {
             private var initialY = 0
             private var initialTouchX = 0f
             private var initialTouchY = 0f
-            private var touchDownTime = 0L
-            private var tapCount = 0
-            private var lastTapTime = 0L
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
@@ -624,7 +586,6 @@ class WidgetUpdateService : Service() {
                         initialY = overlayParams?.y ?: 0
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
-                        touchDownTime = System.currentTimeMillis()
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -640,26 +601,10 @@ class WidgetUpdateService : Service() {
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
-                        val duration = System.currentTimeMillis() - touchDownTime
-                        val dx = Math.abs(event.rawX - initialTouchX)
-                        val dy = Math.abs(event.rawY - initialTouchY)
-                        val density = resources.displayMetrics.density
-
-                        // Consider it a tap if duration is short and drag movement is within 8dp bounds
-                        if (duration < 250 && dx < 8 * density && dy < 8 * density) {
-                            val now = System.currentTimeMillis()
-                            if (now - lastTapTime < 500) {
-                                tapCount++
-                            } else {
-                                tapCount = 1
-                            }
-                            lastTapTime = now
-
-                            Log.d(TAG, "Overlay tapped: $tapCount/4")
-                            if (tapCount >= 4) {
-                                Log.d(TAG, "Overlay tapped 4 times: dismissing")
-                                hideOverlay()
-                            }
+                        try {
+                            windowManager?.updateViewLayout(overlayView, overlayParams)
+                        } catch (e: Exception) {
+                            // View might have been removed
                         }
                         return true
                     }
@@ -672,8 +617,6 @@ class WidgetUpdateService : Service() {
     private fun startOverlayCountdown() {
         overlayTickerJob?.cancel()
         overlayTickerJob = serviceScope.launch(Dispatchers.Main) {
-            overlaySecondsRemainingFloat = overlaySecondsRemaining.toFloat()
-
             val animationContainer = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.animationContainer)
             val earthImage = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.earthImage)
             val launchpadImage = overlayView?.findViewById<View>(com.familylink.buddy.child.R.id.launchpadImage)
@@ -685,6 +628,9 @@ class WidgetUpdateService : Service() {
                 val currentData = repository.familyTimeData.first()
                 val fgLocked = foregroundLockedApp
                 val isDeviceLocked = currentData.totalRemainingMinutes <= 0
+
+                val elapsedMs = System.currentTimeMillis() - overlayStartTimeMs
+                val remainingSeconds = (overlayTotalSeconds - elapsedMs / 1000f).coerceAtLeast(0f)
 
                 if (isDeviceLocked || (fgLocked != null && fgLocked.remainingMinutes <= 0)) {
                     // App or Device Lock State: Show LOCK status and correct label
@@ -709,7 +655,7 @@ class WidgetUpdateService : Service() {
                     rocketImage?.rotation = (angle * 180f / Math.PI.toFloat()) + 180f
 
                 } else {
-                    val t = overlaySecondsRemainingFloat
+                    val t = remainingSeconds
                     val labelPrefix = fgLocked?.appName ?: getString(R.string.lock_reason_device)
 
                     // 1. Update Countdown Text once per second
@@ -720,11 +666,15 @@ class WidgetUpdateService : Service() {
                     overlayView?.findViewById<TextView>(com.familylink.buddy.child.R.id.countdownText)?.text = timeStr
 
                     // 2. Handle Space Mission Animation Stages
-                    if (t <= 30f && t > 0f) {
+                    val stage1Start = overlayTotalSeconds.coerceAtMost(30).toFloat()
+                    val stage2Start = (stage1Start - 10f).coerceAtLeast(0f)
+                    val stage3Start = (stage1Start - 20f).coerceAtLeast(0f)
+
+                    if (t <= stage1Start && t > 0f) {
                         animationContainer?.visibility = View.VISIBLE
 
-                        if (t > 20f) {
-                            // Stage 1: Preparing (30s to 20s)
+                        if (t > stage2Start) {
+                            // Stage 1: Preparing
                             earthImage?.visibility = View.GONE
                             launchpadImage?.visibility = View.VISIBLE
                             rocketImage?.visibility = View.VISIBLE
@@ -743,15 +693,18 @@ class WidgetUpdateService : Service() {
                             rocketImage?.rotation = 0f
                             launchpadImage?.translationY = 0f
 
-                        } else if (t > 10f) {
-                            // Stage 2: Launching (20s to 10s)
+                        } else if (t > stage3Start) {
+                            // Stage 2: Launching
                             earthImage?.visibility = View.GONE
                             launchpadImage?.visibility = View.VISIBLE
                             rocketImage?.visibility = View.VISIBLE
 
                             countdownLabel?.text = "$labelPrefix: ${getString(R.string.rocket_launching)}"
 
-                            val progress = (20f - t) / 10f // 0.0 to 1.0
+                            val diff = stage1Start - stage2Start
+                            val progress = if (diff > 0f) {
+                                ((stage2Start - t) / (stage2Start - stage3Start)).coerceIn(0f, 1f)
+                            } else 0f
 
                             val containerHeight = animationContainer?.height ?: 0
                             val rocketHeight = rocketImage?.height ?: 0
@@ -769,14 +722,16 @@ class WidgetUpdateService : Service() {
                             launchpadImage?.translationY = progress * 40f * resources.displayMetrics.density
 
                         } else {
-                            // Stage 3: Orbiting Earth (10s to 0s)
+                            // Stage 3: Orbiting Earth
                             launchpadImage?.visibility = View.GONE
                             earthImage?.visibility = View.VISIBLE
                             rocketImage?.visibility = View.VISIBLE
 
                             countdownLabel?.text = "$labelPrefix: ${getString(R.string.rocket_orbit)}"
 
-                            val progress = (10f - t) / 10f // 0.0 to 1.0
+                            val progress = if (stage3Start > 0f) {
+                                ((stage3Start - t) / stage3Start).coerceIn(0f, 1f)
+                            } else 1f
                             val angle = progress * 2f * Math.PI.toFloat()
 
                             val orbitRadiusDp = when (currentSizePreset) {
@@ -807,7 +762,6 @@ class WidgetUpdateService : Service() {
                         hideOverlay()
                         break
                     }
-                    overlaySecondsRemainingFloat -= 0.05f
                 }
 
                 delay(50)
@@ -852,7 +806,9 @@ class WidgetUpdateService : Service() {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 super.onChange(selfChange)
-                serviceScope.launch {
+                volumeReportJob?.cancel()
+                volumeReportJob = serviceScope.launch {
+                    delay(200) // Debounce
                     val volumeState = repository.volumeState.first()
                     val token = volumeState.deviceToken
                     if (token.isNotEmpty()) {

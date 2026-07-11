@@ -54,34 +54,41 @@ console.log(`Auto-detektierte Versionen:`);
 console.log(`📱 Child App:  Code ${childVer.code}, Name ${childVer.name}`);
 console.log(`👨 Parent App: Code ${parentVer.code}, Name ${parentVer.name}\n`);
 
-rl.question('Geben Sie Ihren Google Access Token ein: ', (token) => {
-  token = token.trim();
-  if (!token) {
-    console.error('Ungültiger Token. Vorgang abgebrochen.');
-    rl.close();
-    process.exit(1);
-  }
-
-  const filesToUpload = [
-    {
-      path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/app-release.apk'),
-      storageName: 'releases/child-app-release.apk',
-      name: 'child',
-      versionCode: childVer.code,
-      versionName: childVer.name,
-      mime: 'application/vnd.android.package-archive'
-    },
-    {
-      path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk'),
-      storageName: 'releases/parent-app-release.apk',
-      name: 'parent',
-      versionCode: parentVer.code,
-      versionName: parentVer.name,
-      mime: 'application/vnd.android.package-archive'
+let tokenBuffer = '';
+let timeoutId = null;
+console.log('Geben Sie Ihren Google Access Token ein:');
+rl.on('line', (line) => {
+  tokenBuffer += line.trim();
+  if (timeoutId) clearTimeout(timeoutId);
+  timeoutId = setTimeout(() => {
+    const finalToken = tokenBuffer.replace(/\s+/g, '');
+    if (!finalToken) {
+      console.error('Ungültiger Token. Vorgang abgebrochen.');
+      rl.close();
+      process.exit(1);
     }
-  ];
 
-  runFlow(filesToUpload, token);
+    const filesToUpload = [
+      {
+        path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/app-release.apk'),
+        storageName: 'releases/child-app-release.apk',
+        name: 'child',
+        versionCode: childVer.code,
+        versionName: childVer.name,
+        mime: 'application/vnd.android.package-archive'
+      },
+      {
+        path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk'),
+        storageName: 'releases/parent-app-release.apk',
+        name: 'parent',
+        versionCode: parentVer.code,
+        versionName: parentVer.name,
+        mime: 'application/vnd.android.package-archive'
+      }
+    ];
+
+    runFlow(filesToUpload, finalToken);
+  }, 100);
 });
 
 async function runFlow(files, token) {
