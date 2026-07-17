@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +37,8 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   late Animation<double> _fadeAnimation;
   final Map<String, double> _localValues = {};
   final Map<String, DateTime> _lastSetTimes = {};
+  bool _isRefreshing = false;
+  Timer? _refreshTimeoutTimer;
 
   @override
   void initState() {
@@ -61,6 +64,21 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   void _onRepositoryUpdate() {
     if (mounted) {
       setState(() {
+        // Check if we were refreshing and just received a fresh volume report timestamp
+        if (_isRefreshing &&
+            _volumeRepository.volumeState.timestamp != null &&
+            _volumeRepository.volumeState.timestamp!.isAfter(DateTime.now().subtract(const Duration(seconds: 5)))) {
+          _isRefreshing = false;
+          _refreshTimeoutTimer?.cancel();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Status erfolgreich aktualisiert!'),
+              backgroundColor: Color(0xFF10B981),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
         _localValues.removeWhere((streamName, localVal) {
           int repoVal = -1;
           if (streamName == 'MEDIA') repoVal = _volumeRepository.volumeState.mediaVolume;
@@ -74,10 +92,41 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
 
   @override
   void dispose() {
+    _refreshTimeoutTimer?.cancel();
     _volumeRepository.removeListener(_onRepositoryUpdate);
     _animController.dispose();
     super.dispose();
   }
+
+  Future<void> _triggerRefresh() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    _refreshTimeoutTimer?.cancel();
+    _refreshTimeoutTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted && _isRefreshing) {
+        setState(() {
+          _isRefreshing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Fehler beim Aktualisieren: Keine Antwort vom Gerät. Ist das Kind online?',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+      }
+    });
+
+    await _volumeRepository.requestVolumeReport(widget.device.fcmToken);
+  }
+
+  // Using static utility from VolumeRepository instead
 
   Future<void> _handleSignOut() async {
     final pairingRepo = PairingRepository();
@@ -265,7 +314,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
         builder: (context, repo, child) {
           final isOnline = repo.isConnected &&
               repo.lastSeen != null &&
-              DateTime.now().difference(repo.lastSeen!).inMinutes < 5;
+              DateTime.now().difference(repo.lastSeen!).inMinutes < 2;
 
           return FadeTransition(
             opacity: _fadeAnimation,
@@ -319,23 +368,31 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Row(
+                                Wrap(
+                                  spacing: 8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     Container(
                                       width: 8,
                                       height: 8,
                                       decoration: BoxDecoration(
-                                        color: isOnline ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                                        color: isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                                         shape: BoxShape.circle,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
                                     Text(
-                                      isOnline ? 'Online' : 'Offline / Standby',
+                                      isOnline ? 'Verbunden' : 'Offline',
                                       style: TextStyle(
-                                        color: isOnline ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                                        color: isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      '(${VolumeRepository.getLastSeenText(repo.lastSeen)})',
+                                      style: const TextStyle(
+                                        color: Color(0xFF94A3B8),
+                                        fontSize: 12,
                                       ),
                                     ),
                                   ],
@@ -343,12 +400,22 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                               ],
                             ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.refresh, color: Color(0xFF94A3B8)),
-                            onPressed: () {
-                              repo.requestVolumeReport(widget.device.fcmToken);
-                            },
-                          ),
+                          _isRefreshing
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Color(0xFF6366F1),
+                                    ),
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.refresh, color: Color(0xFF94A3B8)),
+                                  onPressed: _triggerRefresh,
+                                ),
                         ],
                       ),
                     ),

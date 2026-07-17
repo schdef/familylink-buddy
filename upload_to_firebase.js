@@ -70,16 +70,16 @@ rl.on('line', (line) => {
 
     const filesToUpload = [
       {
-        path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/app-release.apk'),
-        storageName: 'releases/child-app-release.apk',
+        path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/child-release.apk'),
+        storageName: 'releases/child-release.apk',
         name: 'child',
         versionCode: childVer.code,
         versionName: childVer.name,
         mime: 'application/vnd.android.package-archive'
       },
       {
-        path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk'),
-        storageName: 'releases/parent-app-release.apk',
+        path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/parent-release.apk'),
+        storageName: 'releases/parent-release.apk',
         name: 'parent',
         versionCode: parentVer.code,
         versionName: parentVer.name,

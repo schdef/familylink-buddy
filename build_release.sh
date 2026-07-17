@@ -32,6 +32,9 @@ if [ $? -ne 0 ]; then
     echo "❌ Child app build failed!"
     exit 1
 fi
+if [ -f "$CHILD_DIR/app/build/outputs/apk/release/app-release.apk" ]; then
+    mv "$CHILD_DIR/app/build/outputs/apk/release/app-release.apk" "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk"
+fi
 echo "✅ Child app build successful!"
 echo ""
 
@@ -42,12 +45,15 @@ if [ $? -ne 0 ]; then
     echo "❌ Parent app build failed!"
     exit 1
 fi
+if [ -f "$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk" ]; then
+    mv "$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk" "$PARENT_DIR/build/app/outputs/flutter-apk/parent-release.apk"
+fi
 echo "✅ Parent app build successful!"
 echo ""
 
 # 3. Print Output Summary
-CHILD_APK="$CHILD_DIR/app/build/outputs/apk/release/app-release.apk"
-PARENT_APK="$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk"
+CHILD_APK="$CHILD_DIR/app/build/outputs/apk/release/child-release.apk"
+PARENT_APK="$PARENT_DIR/build/app/outputs/flutter-apk/parent-release.apk"
 
 echo "==========================================="
 echo "🎉 Compilation Complete! Optimized APKs:"

@@ -50,10 +50,15 @@ class VolumeRepository extends ChangeNotifier {
   bool _isConnected = false;
   DateTime? _lastSeen;
   String? _parentFcmToken;
+  String? _localIpAddress;
 
   VolumeState get volumeState => _volumeState;
   bool get isConnected => _isConnected;
   DateTime? get lastSeen => _lastSeen;
+  String? get localIpAddress => _localIpAddress;
+
+  @visibleForTesting
+  set localIpAddress(String? ip) => _localIpAddress = ip;
 
   StreamSubscription<DocumentSnapshot>? _subscription;
 
@@ -69,6 +74,14 @@ class VolumeRepository extends ChangeNotifier {
       if (snapshot.exists) {
         final data = snapshot.data();
         if (data != null) {
+          _localIpAddress = data['localIpAddress'] as String?;
+
+          final dbLastSeen = data['lastSeen'] as Timestamp?;
+          if (dbLastSeen != null) {
+            _lastSeen = dbLastSeen.toDate();
+            _isConnected = true;
+          }
+
           final report = data['volumeReport'] as Map<dynamic, dynamic>?;
           if (report != null) {
             final int mediaVol = (report['mediaVolume'] as num?)?.toInt() ?? -1;
@@ -85,9 +98,11 @@ class VolumeRepository extends ChangeNotifier {
               timestamp: DateTime.now(),
             );
             _isConnected = true;
-            _lastSeen = DateTime.now();
-            notifyListeners();
+            if (dbLastSeen == null) {
+              _lastSeen = DateTime.now();
+            }
           }
+          notifyListeners();
         }
       }
     });
@@ -134,6 +149,22 @@ class VolumeRepository extends ChangeNotifier {
     }
   }
 
+  void _updateVolumeStateLocally(String stream, int level) {
+    _volumeState = VolumeState(
+      mediaVolume: stream == 'MEDIA' || stream == 'ALL' ? level : _volumeState.mediaVolume,
+      ringtoneVolume: stream == 'RINGTONE' || stream == 'ALL' ? level : _volumeState.ringtoneVolume,
+      alarmVolume: stream == 'ALARM' || stream == 'ALL' ? level : _volumeState.alarmVolume,
+      maxMediaVolume: _volumeState.maxMediaVolume,
+      maxRingtoneVolume: _volumeState.maxRingtoneVolume,
+      maxAlarmVolume: _volumeState.maxAlarmVolume,
+      isMuted: level == 0 && (stream == 'ALL' || (stream == 'MEDIA' && _volumeState.ringtoneVolume == 0)),
+      timestamp: DateTime.now(),
+    );
+    _isConnected = true;
+    _lastSeen = DateTime.now();
+    notifyListeners();
+  }
+
   /// Send a SET_VOLUME command to the child device via FCM (or local HTTP in dev mode)
   Future<bool> setVolume({
     required String childFcmToken,
@@ -145,19 +176,7 @@ class VolumeRepository extends ChangeNotifier {
         final url = Uri.parse('http://10.0.2.2:8085/set_volume?stream=$stream&level=$level');
         final response = await http.post(url);
         if (response.statusCode == 200) {
-          _volumeState = VolumeState(
-            mediaVolume: stream == 'MEDIA' || stream == 'ALL' ? level : _volumeState.mediaVolume,
-            ringtoneVolume: stream == 'RINGTONE' || stream == 'ALL' ? level : _volumeState.ringtoneVolume,
-            alarmVolume: stream == 'ALARM' || stream == 'ALL' ? level : _volumeState.alarmVolume,
-            maxMediaVolume: _volumeState.maxMediaVolume,
-            maxRingtoneVolume: _volumeState.maxRingtoneVolume,
-            maxAlarmVolume: _volumeState.maxAlarmVolume,
-            isMuted: level == 0 && stream == 'ALL',
-            timestamp: DateTime.now(),
-          );
-          _isConnected = true;
-          _lastSeen = DateTime.now();
-          notifyListeners();
+          _updateVolumeStateLocally(stream, level);
           return true;
         }
       } catch (e) {
@@ -166,6 +185,23 @@ class VolumeRepository extends ChangeNotifier {
       return false;
     }
 
+    // Try Direct local network REST API first
+    if (_localIpAddress != null && _localIpAddress!.isNotEmpty) {
+      try {
+        final url = Uri.parse('http://$_localIpAddress:8085/set_volume?stream=$stream&level=$level');
+        debugPrint('Attempting direct local network volume change to: $url');
+        final response = await http.post(url).timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
+          debugPrint('Direct local network volume change succeeded!');
+          _updateVolumeStateLocally(stream, level);
+          return true;
+        }
+      } catch (e) {
+        debugPrint('Direct local network volume change failed: $e. Falling back to Firestore.');
+      }
+    }
+
+    // Fallback: Firestore write
     try {
       await FirebaseFirestore.instance.collection('pairings').doc(childFcmToken).update({
         'volumeCommand': {
@@ -200,6 +236,27 @@ class VolumeRepository extends ChangeNotifier {
       return;
     }
 
+    // Try Direct local network REST API first
+    if (_localIpAddress != null && _localIpAddress!.isNotEmpty) {
+      try {
+        final url = Uri.parse('http://$_localIpAddress:8085/volume_report');
+        debugPrint('Attempting direct local network volume report request to: $url');
+        final response = await http.get(url).timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
+          debugPrint('Direct local network volume report succeeded!');
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          _volumeState = VolumeState.fromJson(data);
+          _isConnected = true;
+          _lastSeen = DateTime.now();
+          notifyListeners();
+          return;
+        }
+      } catch (e) {
+        debugPrint('Direct local network volume report failed: $e. Falling back to Firestore.');
+      }
+    }
+
+    // Fallback: Firestore write
     try {
       await FirebaseFirestore.instance.collection('pairings').doc(childFcmToken).update({
         'volumeCommand': {
@@ -210,6 +267,26 @@ class VolumeRepository extends ChangeNotifier {
       });
     } catch (e) {
       debugPrint('Firestore direct requestVolumeReport failed: $e');
+    }
+  }
+
+  static String getLastSeenText(DateTime? lastSeen, {DateTime? now}) {
+    if (lastSeen == null) return 'Keine Verbindungshistorie';
+    final referenceTime = now ?? DateTime.now();
+    final diff = referenceTime.difference(lastSeen);
+    if (diff.inSeconds < 10) {
+      return 'Gerade eben aktiv';
+    } else if (diff.inSeconds < 60) {
+      return 'Vor ${diff.inSeconds} Sek. aktiv';
+    } else if (diff.inMinutes < 60) {
+      return 'Vor ${diff.inMinutes} Min. aktiv';
+    } else {
+      final hours = diff.inHours;
+      if (hours < 24) {
+        return 'Vor $hours Std. aktiv';
+      } else {
+        return 'Vor ${diff.inDays} Tagen aktiv';
+      }
     }
   }
 }

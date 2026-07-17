@@ -30,8 +30,8 @@ if [ "$choice" = "1" ] || [ -z "$choice" ]; then
     echo "Öffne Google Drive Ordner im Browser..."
     open "https://drive.google.com/drive/folders/1HtkqM0q94wqDUy1TzOv9XAn7mL3BnYEz?usp=sharing"
     echo "Öffne Finder mit den erzeugten APKs..."
-    open -R apps/child-android/app/build/outputs/apk/release/app-release.apk
-    open -R apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk
+    open -R apps/child-android/app/build/outputs/apk/release/child-release.apk
+    open -R apps/parent-flutter/build/app/outputs/flutter-apk/parent-release.apk
     echo "👉 Ziehen Sie einfach die beiden APKs aus dem Finder in Ihren Browser-Tab!"
 elif [ "$choice" = "2" ]; then
     # Trigger GDrive upload utility

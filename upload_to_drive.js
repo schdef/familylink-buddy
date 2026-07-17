@@ -78,16 +78,16 @@ console.log(`👨 Parent App: Code ${parentVer.code}, Name ${parentVer.name}\n`)
 
 const filesToUpload = [
   {
-    path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/app-release.apk'),
-    name: 'child-app-release.apk',
+    path: path.join(__dirname, 'apps/child-android/app/build/outputs/apk/release/child-release.apk'),
+    name: 'child-release.apk',
     key: 'child',
     versionCode: childVer.code,
     versionName: childVer.name,
     mime: 'application/vnd.android.package-archive'
   },
   {
-    path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk'),
-    name: 'parent-app-release.apk',
+    path: path.join(__dirname, 'apps/parent-flutter/build/app/outputs/flutter-apk/parent-release.apk'),
+    name: 'parent-release.apk',
     key: 'parent',
     versionCode: parentVer.code,
     versionName: parentVer.name,

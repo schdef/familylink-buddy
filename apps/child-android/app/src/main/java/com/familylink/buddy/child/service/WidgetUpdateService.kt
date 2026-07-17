@@ -242,6 +242,26 @@ class WidgetUpdateService : Service() {
                     // Force refresh all widget instances
                     FamilyBuddyWidget().updateAll(applicationContext)
                 }
+
+                // Send periodic heartbeat & IP status to Firestore pairings doc to show online status
+                val volumeState = repository.volumeState.first()
+                val token = volumeState.deviceToken
+                if (token.isNotEmpty()) {
+                    try {
+                        val db = FirebaseFirestore.getInstance()
+                        val ip = getLocalIpAddress() ?: ""
+                        val updates = hashMapOf<String, Any>(
+                            "lastSeen" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        )
+                        if (ip.isNotEmpty()) {
+                            updates["localIpAddress"] = ip
+                        }
+                        db.collection("pairings").document(token).update(updates)
+                        Log.d(TAG, "Periodic heartbeat and IP ($ip) updated in Firestore")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update periodic heartbeat", e)
+                    }
+                }
                 
                 // Use 10s intervals for fast emulator testing; otherwise, use real-time 60s intervals
                 val tickInterval = if (com.familylink.buddy.child.BuildConfig.USE_EMULATOR) 10_000L else 60_000L
@@ -833,17 +853,25 @@ class WidgetUpdateService : Service() {
                         // Update local repository so the child UI changes instantly
                         repository.updateVolumeState(localState)
 
-                        // Update Firestore report so parent gets notified
+                        // Update Firestore report & lastSeen so parent gets notified
                         try {
                             val db = FirebaseFirestore.getInstance()
-                            db.collection("pairings").document(token).update("volumeReport", hashMapOf(
-                                "mediaVolume" to mediaVol,
-                                "ringtoneVolume" to ringtoneVol,
-                                "alarmVolume" to alarmVol,
-                                "maxMediaVolume" to maxMedia,
-                                "maxRingtoneVolume" to maxRingtone,
-                                "maxAlarmVolume" to maxAlarm
-                            ))
+                            val ip = getLocalIpAddress() ?: ""
+                            val updates = hashMapOf<String, Any>(
+                                "volumeReport" to hashMapOf(
+                                    "mediaVolume" to mediaVol,
+                                    "ringtoneVolume" to ringtoneVol,
+                                    "alarmVolume" to alarmVol,
+                                    "maxMediaVolume" to maxMedia,
+                                    "maxRingtoneVolume" to maxRingtone,
+                                    "maxAlarmVolume" to maxAlarm
+                                ),
+                                "lastSeen" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                            )
+                            if (ip.isNotEmpty()) {
+                                updates["localIpAddress"] = ip
+                            }
+                            db.collection("pairings").document(token).update(updates)
                             Log.d(TAG, "Local physical volume change detected and reported to Firestore")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to update Firestore volume report on local change", e)
@@ -1041,7 +1069,7 @@ class WidgetUpdateService : Service() {
             notifyManager.notify(9002, notif)
         }
 
-        // Write back volume report
+        // Write back volume report & lastSeen
         val report = hashMapOf(
             "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
             "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
@@ -1052,7 +1080,15 @@ class WidgetUpdateService : Service() {
         )
         try {
             val db = FirebaseFirestore.getInstance()
-            db.collection("pairings").document(token).update("volumeReport", report)
+            val ip = getLocalIpAddress() ?: ""
+            val updates = hashMapOf<String, Any>(
+                "volumeReport" to report,
+                "lastSeen" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+            )
+            if (ip.isNotEmpty()) {
+                updates["localIpAddress"] = ip
+            }
+            db.collection("pairings").document(token).update(updates)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update volume report in Firestore", e)
         }
@@ -1122,5 +1158,27 @@ class WidgetUpdateService : Service() {
             FamilyBuddyWidget().updateAll(applicationContext)
             Log.d(TAG, "Direct sync update applied: $remaining mins remaining")
         }
+    }
+
+    private fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                        val ip = address.hostAddress
+                        if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) {
+                            return ip
+                        }
+                    }
+                }
+            }
+        } catch (ex: Exception) {
+            Log.e(TAG, "Error getting IP Address", ex)
+        }
+        return null
     }
 }
