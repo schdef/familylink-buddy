@@ -82,4 +82,7 @@
     <string name="comms_overlay_idle">Bereit</string>
     <string name="comms_overlay_ok_btn">OK / Verstanden</string>
     <string name="comms_overlay_hold_talk">Halten zum Sprechen</string>
+
+    <!-- Accessibility Service Strings -->
+    <string name="accessibility_service_desc">Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe</string>
 </resources>

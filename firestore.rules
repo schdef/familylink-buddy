@@ -53,6 +53,9 @@ service cloud.firestore {
       match /comms/{document=**} {
         allow read, write: if isParent(childToken) || isChild(childToken);
       }
+      match /screenshots/{screenshotId} {
+        allow read, write: if isParent(childToken) || isChild(childToken);
+      }
     }
 
     match /users/{userId} {

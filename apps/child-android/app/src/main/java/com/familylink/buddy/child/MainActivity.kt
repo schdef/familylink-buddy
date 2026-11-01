@@ -27,6 +27,7 @@ import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.service.WidgetUpdateService
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 import com.familylink.buddy.child.service.CommsActivity
+import com.familylink.buddy.child.ui.SetupGuideCard
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
@@ -927,6 +928,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Setup Guide Card: System Checklist (Accessibility, Family Link, Battery, DND)
+                        SetupGuideCard(
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
                         Spacer(modifier = Modifier.height(16.dp))
 

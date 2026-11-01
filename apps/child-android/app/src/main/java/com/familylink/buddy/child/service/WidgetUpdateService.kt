@@ -32,6 +32,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.Timestamp
 import com.familylink.buddy.child.data.AppUsage
+import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.data.VolumeState
 import android.media.AudioManager
 import android.provider.Settings
@@ -79,6 +80,8 @@ class WidgetUpdateService : Service() {
     private var overlayTickerJob: Job? = null
     private var volumeReportJob: Job? = null
     private var currentSizePreset = 2 // 0 = Small, 1 = Medium, 2 = Large
+    private var lastManualWifiBlock: Boolean? = null
+    private var lastBedtimeSchedule: BedtimeSchedule? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -807,6 +810,8 @@ class WidgetUpdateService : Service() {
     private var lastExecutedCommandTimestamp: Long = 0
     private var lastExecutedCoinAwardTimestamp: Long = 0
     private var lastExecutedCommsSessionTimestamp: Long = 0
+    private var lastScreenshotRequestId: String? = null
+    private var lastCloseAppTimestamp: Long = 0L
     private var volumeObserver: ContentObserver? = null
 
     private fun startFirestoreListener() {
@@ -1017,6 +1022,96 @@ class WidgetUpdateService : Service() {
                 Log.e(TAG, "Failed to launch CommsActivity from background service", e)
             }
         }
+
+        // 6. Process Bedtime Schedule
+        val bedtimeScheduleMap = data["bedtimeSchedule"] as? Map<*, *>
+        if (bedtimeScheduleMap != null) {
+            try {
+                @Suppress("UNCHECKED_CAST")
+                val schedule = BedtimeSchedule.fromMap(bedtimeScheduleMap as Map<String, Any?>)
+                if (schedule != lastBedtimeSchedule) {
+                    lastBedtimeSchedule = schedule
+                    serviceScope.launch {
+                        repository.updateBedtimeSchedule(schedule)
+                        BedtimeScheduleReceiver.scheduleNextAlarms(applicationContext, schedule)
+                        Log.d(TAG, "Bedtime schedule updated from Firestore: $schedule")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling bedtimeSchedule from Firestore", e)
+            }
+        }
+
+        // 7. Process Manual Wi-Fi Block
+        val manualWifiBlock = data["manualWifiBlock"] as? Boolean
+        if (manualWifiBlock != null && manualWifiBlock != lastManualWifiBlock) {
+            lastManualWifiBlock = manualWifiBlock
+            Log.i(TAG, "Manual Wi-Fi toggle from Firestore: block=$manualWifiBlock, turnOn=${!manualWifiBlock}")
+            WifiAccessibilityHelperService.requestToggle(applicationContext, turnOn = !manualWifiBlock)
+        }
+
+        // 8. Process Remote Screenshot Request
+        val screenshotRequest = data["screenshotRequest"] as? Map<*, *>
+        if (screenshotRequest != null) {
+            val requestId = (screenshotRequest["requestId"] ?: screenshotRequest["id"])?.toString()
+            if (!requestId.isNullOrEmpty() && requestId != lastScreenshotRequestId) {
+                lastScreenshotRequestId = requestId
+                Log.i(TAG, "New screenshot request received: $requestId")
+                WifiAccessibilityHelperService.captureScreenshot { base64, foregroundApp, foregroundPackage, error ->
+                    if (base64 != null) {
+                        try {
+                            val db = FirebaseFirestore.getInstance()
+                            val isoDate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                java.time.Instant.now().toString()
+                            } else {
+                                java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                }.format(java.util.Date())
+                            }
+
+                            val screenshotDoc = hashMapOf<String, Any>(
+                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                "base64Image" to base64,
+                                "foregroundApp" to foregroundApp,
+                                "foregroundPackage" to foregroundPackage,
+                                "capturedAt" to isoDate,
+                                "device" to Build.MODEL
+                            )
+
+                            db.collection("pairings").document(token)
+                                .collection("screenshots").document(requestId)
+                                .set(screenshotDoc)
+                                .addOnSuccessListener {
+                                    Log.i(TAG, "Screenshot uploaded successfully for request: $requestId")
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e(TAG, "Failed to upload screenshot for request: $requestId", e)
+                                }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error handling captured screenshot upload", e)
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to capture screenshot for request $requestId: $error")
+                    }
+                }
+            }
+        }
+
+        // 9. Process Close Current App Command
+        val closeAppCommand = data["closeAppCommand"] as? Map<*, *>
+        if (closeAppCommand != null) {
+            val timestamp = when (val ts = closeAppCommand["timestamp"]) {
+                is Timestamp -> ts.toDate().time
+                is Number -> ts.toLong()
+                is String -> ts.toLongOrNull() ?: 0L
+                else -> 0L
+            }
+            if (timestamp > lastCloseAppTimestamp) {
+                lastCloseAppTimestamp = timestamp
+                Log.i(TAG, "Executing closeAppCommand from Firestore (timestamp=$timestamp)")
+                WifiAccessibilityHelperService.closeCurrentApp(applicationContext)
+            }
+        }
     }
 
     private fun triggerCoinAwardFeedback(amount: Int, description: String, emoji: String) {
@@ -1119,9 +1214,18 @@ class WidgetUpdateService : Service() {
 
     private fun setStreamVolume(audioManager: AudioManager, stream: Int, level: Int) {
         try {
+            if (stream == AudioManager.STREAM_RING && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                if (notificationManager?.isNotificationPolicyAccessGranted != true) {
+                    Log.w(TAG, "Skipping STREAM_RING: DND notification policy access not granted")
+                    return
+                }
+            }
             val max = audioManager.getStreamMaxVolume(stream)
             val clamped = level.coerceIn(0, max)
             audioManager.setStreamVolume(stream, clamped, AudioManager.FLAG_SHOW_UI)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException setting volume for stream $stream (likely DND): ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set volume for stream $stream: ${e.message}", e)
         }

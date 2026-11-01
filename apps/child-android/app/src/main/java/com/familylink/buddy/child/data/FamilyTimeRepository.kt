@@ -50,6 +50,35 @@ class FamilyTimeRepository(private val context: Context) {
             )
         }
 
+    val bedtimeSchedule: Flow<BedtimeSchedule> = context.dataStore.data
+        .map { preferences ->
+            val activeDaysStr = preferences[KEY_BEDTIME_ACTIVE_DAYS] ?: "1,2,3,4,5,6,7"
+            val activeDays = if (activeDaysStr.isBlank()) emptyList() else {
+                activeDaysStr.split(",").mapNotNull { it.trim().toIntOrNull() }
+            }
+            BedtimeSchedule(
+                isEnabled = preferences[KEY_BEDTIME_ENABLED] ?: false,
+                bedtimeHour = preferences[KEY_BEDTIME_HOUR] ?: 20,
+                bedtimeMinute = preferences[KEY_BEDTIME_MINUTE] ?: 30,
+                wakeupHour = preferences[KEY_WAKEUP_HOUR] ?: 6,
+                wakeupMinute = preferences[KEY_WAKEUP_MINUTE] ?: 45,
+                activeDays = if (activeDays.isNotEmpty()) activeDays else listOf(1, 2, 3, 4, 5, 6, 7),
+                isCurrentlyBlocked = preferences[KEY_BEDTIME_CURRENTLY_BLOCKED] ?: false
+            )
+        }
+
+    suspend fun updateBedtimeSchedule(schedule: BedtimeSchedule) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BEDTIME_ENABLED] = schedule.isEnabled
+            preferences[KEY_BEDTIME_HOUR] = schedule.bedtimeHour
+            preferences[KEY_BEDTIME_MINUTE] = schedule.bedtimeMinute
+            preferences[KEY_WAKEUP_HOUR] = schedule.wakeupHour
+            preferences[KEY_WAKEUP_MINUTE] = schedule.wakeupMinute
+            preferences[KEY_BEDTIME_ACTIVE_DAYS] = schedule.activeDays.joinToString(",")
+            preferences[KEY_BEDTIME_CURRENTLY_BLOCKED] = schedule.isCurrentlyBlocked
+        }
+    }
+
     suspend fun updateTimeBankState(state: TimeBankState) {
         context.dataStore.edit { preferences ->
             preferences[KEY_TIME_BANK_ENABLED] = state.isEnabled
@@ -102,6 +131,14 @@ class FamilyTimeRepository(private val context: Context) {
         private val KEY_TIME_BANK_ENABLED = booleanPreferencesKey("time_bank_enabled")
         private val KEY_TIME_BANK_CHILD_VISIBLE = booleanPreferencesKey("time_bank_child_visible")
         private val KEY_TIME_BANK_BALANCE = intPreferencesKey("time_bank_balance")
+        // Bedtime schedule
+        private val KEY_BEDTIME_ENABLED = booleanPreferencesKey("bedtime_enabled")
+        private val KEY_BEDTIME_HOUR = intPreferencesKey("bedtime_hour")
+        private val KEY_BEDTIME_MINUTE = intPreferencesKey("bedtime_minute")
+        private val KEY_WAKEUP_HOUR = intPreferencesKey("bedtime_wakeup_hour")
+        private val KEY_WAKEUP_MINUTE = intPreferencesKey("bedtime_wakeup_minute")
+        private val KEY_BEDTIME_ACTIVE_DAYS = stringPreferencesKey("bedtime_active_days")
+        private val KEY_BEDTIME_CURRENTLY_BLOCKED = booleanPreferencesKey("bedtime_currently_blocked")
 
         fun serializeAppUsages(usages: List<AppUsage>): String {
             val array = org.json.JSONArray()

@@ -5,8 +5,10 @@ import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioManager
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.VolumeState
 import com.google.firebase.messaging.FirebaseMessaging
@@ -23,7 +25,6 @@ import com.familylink.buddy.child.data.FamilyTimeData
 import androidx.glance.appwidget.updateAll
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 
-
 class VolumeCommandService : FirebaseMessagingService() {
 
     companion object {
@@ -35,6 +36,8 @@ class VolumeCommandService : FirebaseMessagingService() {
         const val TYPE_SET_VOLUME = "SET_VOLUME"
         const val TYPE_GET_VOLUME = "GET_VOLUME"
         const val TYPE_SCREEN_TIME_UPDATE = "SCREEN_TIME_UPDATE"
+        const val TYPE_SET_SCHEDULE = "SET_SCHEDULE"
+        const val TYPE_TOGGLE_WIFI = "TOGGLE_WIFI"
 
         // Volume stream names
         const val STREAM_MEDIA = "MEDIA"
@@ -57,15 +60,35 @@ class VolumeCommandService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val data = message.data
-        val type = data["type"] ?: return
-        Log.d(TAG, "FCM message received: type=$type, data=$data")
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val wakeLock = powerManager?.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "FamilyLinkBuddy:VolumeCommandLock"
+        )?.apply {
+            acquire(5000L) // Max 5s
+        }
 
-        when (type) {
-            TYPE_SET_VOLUME -> handleSetVolume(data)
-            TYPE_GET_VOLUME -> reportVolumeToParent(data["parentToken"])
-            TYPE_SCREEN_TIME_UPDATE -> handleScreenTimeUpdate(data)
-            else -> Log.w(TAG, "Unknown FCM message type: $type")
+        try {
+            val data = message.data
+            val type = data["type"] ?: return
+            Log.d(TAG, "FCM message received: type=$type, data=$data")
+
+            when (type) {
+                TYPE_SET_VOLUME -> handleSetVolume(data)
+                TYPE_GET_VOLUME -> reportVolumeToParent(data["parentToken"])
+                TYPE_SCREEN_TIME_UPDATE -> handleScreenTimeUpdate(data)
+                TYPE_SET_SCHEDULE -> handleSetSchedule(data)
+                TYPE_TOGGLE_WIFI -> handleToggleWifi(data)
+                else -> Log.w(TAG, "Unknown FCM message type: $type")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling FCM message", e)
+        } finally {
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock.release()
+                }
+            } catch (ignored: Exception) {}
         }
     }
 
@@ -108,6 +131,61 @@ class VolumeCommandService : FirebaseMessagingService() {
         }
     }
 
+    private fun handleSetSchedule(data: Map<String, String>) {
+        val scheduleJson = data["schedule"]
+        val schedule = if (!scheduleJson.isNullOrBlank()) {
+            BedtimeSchedule.fromJson(scheduleJson)
+        } else {
+            val isEnabled = data["enabled"]?.toBoolean() ?: data["isEnabled"]?.toBoolean() ?: true
+            val bedtimeHour = data["bedtimeHour"]?.toIntOrNull() ?: 20
+            val bedtimeMinute = data["bedtimeMinute"]?.toIntOrNull() ?: 30
+            val wakeupHour = data["wakeupHour"]?.toIntOrNull() ?: 6
+            val wakeupMinute = data["wakeupMinute"]?.toIntOrNull() ?: 45
+            val activeDaysStr = data["activeDays"]
+            val activeDays = if (!activeDaysStr.isNullOrBlank()) {
+                if (activeDaysStr.startsWith("[")) {
+                    try {
+                        val arr = JSONArray(activeDaysStr)
+                        (0 until arr.length()).map { arr.getInt(it) }
+                    } catch (e: Exception) {
+                        listOf(1, 2, 3, 4, 5, 6, 7)
+                    }
+                } else {
+                    activeDaysStr.split(",").mapNotNull { it.trim().toIntOrNull() }
+                }
+            } else {
+                listOf(1, 2, 3, 4, 5, 6, 7)
+            }
+
+            BedtimeSchedule(
+                isEnabled = isEnabled,
+                bedtimeHour = bedtimeHour,
+                bedtimeMinute = bedtimeMinute,
+                wakeupHour = wakeupHour,
+                wakeupMinute = wakeupMinute,
+                activeDays = if (activeDays.isNotEmpty()) activeDays else listOf(1, 2, 3, 4, 5, 6, 7)
+            )
+        }
+
+        serviceScope.launch {
+            val repo = FamilyTimeRepository(applicationContext)
+            repo.updateBedtimeSchedule(schedule)
+            BedtimeScheduleReceiver.scheduleNextAlarms(applicationContext, schedule)
+            Log.d(TAG, "Bedtime schedule updated from FCM: $schedule")
+        }
+    }
+
+    private fun handleToggleWifi(data: Map<String, String>) {
+        val block = data["block"]?.equals("true", ignoreCase = true) == true || data["block"] == "1"
+        val turnOn = if (data.containsKey("turnOn")) {
+            data["turnOn"]?.equals("true", ignoreCase = true) == true || data["turnOn"] == "1"
+        } else {
+            !block
+        }
+        Log.i(TAG, "FCM Wi-Fi toggle request: turnOn=$turnOn")
+        WifiAccessibilityHelperService.requestToggle(applicationContext, turnOn)
+    }
+
     private fun handleSetVolume(data: Map<String, String>) {
         val stream = data["stream"] ?: STREAM_MEDIA
         val level = data["level"]?.toIntOrNull() ?: return
@@ -144,10 +222,19 @@ class VolumeCommandService : FirebaseMessagingService() {
 
     private fun setVolume(audioManager: AudioManager, stream: Int, level: Int) {
         try {
+            if (stream == AudioManager.STREAM_RING && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                if (notificationManager?.isNotificationPolicyAccessGranted != true) {
+                    Log.w(TAG, "Skipping STREAM_RING: DND access not granted")
+                    return
+                }
+            }
             val max = audioManager.getStreamMaxVolume(stream)
             val clamped = level.coerceIn(0, max)
             audioManager.setStreamVolume(stream, clamped, 0)
             Log.d(TAG, "Set stream $stream to $clamped (max $max)")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException setting stream $stream volume (likely DND): ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set volume for stream $stream: ${e.message}", e)
         }
@@ -163,23 +250,24 @@ class VolumeCommandService : FirebaseMessagingService() {
     }
 
     private fun readCurrentVolumeState(audioManager: AudioManager): VolumeState {
+        val media = try { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } catch (e: Exception) { 0 }
+        val ring = try { audioManager.getStreamVolume(AudioManager.STREAM_RING) } catch (e: Exception) { 0 }
+        val alarm = try { audioManager.getStreamVolume(AudioManager.STREAM_ALARM) } catch (e: Exception) { 0 }
+        val maxMedia = try { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } catch (e: Exception) { 15 }
+        val maxRing = try { audioManager.getStreamMaxVolume(AudioManager.STREAM_RING) } catch (e: Exception) { 15 }
+        val maxAlarm = try { audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM) } catch (e: Exception) { 15 }
         return VolumeState(
-            mediaVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
-            ringtoneVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING),
-            alarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
-            maxMediaVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-            maxRingtoneVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
-            maxAlarmVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
-            isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+            mediaVolume = media,
+            ringtoneVolume = ring,
+            alarmVolume = alarm,
+            maxMediaVolume = maxMedia,
+            maxRingtoneVolume = maxRing,
+            maxAlarmVolume = maxAlarm,
+            isMuted = media == 0
         )
     }
 
     private fun sendVolumeReport(parentToken: String, state: VolumeState) {
-        // Build FCM data message payload to send back to parent
-        // Uses Firebase Admin SDK approach: we send a data message to the parent's token
-        // via FCM HTTP v1 API (requires server-side sending; here we use FCM upstream messaging)
-        // For simplicity in Phase 3, we use the legacy FCM send-to-device data message.
-        // In production this would go through a Cloud Function or backend API.
         val payload = JSONObject().apply {
             put("type", "VOLUME_REPORT")
             put("mediaVolume", state.mediaVolume)
@@ -192,7 +280,6 @@ class VolumeCommandService : FirebaseMessagingService() {
             put("timestamp", System.currentTimeMillis())
         }
         Log.d(TAG, "Volume report payload: $payload (to: $parentToken)")
-        // TODO: Send via backend API in Phase 4. For now, log and persist locally.
     }
 
     private fun showVolumeChangedNotification(stream: String, level: Int) {
