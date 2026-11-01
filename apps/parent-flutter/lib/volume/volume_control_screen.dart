@@ -228,6 +228,173 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     );
   }
 
+  Widget _buildQuickActionBar(BuildContext context, VolumeRepository repo) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF6366F1),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'SCHNELLZUGRIFF',
+                style: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Row(
+          children: [
+            // 1. WLAN-Nachtruhe
+            Expanded(
+              child: _buildQuickActionCard(
+                icon: Icons.bedtime_rounded,
+                label: 'WLAN-Nachtruhe',
+                accentColor: const Color(0xFF8B5CF6),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => BedtimeScheduleScreen(
+                        device: widget.device,
+                        localIpAddress: repo.localIpAddress,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // 2. Live-Screenshot
+            Expanded(
+              child: _buildQuickActionCard(
+                icon: Icons.camera_alt_rounded,
+                label: 'Live-Screenshot',
+                accentColor: const Color(0xFF06B6D4),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ScreenshotScreen(
+                        device: widget.device,
+                        localIpAddress: repo.localIpAddress,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // 3. WLAN-Update
+            Expanded(
+              child: _buildQuickActionCard(
+                icon: Icons.wifi_protected_setup_rounded,
+                label: 'WLAN-Update',
+                accentColor: const Color(0xFF10B981),
+                onTap: () {
+                  _showP2PUpdateDialog(context, repo.localIpAddress);
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionCard({
+    required IconData icon,
+    required String label,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            accentColor.withOpacity(0.12),
+            const Color(0xFF1E293B).withOpacity(0.7),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accentColor.withOpacity(0.35),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: accentColor.withOpacity(0.2),
+          highlightColor: accentColor.withOpacity(0.1),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accentColor.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: accentColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -424,7 +591,12 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                         ],
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+
+                    // Quick Access Action Bar
+                    _buildQuickActionBar(context, repo),
+
+                    const SizedBox(height: 28),
 
                     // Volume Cards
                     _buildVolumeSlider(
