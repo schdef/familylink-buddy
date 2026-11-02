@@ -4,8 +4,12 @@
 CHILD_DIR="$(dirname "$0")/apps/child-android"
 PARENT_DIR="$(dirname "$0")/apps/parent-flutter"
 
-# Override JAVA_HOME to Android Studio's bundled JDK 17 to prevent Kotlin compiler crashes on Java 25+
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+# Detect JAVA_HOME
+if [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+    export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+elif [ -d "/Applications/Android Studio.app/Contents/jbr/Contents/Home" ]; then
+    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+fi
 
 echo "=== FamilyLink Buddy Release Compiler ==="
 
@@ -40,7 +44,7 @@ echo ""
 
 # 2. Compile Parent App
 echo "Cleaning and compiling Parent App (com.familylink.buddy.parent)..."
-(cd "$PARENT_DIR" && flutter clean && flutter build apk --release --dart-define=USE_EMULATOR=$USE_EMULATOR)
+(cd "$PARENT_DIR" && flutter clean && flutter build apk --release --target-platform android-arm64,android-x64 --dart-define=USE_EMULATOR=$USE_EMULATOR)
 if [ $? -ne 0 ]; then
     echo "❌ Parent app build failed!"
     exit 1
@@ -50,6 +54,15 @@ if [ -f "$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk" ]; then
 fi
 echo "✅ Parent app build successful!"
 echo ""
+
+# Copy to root build/ directory
+mkdir -p "$(dirname "$0")/build"
+if [ -f "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk" ]; then
+    cp "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk" "$(dirname "$0")/build/child-app-release.apk"
+fi
+if [ -f "$PARENT_DIR/build/app/outputs/flutter-apk/parent-release.apk" ]; then
+    cp "$PARENT_DIR/build/app/outputs/flutter-apk/parent-release.apk" "$(dirname "$0")/build/parent-app-release.apk"
+fi
 
 # 3. Print Output Summary
 CHILD_APK="$CHILD_DIR/app/build/outputs/apk/release/child-release.apk"

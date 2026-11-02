@@ -9,7 +9,6 @@ plugins {
 android {
     namespace = "com.familylink.buddy.parent"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -29,16 +28,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
-        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            // TODO: Add your own signing config for the release build.
+            isMinifyEnabled = false
+            isShrinkResources = false
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }

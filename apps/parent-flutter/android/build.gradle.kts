@@ -24,6 +24,17 @@ subprojects {
             compileSdkVersion(34)
         }
     }
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        val target = project.extensions.findByType<com.android.build.gradle.BaseExtension>()
+            ?.compileOptions?.targetCompatibility
+        if (target == JavaVersion.VERSION_1_8) {
+            compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+        } else if (target == JavaVersion.VERSION_17) {
+            compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        } else {
+            compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+        }
+    }
     configurations.all {
         resolutionStrategy {
             eachDependency {
