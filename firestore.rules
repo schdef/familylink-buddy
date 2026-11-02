@@ -61,5 +61,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
+
+    match /app_metadata/{doc=**} {
+      // Release metadata and public update info can be read by paired devices and parents
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

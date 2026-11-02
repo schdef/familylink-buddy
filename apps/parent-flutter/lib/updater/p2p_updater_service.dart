@@ -1,12 +1,33 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class P2PUpdaterService {
   final http.Client? _client;
+  static const MethodChannel _channel = MethodChannel('com.familylink.buddy.parent/updater');
 
   P2PUpdaterService({http.Client? client}) : _client = client;
+
+  /// Invokes the native file picker via Storage Access Framework (SAF)
+  /// allowing selecting an APK from local device storage or Google Drive.
+  ///
+  /// Returns a Map with keys:
+  /// - 'path': String (absolute path to cached APK file)
+  /// - 'name': String (original display name)
+  /// - 'size': int (file size in bytes)
+  /// or null if the user cancelled the picker.
+  Future<Map<String, dynamic>?> pickApkFile() async {
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('pickApkFile');
+      if (result == null) return null;
+      return Map<String, dynamic>.from(result);
+    } on PlatformException catch (e) {
+      debugPrint('pickApkFile error: ${e.message}');
+      rethrow;
+    }
+  }
 
   /// Streams the APK file bytes via HTTP POST to http://$childLocalIp:8085/upload_update
   /// with live progress reporting (0.0 to 1.0).

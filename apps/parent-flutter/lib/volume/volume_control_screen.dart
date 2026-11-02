@@ -919,9 +919,12 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
   late TextEditingController _ipController;
   late TextEditingController _pathController;
   bool _isUploading = false;
+  bool _isPicking = false;
   double _progress = -1.0;
   String _statusMessage = '';
   bool _hasError = false;
+  String? _selectedFileName;
+  int? _selectedFileSize;
 
   @override
   void initState() {
@@ -938,8 +941,11 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
       '${Directory.systemTemp.path}/child-update.apk',
     ];
     for (final path in candidates) {
-      if (File(path).existsSync()) {
+      final file = File(path);
+      if (file.existsSync()) {
         _pathController.text = path;
+        _selectedFileName = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'child-update.apk';
+        _selectedFileSize = file.lengthSync();
         break;
       }
     }
@@ -950,6 +956,50 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
     _ipController.dispose();
     _pathController.dispose();
     super.dispose();
+  }
+
+  String _formatFileSize(int? bytes) {
+    if (bytes == null || bytes <= 0) return 'Unbekannte Größe';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _pickApkFile() async {
+    setState(() {
+      _isPicking = true;
+      _hasError = false;
+    });
+
+    try {
+      final updater = P2PUpdaterService();
+      final result = await updater.pickApkFile();
+      if (result != null) {
+        final path = result['path'] as String?;
+        final name = result['name'] as String?;
+        final size = result['size'] as int?;
+
+        if (path != null && path.isNotEmpty) {
+          setState(() {
+            _pathController.text = path;
+            _selectedFileName = name ?? (File(path).existsSync() ? File(path).uri.pathSegments.last : 'update.apk');
+            _selectedFileSize = size ?? (File(path).existsSync() ? File(path).lengthSync() : null);
+            _statusMessage = 'APK ausgewählt: $_selectedFileName (${_formatFileSize(_selectedFileSize)})';
+          });
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _hasError = true;
+        _statusMessage = 'Fehler bei Dateiauswahl: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPicking = false;
+        });
+      }
+    }
   }
 
   Future<void> _startP2PUpdate() async {
@@ -974,36 +1024,45 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
 
       // If user did not provide an existing local path, attempt download from releases metadata
       if (apkPath.isEmpty || !File(apkPath).existsSync()) {
-        setState(() {
-          _statusMessage = 'Lade neueste Kinder-App von Server...';
-        });
+        try {
+          setState(() {
+            _statusMessage = 'Prüfe Online-Release-Kanal...';
+          });
 
-        final doc = await FirebaseFirestore.instance
-            .collection('app_metadata')
-            .doc('releases')
-            .get();
+          final doc = await FirebaseFirestore.instance
+              .collection('app_metadata')
+              .doc('releases')
+              .get();
 
-        String? downloadUrl;
-        if (doc.exists && doc.data() != null) {
-          final data = doc.data()!;
-          if (data.containsKey('child')) {
-            final childData = Map<String, dynamic>.from(data['child']);
-            downloadUrl = childData['downloadUrl'] as String?;
+          String? downloadUrl;
+          if (doc.exists && doc.data() != null) {
+            final data = doc.data()!;
+            if (data.containsKey('child')) {
+              final childData = Map<String, dynamic>.from(data['child']);
+              downloadUrl = childData['downloadUrl'] as String?;
+            }
           }
-        }
 
-        if (downloadUrl != null && downloadUrl.isNotEmpty) {
-          final response = await http.get(Uri.parse(downloadUrl));
-          if (response.statusCode == 200) {
-            final tempFile = File('${Directory.systemTemp.path}/child-update.apk');
-            await tempFile.writeAsBytes(response.bodyBytes);
-            apkPath = tempFile.path;
+          if (downloadUrl != null && downloadUrl.isNotEmpty) {
+            setState(() {
+              _statusMessage = 'Lade neueste Kinder-App von Server...';
+            });
+            final response = await http.get(Uri.parse(downloadUrl));
+            if (response.statusCode == 200) {
+              final tempFile = File('${Directory.systemTemp.path}/child-update.apk');
+              await tempFile.writeAsBytes(response.bodyBytes);
+              apkPath = tempFile.path;
+            } else {
+              throw Exception('Konnte APK nicht herunterladen (Status ${response.statusCode})');
+            }
           } else {
-            throw Exception('Konnte APK nicht herunterladen (Status ${response.statusCode})');
+            throw Exception('Keine APK-Download-URL verfügbar');
           }
-        } else {
-          if (apkPath.isEmpty) {
-            throw Exception('Keine APK-Datei angegeben und kein Download im Release-Kanal verfügbar.');
+        } catch (_) {
+          if (apkPath.isEmpty || !File(apkPath).existsSync()) {
+            throw Exception(
+              'Keine gültige APK vorhanden. Bitte wählen Sie eine APK-Datei über "APK auswählen" aus.',
+            );
           }
         }
       }
@@ -1099,20 +1158,31 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
             const SizedBox(height: 14),
 
             const Text(
-              'APK-Pfad (optional)',
+              'APK-Datei (Gerät / Google Drive)',
               style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _pathController,
-              enabled: !_isUploading,
+              enabled: !_isUploading && !_isPicking,
               style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
-                hintText: 'Standard: Automatisch aus Release-Kanal',
+                hintText: 'Pfad zur APK oder Button unten nutzen',
                 hintStyle: const TextStyle(color: Color(0xFF64748B)),
                 prefixIcon: const Icon(Icons.folder_zip_outlined, color: Color(0xFF94A3B8), size: 18),
+                suffixIcon: IconButton(
+                  tooltip: 'APK von Gerät oder Google Drive wählen',
+                  icon: _isPicking
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
+                        )
+                      : const Icon(Icons.file_open, color: Color(0xFF38BDF8), size: 20),
+                  onPressed: _isUploading || _isPicking ? null : _pickApkFile,
+                ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -1124,6 +1194,50 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUploading || _isPicking ? null : _pickApkFile,
+                icon: const Icon(Icons.add_to_drive, size: 18, color: Color(0xFF38BDF8)),
+                label: Text(
+                  _isPicking ? 'Wähle Datei...' : 'APK auswählen (Gerät / Google Drive)',
+                  style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF0284C7), width: 1.2),
+                  backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+
+            if (_selectedFileName != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$_selectedFileName (${_formatFileSize(_selectedFileSize)})',
+                        style: const TextStyle(color: Color(0xFF6EE7B7), fontSize: 12, fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             if (_progress >= 0.0) ...[
               const SizedBox(height: 18),

@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:parent_app/updater/p2p_updater_service.dart';
 
 void main() {
   const MethodChannel channel = MethodChannel('com.familylink.buddy.parent/updater');
@@ -18,6 +19,13 @@ void main() {
         }
         if (methodCall.method == 'installApk') {
           return true; // Mock successful installation launch
+        }
+        if (methodCall.method == 'pickApkFile') {
+          return {
+            'path': '/data/user/0/com.familylink.buddy.parent/cache/picked_child-app-release.apk',
+            'name': 'child-app-release.apk',
+            'size': 28000000,
+          };
         }
         return null;
       });
@@ -46,6 +54,41 @@ void main() {
       expect(log, hasLength(1));
       expect(log.first.method, 'installApk');
       expect(log.first.arguments['filePath'], '/dummy/path/to/update.apk');
+    });
+
+    test('pickApkFile channel invocation returns path, name and size', () async {
+      final Map<dynamic, dynamic>? result = await channel.invokeMethod('pickApkFile');
+
+      expect(result, isNotNull);
+      expect(result!['path'], contains('picked_child-app-release.apk'));
+      expect(result['name'], 'child-app-release.apk');
+      expect(result['size'], 28000000);
+      expect(log, hasLength(1));
+      expect(log.first.method, 'pickApkFile');
+    });
+
+    test('P2PUpdaterService.pickApkFile invokes channel and parses map', () async {
+      final service = P2PUpdaterService();
+      final result = await service.pickApkFile();
+
+      expect(result, isNotNull);
+      expect(result!['path'], contains('picked_child-app-release.apk'));
+      expect(result['name'], 'child-app-release.apk');
+      expect(result['size'], 28000000);
+      expect(log, hasLength(1));
+      expect(log.first.method, 'pickApkFile');
+    });
+
+    test('P2PUpdaterService.pickApkFile returns null when picker cancelled', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        return null;
+      });
+
+      final service = P2PUpdaterService();
+      final result = await service.pickApkFile();
+
+      expect(result, isNull);
     });
   });
 }
