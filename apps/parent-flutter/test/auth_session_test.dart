@@ -33,6 +33,72 @@ class FakeFailingGoogleSignInPlatform extends GoogleSignInPlatform {
   Future<GoogleSignInUserData?> signInSilently() async => null;
 }
 
+class FakeDeveloperErrorGoogleSignInPlatform extends GoogleSignInPlatform {
+  @override
+  bool get isMock => true;
+
+  @override
+  Stream<GoogleSignInUserData?>? get userDataEvents => const Stream.empty();
+
+  @override
+  Future<void> initWithParams(SignInInitParameters params) async {}
+
+  @override
+  Future<GoogleSignInUserData?> signIn() async {
+    throw PlatformException(
+      code: 'sign_in_failed',
+      message: 'com.google.android.gms.common.api.ApiException: 10: ',
+    );
+  }
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<GoogleSignInUserData?> signInSilently() async => null;
+}
+
+class FakeIntelligentFallbackPlatform extends GoogleSignInPlatform {
+  String? currentServerClientId;
+  bool fallbackAttempted = false;
+
+  @override
+  bool get isMock => true;
+
+  @override
+  Stream<GoogleSignInUserData?>? get userDataEvents => const Stream.empty();
+
+  @override
+  Future<void> initWithParams(SignInInitParameters params) async {
+    currentServerClientId = params.serverClientId;
+  }
+
+  @override
+  Future<GoogleSignInUserData?> signIn() async {
+    if (currentServerClientId != null) {
+      // Primary attempt with serverClientId fails with ApiException 10
+      throw PlatformException(
+        code: 'sign_in_failed',
+        message: 'com.google.android.gms.common.api.ApiException: 10: ',
+      );
+    }
+    // Fallback without serverClientId succeeds
+    fallbackAttempted = true;
+    return GoogleSignInUserData(
+      email: 'fallback_parent@familie.de',
+      id: 'fallback-parent-id-999',
+      displayName: 'Fallback Parent',
+      photoUrl: 'https://avatar.url/img.png',
+    );
+  }
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<GoogleSignInUserData?> signInSilently() async => null;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -91,8 +157,7 @@ void main() {
   group('GoogleSignInService Session Persistence Tests', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
-      GoogleSignInService.lastError = null;
-      GoogleSignInService.testGoogleSignIn = null;
+      GoogleSignInService.resetForTesting();
     });
 
     test('saveSession and loadSavedSession round-trip correctly', () async {
@@ -143,7 +208,6 @@ void main() {
         displayName: 'Offline Parent',
       );
 
-      // In unit test environment, GoogleSignIn platform channel returns null/fails silently
       final silentAccount = await GoogleSignInService.signInSilently();
 
       expect(silentAccount, isNotNull);
@@ -159,11 +223,107 @@ void main() {
     });
   });
 
+  group('GoogleSignInService Error Classification and Fallback Logic', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      GoogleSignInService.resetForTesting();
+    });
+
+    test('isDeveloperError correctly identifies various ApiException 10 representations', () {
+      expect(
+        GoogleSignInService.isDeveloperError(
+          'PlatformException(sign_in_failed, com.google.android.gms.common.api.ApiException: 10: , null, null)',
+        ),
+        isTrue,
+      );
+      expect(
+        GoogleSignInService.isDeveloperError(
+          PlatformException(
+            code: 'sign_in_failed',
+            message: 'com.google.android.gms.common.api.ApiException: 10: ',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        GoogleSignInService.isDeveloperError(
+          PlatformException(code: '10', message: 'Misconfigured SHA-1'),
+        ),
+        isTrue,
+      );
+      expect(
+        GoogleSignInService.isDeveloperError(
+          PlatformException(code: 'DEVELOPER_ERROR', message: 'Bad OAuth client'),
+        ),
+        isTrue,
+      );
+      expect(
+        GoogleSignInService.isDeveloperError('Error: CommonStatusCodes.DEVELOPER_ERROR'),
+        isTrue,
+      );
+
+      // Non-developer errors
+      expect(
+        GoogleSignInService.isDeveloperError(
+          PlatformException(code: '12500', message: 'Sign in failed'),
+        ),
+        isFalse,
+      );
+      expect(GoogleSignInService.isDeveloperError(null), isFalse);
+      expect(GoogleSignInService.isDeveloperError('Network timeout'), isFalse);
+    });
+
+    test('parseError produces friendly German message with SHA-1 guidance for ApiException 10', () {
+      final friendlyMsg = GoogleSignInService.parseError(
+        'com.google.android.gms.common.api.ApiException: 10: ',
+      );
+      expect(
+        friendlyMsg,
+        'Google Sign-In ist für diese App noch nicht autorisiert '
+        '(ApiException 10: SHA-1 Fingerabdruck fehlt in Firebase). '
+        'Nutze bitte die E-Mail-Anmeldung oder hinterlege den SHA-1 Key.',
+      );
+    });
+
+    test('parseError produces friendly explanations for 12500 and network errors', () {
+      final msg12500 = GoogleSignInService.parseError('ApiException: 12500');
+      expect(msg12500, contains('12500'));
+      expect(msg12500, contains('Google Play Services'));
+
+      final msgNetwork = GoogleSignInService.parseError('network_error');
+      expect(msgNetwork, contains('Netzwerkfehler'));
+    });
+
+    test('signIn triggers intelligent fallback without serverClientId when primary encounters ApiException 10', () async {
+      final platform = FakeIntelligentFallbackPlatform();
+      GoogleSignInPlatform.instance = platform;
+
+      final account = await GoogleSignInService.signIn();
+
+      expect(account, isNotNull);
+      expect(account!.email, 'fallback_parent@familie.de');
+      expect(account.id, 'fallback-parent-id-999');
+      expect(platform.fallbackAttempted, isTrue);
+      expect(GoogleSignInService.isDeveloperConfigError, isFalse);
+      expect(GoogleSignInService.lastError, isNull);
+    });
+
+    test('signIn sets isDeveloperConfigError=true and friendly lastError when both primary and fallback fail with code 10', () async {
+      GoogleSignInPlatform.instance = FakeDeveloperErrorGoogleSignInPlatform();
+
+      final account = await GoogleSignInService.signIn();
+
+      expect(account, isNull);
+      expect(GoogleSignInService.isDeveloperConfigError, isTrue);
+      expect(GoogleSignInService.lastError, contains('ApiException 10'));
+      expect(GoogleSignInService.lastError, contains('SHA-1'));
+    });
+  });
+
   group('SignInScreen Diagnostic and Fallback Widget Tests', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
-      GoogleSignInService.lastError = null;
-      GoogleSignInService.testGoogleSignIn = null;
+      GoogleSignInService.resetForTesting();
     });
 
     testWidgets('Shows "Als [Email] fortfahren" button when saved session exists',
@@ -231,6 +391,60 @@ void main() {
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.textContaining('12500'), findsOneWidget);
       expect(GoogleSignInService.lastError, contains('12500'));
+    });
+
+    testWidgets('Displays friendly explanation and "👉 Stattdessen mit E-Mail anmelden" button on ApiException 10',
+        (WidgetTester tester) async {
+      GoogleSignInPlatform.instance = FakeDeveloperErrorGoogleSignInPlatform();
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SignInScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final googleButton = find.text('Mit Google anmelden');
+      await tester.tap(googleButton);
+      await tester.pumpAndSettle();
+
+      // Error banner with friendly German text
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect(find.textContaining('ApiException 10: SHA-1 Fingerabdruck fehlt in Firebase'), findsOneWidget);
+
+      // Dedicated action button inside the error card
+      final emailFallbackBtn = find.text('👉 Stattdessen mit E-Mail anmelden');
+      expect(emailFallbackBtn, findsOneWidget);
+
+      // Tapping the action button opens the email login dialog directly
+      await tester.tap(emailFallbackBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('Email dialog pre-fills previously saved email',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'parent_session_id': 'prefill-uid-456',
+        'parent_session_email': 'prefilled@family.org',
+        'parent_session_displayName': 'Prefilled User',
+      });
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SignInScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final emailButton = find.text('Mit E-Mail anmelden');
+      await tester.tap(emailButton);
+      await tester.pumpAndSettle();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, 'prefilled@family.org');
     });
   });
 }

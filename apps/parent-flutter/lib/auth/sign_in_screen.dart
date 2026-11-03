@@ -12,6 +12,7 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   bool _isLoading = false;
   String? _error;
+  bool _isDevConfigError = false;
   ParentAccount? _savedAccount;
 
   @override
@@ -33,30 +34,42 @@ class _SignInScreenState extends State<SignInScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _isDevConfigError = false;
     });
     final account = await GoogleSignInService.signIn();
+    if (!mounted) return;
     setState(() {
       _isLoading = false;
     });
 
-    if (account != null && mounted) {
+    if (account != null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => DeviceListScreen(account: account)),
       );
     } else {
+      final err = GoogleSignInService.lastError;
+      final isDevErr = GoogleSignInService.isDeveloperConfigError;
       setState(() {
-        _error = GoogleSignInService.lastError ??
+        _error = err ??
             'Anmeldung abgebrochen oder fehlgeschlagen. Bitte erneut versuchen.';
+        _isDevConfigError =
+            isDevErr || (_error != null && GoogleSignInService.isDeveloperError(_error));
       });
     }
   }
 
   void _showEmailSignInDialog() {
-    final emailController = TextEditingController(text: _savedAccount?.email ?? '');
+    final prefilledEmail = _savedAccount?.email ??
+        GoogleSignInService.currentUser?.email ??
+        '';
+    final emailController = TextEditingController(text: prefilledEmail);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: const Text('Mit E-Mail anmelden', style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -152,6 +165,9 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDeveloperError = _isDevConfigError ||
+        (_error != null && GoogleSignInService.isDeveloperError(_error));
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: SafeArea(
@@ -204,28 +220,64 @@ class _SignInScreenState extends State<SignInScreen> {
 
               if (_error != null) ...[
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEF4444).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.35),
                     ),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
                             color: Color(0xFFEF4444),
-                            fontSize: 13,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Color(0xFFFCA5A5),
+                                fontSize: 13.5,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (isDeveloperError) ...[
+                        const SizedBox(height: 14),
+                        ElevatedButton.icon(
+                          onPressed: _showEmailSignInDialog,
+                          icon: const Icon(Icons.email_outlined, size: 18),
+                          label: const Text(
+                            '👉 Stattdessen mit E-Mail anmelden',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFDC2626),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
