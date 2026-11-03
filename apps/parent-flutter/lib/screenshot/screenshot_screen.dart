@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../pairing/pairing_repository.dart';
+import '../volume/volume_repository.dart';
 import 'screenshot_model.dart';
 import 'screenshot_repository.dart';
 
@@ -51,7 +52,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     final bytes = _safeDecodeBase64(item.base64Image);
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.92),
+      barrierColor: Colors.black.withValues(alpha: 0.92),
       builder: (ctx) {
         final subtitle = item.foregroundApp != null
             ? '${item.deviceModel ?? widget.device.name} • ${item.foregroundApp}'
@@ -60,7 +61,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         return Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: Colors.black.withOpacity(0.6),
+            backgroundColor: Colors.black.withValues(alpha: 0.6),
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
@@ -121,6 +122,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     BuildContext context,
     ScreenshotRepository repo,
     ScreenshotItem item,
+    String? effectiveIp,
   ) async {
     final appName = item.foregroundApp ?? 'Unbekannt';
     final confirmed = await showDialog<bool>(
@@ -136,7 +138,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFDC2626).withOpacity(0.15),
+                color: const Color(0xFFDC2626).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
@@ -199,10 +201,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     try {
       final success = await repo.closeCurrentApp(
         widget.device.fcmToken,
-        localIpAddress: widget.localIpAddress,
+        localIpAddress: effectiveIp,
       );
 
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -219,7 +221,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
         await repo.captureScreenshot(
           widget.device.fcmToken,
-          localIpAddress: widget.localIpAddress,
+          localIpAddress: effectiveIp,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -241,7 +243,15 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLanActive = widget.localIpAddress != null && widget.localIpAddress!.isNotEmpty;
+    // Dynamically resolve effective IP from widget or VolumeRepository
+    String? dynamicVolumeIp;
+    try {
+      dynamicVolumeIp = context.watch<VolumeRepository>().localIpAddress;
+    } catch (_) {
+      dynamicVolumeIp = null;
+    }
+    final effectiveIp = widget.localIpAddress ?? dynamicVolumeIp;
+    final isLanActive = effectiveIp != null && effectiveIp.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -278,13 +288,13 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: isLanActive
-                  ? const Color(0xFF10B981).withOpacity(0.15)
-                  : const Color(0xFF6366F1).withOpacity(0.15),
+                  ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                  : const Color(0xFF6366F1).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isLanActive
-                    ? const Color(0xFF10B981).withOpacity(0.4)
-                    : const Color(0xFF6366F1).withOpacity(0.4),
+                    ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                    : const Color(0xFF6366F1).withValues(alpha: 0.4),
               ),
             ),
             child: Row(
@@ -336,7 +346,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                         ? []
                         : [
                             BoxShadow(
-                              color: const Color(0xFF6366F1).withOpacity(0.35),
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.35),
                               blurRadius: 16,
                               offset: const Offset(0, 4),
                             ),
@@ -350,7 +360,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                           : () async {
                               final item = await repo.captureScreenshot(
                                 widget.device.fcmToken,
-                                localIpAddress: widget.localIpAddress,
+                                localIpAddress: effectiveIp,
                               );
                               if (!context.mounted) return;
                               if (item != null) {
@@ -363,12 +373,16 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 );
                               } else {
                                 final err = (repo.lastError ?? '').toLowerCase();
+                                final isPermission = repo.hasPermissionError ||
+                                    ScreenshotRepository.isPermissionDenied(repo.lastError);
                                 final isAccessibilityOrTimeout = err.contains('accessibility') ||
                                     err.contains('is not connected') ||
                                     err.contains('timeout');
-                                final errorMsg = isAccessibilityOrTimeout
-                                    ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
-                                    : 'Screenshot konnte nicht empfangen werden. Ist das Gerät online?';
+                                final errorMsg = isPermission
+                                    ? 'Firestore-Berechtigung verweigert: Regeln für Screenshots in Firebase Console aktualisieren.'
+                                    : isAccessibilityOrTimeout
+                                        ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
+                                        : 'Screenshot konnte nicht empfangen werden. Ist das Gerät online?';
 
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -424,36 +438,148 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
                 const SizedBox(height: 24),
 
+                // Error Banner with dedicated clean & informative styling for permission errors
                 if (repo.lastError != null) ...[
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 20),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.35)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 22),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            (repo.lastError!.toLowerCase().contains('accessibility') ||
-                                    repo.lastError!.toLowerCase().contains('is not connected') ||
-                                    repo.lastError!.toLowerCase().contains('timeout'))
-                                ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
-                                : 'Screenshot konnte nicht empfangen werden: ${repo.lastError}',
-                            style: const TextStyle(
-                              color: Color(0xFFFCA5A5),
-                              fontSize: 13,
-                              height: 1.35,
+                  Builder(
+                    builder: (context) {
+                      final errorStr = repo.lastError!;
+                      final isPermission = repo.hasPermissionError ||
+                          ScreenshotRepository.isPermissionDenied(errorStr) ||
+                          errorStr.toLowerCase().contains('permission-denied') ||
+                          errorStr.toLowerCase().contains('berechtigung');
+
+                      if (isPermission) {
+                        return Container(
+                          key: const ValueKey('screenshot_permission_error_banner'),
+                          margin: const EdgeInsets.only(bottom: 20),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF451A03).withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                              width: 1.2,
                             ),
                           ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.admin_panel_settings_rounded,
+                                      color: Color(0xFFF59E0B),
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Firestore-Berechtigung verweigert',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Sicherheitsregeln müssen in der Firebase Console aktualisiert werden',
+                                          style: TextStyle(
+                                            color: Color(0xFFFCD34D),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Für die Live-Screenshot-Funktion benötigt die Screenshots-Sammlung Schreib- und Leserechte in den Firestore Security Rules.',
+                                style: TextStyle(
+                                  color: Color(0xFFFEF3C7),
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0F172A).withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: const SelectableText(
+                                  '// Firebase Console -> Firestore Database -> Rules:\nmatch /pairings/{childToken}/screenshots/{id} {\n  allow read, write: if true;\n}',
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    color: Color(0xFFFDE68A),
+                                    fontSize: 12,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final isAccessibilityOrTimeout =
+                          errorStr.toLowerCase().contains('accessibility') ||
+                              errorStr.toLowerCase().contains('is not connected') ||
+                              errorStr.toLowerCase().contains('timeout');
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                          ),
                         ),
-                      ],
-                    ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              color: Color(0xFFEF4444),
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                isAccessibilityOrTimeout
+                                    ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
+                                    : 'Screenshot konnte nicht empfangen werden: $errorStr',
+                                style: const TextStyle(
+                                  color: Color(0xFFFCA5A5),
+                                  fontSize: 13,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ],
 
@@ -471,7 +597,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                         Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF334155).withOpacity(0.5),
+                            color: const Color(0xFF334155).withValues(alpha: 0.5),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -508,7 +634,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.4)),
+                      border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
                     ),
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -597,7 +723,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                           fit: BoxFit.contain,
                                           width: double.infinity,
                                           height: double.infinity,
-                                          errorBuilder: (_, __, ___) => const Center(
+                                          errorBuilder: (_, _, _) => const Center(
                                             child: Icon(
                                               Icons.broken_image_rounded,
                                               color: Color(0xFF64748B),
@@ -623,7 +749,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.7),
+                                        color: Colors.black.withValues(alpha: 0.7),
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(color: Colors.white24),
                                       ),
@@ -668,7 +794,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(7),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF6366F1).withOpacity(0.15),
+                                      color: const Color(0xFF6366F1).withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Icon(
@@ -714,7 +840,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                               ElevatedButton.icon(
                                 onPressed: repo.isCapturing || _isClosingApp
                                     ? null
-                                    : () => _confirmCloseApp(context, repo, latestScreenshot),
+                                    : () => _confirmCloseApp(context, repo, latestScreenshot, effectiveIp),
                                 icon: _isClosingApp
                                     ? const SizedBox(
                                         width: 16,
@@ -796,7 +922,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isLatest
-                                      ? const Color(0xFF6366F1).withOpacity(0.5)
+                                      ? const Color(0xFF6366F1).withValues(alpha: 0.5)
                                       : const Color(0xFF334155),
                                 ),
                               ),
@@ -816,7 +942,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                               fit: BoxFit.contain,
                                               width: double.infinity,
                                               height: double.infinity,
-                                              errorBuilder: (_, __, ___) => const Center(
+                                              errorBuilder: (_, _, _) => const Center(
                                                 child: Icon(
                                                   Icons.broken_image_rounded,
                                                   color: Color(0xFF64748B),

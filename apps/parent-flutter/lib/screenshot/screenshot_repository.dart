@@ -7,8 +7,8 @@ import 'package:uuid/uuid.dart';
 import 'screenshot_model.dart';
 
 class ScreenshotRepository extends ChangeNotifier {
-  FirebaseFirestore? _firestore;
-  http.Client? _httpClient;
+  final FirebaseFirestore? _firestore;
+  final http.Client? _httpClient;
 
   List<ScreenshotItem> _history = [];
   bool _isCapturing = false;
@@ -25,6 +25,26 @@ class ScreenshotRepository extends ChangeNotifier {
   bool get isCapturing => _isCapturing;
   ScreenshotItem? get latestScreenshot => _history.isNotEmpty ? _history.first : null;
   String? get lastError => _lastError;
+  bool get hasPermissionError => isPermissionDenied(_lastError);
+
+  /// Helper to check if an error represents a Firestore permission-denied error.
+  static bool isPermissionDenied(dynamic e) {
+    if (e == null) return false;
+    if (e is FirebaseException && e.code == 'permission-denied') return true;
+    final str = e.toString().toLowerCase();
+    return str.contains('permission-denied') ||
+        str.contains('permission_denied') ||
+        str.contains('cloud_firestore/permission-denied');
+  }
+
+  /// Translates Firestore exceptions into friendly, actionable error messages.
+  static String formatError(dynamic e) {
+    if (e == null) return '';
+    if (isPermissionDenied(e)) {
+      return 'Firestore-Berechtigung verweigert (permission-denied): Die Firestore Security Rules für "screenshots" (pairings/{childToken}/screenshots) müssen in der Firebase Console aktualisiert werden.';
+    }
+    return e.toString();
+  }
 
   @visibleForTesting
   set lastErrorForTesting(String? value) {
@@ -76,9 +96,13 @@ class ScreenshotRepository extends ChangeNotifier {
         notifyListeners();
       }, onError: (e) {
         debugPrint('ScreenshotRepository history subscription error: $e');
+        _lastError = formatError(e);
+        notifyListeners();
       });
     } catch (e) {
       debugPrint('ScreenshotRepository subscribe error: $e');
+      _lastError = formatError(e);
+      notifyListeners();
     }
   }
 
@@ -108,7 +132,7 @@ class ScreenshotRepository extends ChangeNotifier {
       // Step 2: Fallback to Firestore command
       return await _captureViaFirestore(childFcmToken);
     } catch (e) {
-      _lastError = e.toString();
+      _lastError = formatError(e);
       debugPrint('captureScreenshot error: $e');
       return null;
     } finally {
@@ -182,13 +206,17 @@ class ScreenshotRepository extends ChangeNotifier {
               'id': id,
               'timestamp': FieldValue.serverTimestamp(),
               'base64Image': base64Image,
-              if (deviceModel != null) 'deviceModel': deviceModel,
-              if (foregroundApp != null) 'foregroundApp': foregroundApp,
-              if (foregroundPackage != null) 'foregroundPackage': foregroundPackage,
+              'deviceModel': ?deviceModel,
+              'foregroundApp': ?foregroundApp,
+              'foregroundPackage': ?foregroundPackage,
             });
             debugPrint('LAN screenshot successfully persisted to Firestore ($id)');
           } catch (e) {
             debugPrint('Failed to persist LAN screenshot to Firestore: $e');
+            if (isPermissionDenied(e)) {
+              _lastError = formatError(e);
+              notifyListeners();
+            }
           }
         }
 
@@ -214,7 +242,7 @@ class ScreenshotRepository extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Direct LAN screenshot error: $e');
-      _lastError = e.toString();
+      _lastError = formatError(e);
     }
     return null;
   }
@@ -254,7 +282,7 @@ class ScreenshotRepository extends ChangeNotifier {
         }
       }, onError: (e) {
         debugPrint('Firestore screenshot listener error: $e');
-        _lastError = e.toString();
+        _lastError = formatError(e);
         if (!completer.isCompleted) {
           completer.complete(null);
         }
@@ -286,7 +314,7 @@ class ScreenshotRepository extends ChangeNotifier {
       return result;
     } catch (e) {
       debugPrint('Firestore captureScreenshot error: $e');
-      _lastError = e.toString();
+      _lastError = formatError(e);
       return null;
     } finally {
       await sub?.cancel();
@@ -342,6 +370,10 @@ class ScreenshotRepository extends ChangeNotifier {
         debugPrint('Firestore closeAppCommand successfully written ($requestId)');
       } catch (e) {
         debugPrint('Firestore closeCurrentApp error: $e');
+        if (isPermissionDenied(e)) {
+          _lastError = formatError(e);
+          notifyListeners();
+        }
       }
     }
 

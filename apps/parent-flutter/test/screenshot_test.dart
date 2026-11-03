@@ -1,9 +1,14 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:provider/provider.dart';
+import 'package:parent_app/pairing/pairing_repository.dart';
 import 'package:parent_app/screenshot/screenshot_model.dart';
 import 'package:parent_app/screenshot/screenshot_repository.dart';
+import 'package:parent_app/screenshot/screenshot_screen.dart';
+import 'package:parent_app/volume/volume_repository.dart';
 
 void main() {
   group('ScreenshotItem Model Tests', () {
@@ -173,6 +178,41 @@ void main() {
       expect(item1, equals(item2));
       expect(item1.hashCode, equals(item2.hashCode));
       expect(item1, isNot(equals(item3)));
+    });
+  });
+
+  group('Screenshot Error Translation Tests', () {
+    test('translates permission-denied errors to friendly guidance', () {
+      const rawError1 = 'cloud_firestore/permission-denied';
+      final translated1 = ScreenshotRepository.formatError(rawError1);
+      expect(translated1, contains('permission-denied'));
+      expect(translated1, contains('Firebase Console'));
+      expect(translated1, contains('screenshots'));
+
+      const rawError2 = '[cloud_firestore/permission-denied] Missing or insufficient permissions.';
+      final translated2 = ScreenshotRepository.formatError(rawError2);
+      expect(translated2, contains('Firebase Console'));
+      expect(translated2, contains('pairings/{childToken}/screenshots'));
+
+      expect(ScreenshotRepository.isPermissionDenied(rawError1), isTrue);
+      expect(ScreenshotRepository.isPermissionDenied(rawError2), isTrue);
+    });
+
+    test('preserves non-permission errors as-is', () {
+      const normalError = 'Failed host lookup: android.local';
+      expect(ScreenshotRepository.formatError(normalError), equals(normalError));
+      expect(ScreenshotRepository.isPermissionDenied(normalError), isFalse);
+    });
+
+    test('hasPermissionError getter reacts to repository error state', () {
+      final repo = ScreenshotRepository();
+      expect(repo.hasPermissionError, isFalse);
+
+      repo.lastErrorForTesting = 'cloud_firestore/permission-denied';
+      expect(repo.hasPermissionError, isTrue);
+
+      repo.lastErrorForTesting = 'Network timed out';
+      expect(repo.hasPermissionError, isFalse);
     });
   });
 
@@ -373,6 +413,115 @@ void main() {
       final result = await repo.closeCurrentApp('child_device_fcm_token_123');
 
       expect(result, isFalse);
+    });
+  });
+
+  group('ScreenshotScreen Widget & Dynamic IP Tests', () {
+    final testDevice = PairedDevice(
+      name: 'Kind Tablet',
+      fcmToken: 'test_child_fcm_token',
+      lastSeen: DateTime.now(),
+    );
+
+    Widget createTestWidget({
+      required ScreenshotRepository screenshotRepo,
+      required VolumeRepository volumeRepo,
+      String? localIpAddress,
+    }) {
+      return MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ScreenshotRepository>.value(value: screenshotRepo),
+          ChangeNotifierProvider<VolumeRepository>.value(value: volumeRepo),
+        ],
+        child: MaterialApp(
+          home: ScreenshotScreen(
+            device: testDevice,
+            localIpAddress: localIpAddress,
+          ),
+        ),
+      );
+    }
+
+    testWidgets('effectiveIp uses widget.localIpAddress when provided', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+          localIpAddress: '192.168.1.42',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('LAN Direct'), findsOneWidget);
+      expect(find.text('Cloud Sync'), findsNothing);
+    });
+
+    testWidgets('effectiveIp dynamically resolves from VolumeRepository when widget.localIpAddress is null', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+          localIpAddress: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially null -> Cloud Sync
+      expect(find.text('Cloud Sync'), findsOneWidget);
+      expect(find.text('LAN Direct'), findsNothing);
+
+      // Dynamically assign localIpAddress to VolumeRepository
+      volumeRepo.localIpAddress = '192.168.1.88';
+      volumeRepo.notifyListeners();
+      await tester.pumpAndSettle();
+
+      // Now dynamically resolved -> LAN Direct
+      expect(find.text('LAN Direct'), findsOneWidget);
+      expect(find.text('Cloud Sync'), findsNothing);
+    });
+
+    testWidgets('permission error renders dedicated informative banner with rules hint', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      screenshotRepo.lastErrorForTesting =
+          ScreenshotRepository.formatError('cloud_firestore/permission-denied');
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('screenshot_permission_error_banner')), findsOneWidget);
+      expect(find.text('Firestore-Berechtigung verweigert'), findsOneWidget);
+      expect(find.textContaining('pairings/{childToken}/screenshots'), findsOneWidget);
+    });
+
+    testWidgets('general error renders standard error banner without permission card', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      screenshotRepo.lastErrorForTesting = 'Connection reset by peer';
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('screenshot_permission_error_banner')), findsNothing);
+      expect(find.textContaining('Screenshot konnte nicht empfangen werden: Connection reset by peer'), findsOneWidget);
     });
   });
 }
