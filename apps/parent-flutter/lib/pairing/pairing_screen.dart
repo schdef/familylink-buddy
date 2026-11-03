@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pairing_repository.dart';
-import '../volume/volume_control_screen.dart';
 import '../auth/google_family_link_service.dart';
+import '../auth/google_sign_in_service.dart';
 
 class PairingScreen extends StatefulWidget {
-  final GoogleSignInAccount? account;
+  final ParentAccount? account;
 
   const PairingScreen({super.key, this.account});
 
@@ -50,17 +48,6 @@ class _PairingScreenState extends State<PairingScreen> {
     } catch (e) {
       setState(() { _isLoadingFamily = false; });
     }
-  }
-
-  void _navigateToVolumeControl(PairedDevice device) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => VolumeControlScreen(
-          account: widget.account,
-          device: device,
-        ),
-      ),
-    );
   }
 
   // 1. Direct Pairing using FCM Token

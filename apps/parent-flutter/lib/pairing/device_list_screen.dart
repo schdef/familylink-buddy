@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pairing_screen.dart';
 import 'pairing_repository.dart';
 import '../volume/volume_control_screen.dart';
-import '../volume/volume_repository.dart';
 import '../auth/google_sign_in_service.dart';
 import '../auth/sign_in_screen.dart';
 import '../time_bank/time_bank_screen.dart';
@@ -12,7 +10,7 @@ import '../comms/comms_screen.dart';
 import '../updater/updater_service.dart';
 
 class DeviceListScreen extends StatefulWidget {
-  final GoogleSignInAccount? account;
+  final ParentAccount? account;
 
   const DeviceListScreen({super.key, this.account});
 
@@ -41,11 +39,38 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
   @override
   Widget build(BuildContext context) {
     final parentId = widget.account?.id ?? 'mock-parent-uid';
+    final parentEmail = widget.account?.email;
+    final parentIds = <String>{parentId};
+    if (parentEmail != null && parentEmail.isNotEmpty) {
+      parentIds.add(parentEmail);
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Meine Kinder / Geräte'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Meine Kinder'),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.5)),
+              ),
+              child: const Text(
+                'v1.1.2',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF818CF8),
+                ),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         actions: [
@@ -83,7 +108,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('pairings')
-            .where('parentId', isEqualTo: parentId)
+            .where('parentId', whereIn: parentIds.toList())
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -409,7 +434,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
       floatingActionButton: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('pairings')
-            .where('parentId', isEqualTo: parentId)
+            .where('parentId', whereIn: parentIds.toList())
             .snapshots(),
         builder: (context, snapshot) {
           final docs = snapshot.data?.docs ?? [];

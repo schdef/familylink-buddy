@@ -309,6 +309,30 @@ void main() {
       expect(result, isNull);
       expect(repo.isCapturing, isFalse);
       expect(repo.history, isEmpty);
+      expect(repo.lastError, contains('500'));
+    });
+
+    test('captureScreenshot records accessibility error from LAN response', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode({
+          'status': 'error',
+          'message': 'Accessibility Service is not connected'
+        }), 500);
+      });
+
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      final result = await repo.captureScreenshot(
+        'child_token',
+        localIpAddress: '192.168.1.55',
+      );
+
+      expect(result, isNull);
+      expect(repo.lastError, 'Accessibility Service is not connected');
+      final errorLower = repo.lastError!.toLowerCase();
+      final isAccessibilityOrTimeout = errorLower.contains('accessibility') ||
+          errorLower.contains('is not connected') ||
+          errorLower.contains('timeout');
+      expect(isAccessibilityOrTimeout, isTrue);
     });
 
     test('closeCurrentApp succeeds via direct LAN HTTP', () async {

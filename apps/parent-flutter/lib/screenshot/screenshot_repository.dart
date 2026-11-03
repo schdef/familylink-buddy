@@ -13,6 +13,7 @@ class ScreenshotRepository extends ChangeNotifier {
   List<ScreenshotItem> _history = [];
   bool _isCapturing = false;
   StreamSubscription<QuerySnapshot>? _historySubscription;
+  String? _lastError;
 
   ScreenshotRepository({
     FirebaseFirestore? firestore,
@@ -23,6 +24,13 @@ class ScreenshotRepository extends ChangeNotifier {
   List<ScreenshotItem> get history => List.unmodifiable(_history);
   bool get isCapturing => _isCapturing;
   ScreenshotItem? get latestScreenshot => _history.isNotEmpty ? _history.first : null;
+  String? get lastError => _lastError;
+
+  @visibleForTesting
+  set lastErrorForTesting(String? value) {
+    _lastError = value;
+    notifyListeners();
+  }
 
   @visibleForTesting
   set isCapturingForTesting(bool value) {
@@ -85,6 +93,7 @@ class ScreenshotRepository extends ChangeNotifier {
     if (_isCapturing) return null;
 
     _isCapturing = true;
+    _lastError = null;
     notifyListeners();
 
     try {
@@ -98,6 +107,10 @@ class ScreenshotRepository extends ChangeNotifier {
 
       // Step 2: Fallback to Firestore command
       return await _captureViaFirestore(childFcmToken);
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('captureScreenshot error: $e');
+      return null;
     } finally {
       _isCapturing = false;
       notifyListeners();
@@ -188,9 +201,20 @@ class ScreenshotRepository extends ChangeNotifier {
         return item;
       } else {
         debugPrint('Direct LAN screenshot failed with status: ${response.statusCode}');
+        try {
+          final dynamic decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['message'] != null) {
+            _lastError = decoded['message'].toString();
+          } else {
+            _lastError = 'HTTP ${response.statusCode}: ${response.body}';
+          }
+        } catch (_) {
+          _lastError = 'HTTP ${response.statusCode}';
+        }
       }
     } catch (e) {
       debugPrint('Direct LAN screenshot error: $e');
+      _lastError = e.toString();
     }
     return null;
   }
@@ -230,6 +254,7 @@ class ScreenshotRepository extends ChangeNotifier {
         }
       }, onError: (e) {
         debugPrint('Firestore screenshot listener error: $e');
+        _lastError = e.toString();
         if (!completer.isCompleted) {
           completer.complete(null);
         }
@@ -246,6 +271,7 @@ class ScreenshotRepository extends ChangeNotifier {
         const Duration(seconds: 10),
         onTimeout: () {
           debugPrint('Firestore screenshot command timed out after 10s');
+          _lastError = 'Firestore screenshot command timed out after 10s';
           return null;
         },
       );
@@ -260,6 +286,7 @@ class ScreenshotRepository extends ChangeNotifier {
       return result;
     } catch (e) {
       debugPrint('Firestore captureScreenshot error: $e');
+      _lastError = e.toString();
       return null;
     } finally {
       await sub?.cancel();

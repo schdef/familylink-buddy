@@ -10,7 +10,6 @@ import 'bedtime/bedtime_repository.dart';
 import 'screenshot/screenshot_repository.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 void main() async {
@@ -102,16 +101,18 @@ class _InitialRouterState extends State<InitialRouter> {
       _targetScreen = const SignInScreen();
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: Color(0xFF0F172A),
         body: Center(
           child: CircularProgressIndicator(color: Color(0xFF6366F1)),
         ),

@@ -362,13 +362,19 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                   ),
                                 );
                               } else {
+                                final err = (repo.lastError ?? '').toLowerCase();
+                                final isAccessibilityOrTimeout = err.contains('accessibility') ||
+                                    err.contains('is not connected') ||
+                                    err.contains('timeout');
+                                final errorMsg = isAccessibilityOrTimeout
+                                    ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
+                                    : 'Screenshot konnte nicht empfangen werden. Ist das Gerät online?';
+
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Screenshot konnte nicht empfangen werden. Ist das Gerät online?',
-                                    ),
-                                    backgroundColor: Color(0xFFEF4444),
-                                    duration: Duration(seconds: 4),
+                                  SnackBar(
+                                    content: Text(errorMsg),
+                                    backgroundColor: const Color(0xFFEF4444),
+                                    duration: const Duration(seconds: 5),
                                   ),
                                 );
                               }
@@ -417,6 +423,39 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                 ),
 
                 const SizedBox(height: 24),
+
+                if (repo.lastError != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.35)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            (repo.lastError!.toLowerCase().contains('accessibility') ||
+                                    repo.lastError!.toLowerCase().contains('is not connected') ||
+                                    repo.lastError!.toLowerCase().contains('timeout'))
+                                ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
+                                : 'Screenshot konnte nicht empfangen werden: ${repo.lastError}',
+                            style: const TextStyle(
+                              color: Color(0xFFFCA5A5),
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // 2. Latest Screenshot or Empty State
                 if (latestScreenshot == null) ...[

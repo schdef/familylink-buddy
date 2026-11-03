@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import '../auth/google_sign_in_service.dart';
 import '../pairing/pairing_repository.dart';
 import 'time_bank_repository.dart';
 import 'time_bank_tasks_screen.dart';
@@ -8,7 +8,7 @@ import 'time_bank_activity_screen.dart';
 import 'time_bank_settings_screen.dart';
 
 class TimeBankScreen extends StatefulWidget {
-  final GoogleSignInAccount? account;
+  final ParentAccount? account;
   final PairedDevice device;
 
   const TimeBankScreen({

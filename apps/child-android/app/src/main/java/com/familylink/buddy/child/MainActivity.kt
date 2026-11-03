@@ -506,13 +506,32 @@ class MainActivity : ComponentActivity() {
                                 .padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                        Text(
-                            text = stringResource(R.string.main_title),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF66FCF1),
-                            modifier = Modifier.padding(vertical = 16.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.main_title),
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF66FCF1)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF45A29E).copy(alpha = 0.25f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF66FCF1))
+                            ) {
+                                Text(
+                                    text = "v${BuildConfig.VERSION_NAME}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF66FCF1),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
 
                         Text(
                             text = stringResource(R.string.main_subtitle),

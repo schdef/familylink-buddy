@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import '../auth/google_sign_in_service.dart';
@@ -16,7 +15,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 
 class VolumeControlScreen extends StatefulWidget {
-  final GoogleSignInAccount? account;
+  final ParentAccount? account;
   final PairedDevice device;
 
   const VolumeControlScreen({
@@ -400,7 +399,29 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Lautstärke-Steuerung'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Lautstärke-Steuerung'),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.5)),
+              ),
+              child: const Text(
+                'v1.1.2',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF818CF8),
+                ),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         actions: [
@@ -695,192 +716,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                       ],
                     ),
 
-                    const SizedBox(height: 28),
-
-                    // Bedtime Schedule Navigation Card
-                    InkWell(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => BedtimeScheduleScreen(
-                              device: widget.device,
-                              localIpAddress: repo.localIpAddress,
-                            ),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF1E293B), Color(0xFF1E1B4B)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6366F1).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.bedtime_rounded, color: Color(0xFF6366F1), size: 24),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'WLAN-Nachtruhe',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Automatische Bettzeit-Sperre & Sofort-Kappung',
-                                    style: TextStyle(
-                                      color: Color(0xFF94A3B8),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Live-Bildschirm & Screenshot-Verlauf Navigation Card
-                    InkWell(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ScreenshotScreen(
-                              device: widget.device,
-                              localIpAddress: repo.localIpAddress,
-                            ),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF1E293B), Color(0xFF1E1B4B)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6366F1).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.screenshot_monitor_rounded, color: Color(0xFF6366F1), size: 24),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Live-Bildschirm & Screenshot-Verlauf',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Aktuellen Bildschirm abrufen & Verlauf einsehen',
-                                    style: TextStyle(
-                                      color: Color(0xFF94A3B8),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // P2P Wi-Fi Update Trigger Card
-                    InkWell(
-                      onTap: () {
-                        _showP2PUpdateDialog(context, repo.localIpAddress);
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B).withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF334155).withOpacity(0.5)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.wifi_protected_setup, color: Color(0xFF10B981), size: 24),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'P2P App-Update (WLAN)',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Kinder-App direkt im Heimnetzwerk aktualisieren',
-                                    style: TextStyle(
-                                      color: Color(0xFF94A3B8),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),

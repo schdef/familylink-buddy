@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import '../auth/google_sign_in_service.dart';
 import '../pairing/pairing_repository.dart';
 import 'comms_repository.dart';
 
 class CommsScreen extends StatefulWidget {
-  final GoogleSignInAccount? account;
+  final ParentAccount? account;
   final PairedDevice device;
 
   const CommsScreen({

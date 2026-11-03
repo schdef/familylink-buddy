@@ -370,11 +370,15 @@ fun SetupGuideContent(
             itemNumber = 1,
             title = "WLAN-Nachtruhe Helfer",
             subtitle = "Bedienungshilfen-Dienst (Accessibility)",
-            description = "Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe in den Schnelleinstellungen ohne Root.",
+            description = "Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe in den Schnelleinstellungen ohne Root.\n\nFalls ausgegraut: Auf 'App-Info' tippen -> oben rechts auf die 3 Punkte (⋮) -> 'Eingeschränkte Einstellungen zulassen'. Danach hier 'Aktivieren' wählen.",
             isCompleted = isAccessibilityEnabled,
             actionButtonText = if (isAccessibilityEnabled) "Aktiviert" else "Aktivieren",
             onActionClick = {
                 SetupGuideHelper.openAccessibilitySettings(context)
+            },
+            secondaryActionText = "App-Info (3 Punkte)",
+            onSecondaryActionClick = {
+                SetupGuideHelper.openAppDetailsSettings(context)
             }
         )
 
