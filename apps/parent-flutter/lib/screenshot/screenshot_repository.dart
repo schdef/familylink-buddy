@@ -437,6 +437,67 @@ class ScreenshotRepository extends ChangeNotifier {
     return lanSuccess || firestoreSuccess;
   }
 
+  /// Deletes a single screenshot from Firestore and removes it from local history.
+  /// Returns `true` on success, `false` on error with formatted `_lastError`.
+  Future<bool> deleteScreenshot(String childFcmToken, String screenshotId) async {
+    _lastError = null;
+    try {
+      final fs = firestore;
+      if (fs != null && childFcmToken.isNotEmpty && childFcmToken != 'emulator') {
+        await fs
+            .collection('pairings')
+            .doc(childFcmToken)
+            .collection('screenshots')
+            .doc(screenshotId)
+            .delete();
+      }
+      _history.removeWhere((item) => item.id == screenshotId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('deleteScreenshot error: $e');
+      _lastError = formatError(e);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Deletes all screenshots for the given child device in Firestore and clears local history.
+  /// Returns `true` on success, `false` on error with formatted `_lastError`.
+  Future<bool> deleteAllScreenshots(String childFcmToken) async {
+    _lastError = null;
+    try {
+      final fs = firestore;
+      if (fs != null && childFcmToken.isNotEmpty && childFcmToken != 'emulator') {
+        final querySnapshot = await fs
+            .collection('pairings')
+            .doc(childFcmToken)
+            .collection('screenshots')
+            .get();
+
+        if (querySnapshot.docs.isNotEmpty) {
+          final docs = querySnapshot.docs;
+          for (var i = 0; i < docs.length; i += 500) {
+            final batch = fs.batch();
+            final end = (i + 500 < docs.length) ? i + 500 : docs.length;
+            for (var j = i; j < end; j++) {
+              batch.delete(docs[j].reference);
+            }
+            await batch.commit();
+          }
+        }
+      }
+      _history.clear();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('deleteAllScreenshots error: $e');
+      _lastError = formatError(e);
+      notifyListeners();
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _historySubscription?.cancel();

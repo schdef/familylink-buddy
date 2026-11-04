@@ -24,6 +24,8 @@ class ScreenshotScreen extends StatefulWidget {
 class _ScreenshotScreenState extends State<ScreenshotScreen> {
   bool _isClosingApp = false;
   bool _isLockingScreen = false;
+  bool _isDeletingAll = false;
+  String? _deletingScreenshotId;
 
   @override
   void initState() {
@@ -89,6 +91,110 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                 ),
               ],
             ),
+            actions: [
+              IconButton(
+                key: const ValueKey('fullscreen_delete_button'),
+                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 24),
+                tooltip: 'Screenshot löschen',
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: ctx,
+                    builder: (confirmCtx) => AlertDialog(
+                      backgroundColor: const Color(0xFF1E293B),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: const BorderSide(color: Color(0xFF334155)),
+                      ),
+                      title: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDC2626).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: Color(0xFFEF4444),
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Screenshot löschen?',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      content: Text(
+                        'Möchtest du diese Aufnahme (${item.formattedDateTime}) wirklich löschen?',
+                        style: const TextStyle(
+                          color: Color(0xFFCBD5E1),
+                          fontSize: 14,
+                          height: 1.4,
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(confirmCtx).pop(false),
+                          child: const Text(
+                            'Abbrechen',
+                            style: TextStyle(color: Color(0xFF94A3B8)),
+                          ),
+                        ),
+                        ElevatedButton(
+                          key: const ValueKey('confirm_delete_button'),
+                          onPressed: () => Navigator.of(confirmCtx).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFDC2626),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text('Löschen'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true && ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                    final repo = Provider.of<ScreenshotRepository>(context, listen: false);
+                    final success = await repo.deleteScreenshot(widget.device.fcmToken, item.id);
+                    if (!context.mounted) return;
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Screenshot gelöscht.'),
+                          backgroundColor: Color(0xFF10B981),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            repo.lastError != null && repo.lastError!.isNotEmpty
+                                ? 'Fehler beim Löschen: ${repo.lastError}'
+                                : 'Screenshot konnte nicht gelöscht werden.',
+                          ),
+                          backgroundColor: const Color(0xFFEF4444),
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
           ),
           body: Center(
             child: bytes != null
@@ -349,6 +455,237 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
       if (mounted) {
         setState(() {
           _isLockingScreen = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteScreenshot(
+    BuildContext context,
+    ScreenshotRepository repo,
+    ScreenshotItem item,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF334155)),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.delete_outline_rounded,
+                color: Color(0xFFEF4444),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Screenshot löschen?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Möchtest du diese Aufnahme (${item.formattedDateTime}) wirklich löschen?',
+          style: const TextStyle(
+            color: Color(0xFFCBD5E1),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Abbrechen',
+              style: TextStyle(color: Color(0xFF94A3B8)),
+            ),
+          ),
+          ElevatedButton(
+            key: const ValueKey('confirm_delete_button'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              elevation: 0,
+            ),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _deletingScreenshotId = item.id;
+    });
+
+    try {
+      final success = await repo.deleteScreenshot(
+        widget.device.fcmToken,
+        item.id,
+      );
+
+      if (!mounted || !context.mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Screenshot gelöscht.'),
+            backgroundColor: Color(0xFF10B981),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              repo.lastError != null && repo.lastError!.isNotEmpty
+                  ? 'Fehler beim Löschen: ${repo.lastError}'
+                  : 'Screenshot konnte nicht gelöscht werden.',
+            ),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deletingScreenshotId = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteAllScreenshots(
+    BuildContext context,
+    ScreenshotRepository repo,
+  ) async {
+    final count = repo.history.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF334155)),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.delete_sweep_rounded,
+                color: Color(0xFFEF4444),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Alle Screenshots löschen?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Möchtest du alle $count Aufnahmen wirklich unwiderruflich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
+          style: const TextStyle(
+            color: Color(0xFFCBD5E1),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Abbrechen',
+              style: TextStyle(color: Color(0xFF94A3B8)),
+            ),
+          ),
+          ElevatedButton(
+            key: const ValueKey('confirm_delete_all_button'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              elevation: 0,
+            ),
+            child: const Text('Alle löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isDeletingAll = true;
+    });
+
+    try {
+      final success = await repo.deleteAllScreenshots(widget.device.fcmToken);
+
+      if (!mounted || !context.mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Alle Screenshots wurden gelöscht.'),
+            backgroundColor: Color(0xFF10B981),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              repo.lastError != null && repo.lastError!.isNotEmpty
+                  ? 'Fehler beim Löschen aller Screenshots: ${repo.lastError}'
+                  : 'Screenshots konnten nicht gelöscht werden.',
+            ),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingAll = false;
         });
       }
     }
@@ -844,20 +1181,49 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 ),
                               ],
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF0F172A),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                latestScreenshot.formattedDateTime,
-                                style: const TextStyle(
-                                  color: Color(0xFF94A3B8),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0F172A),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    latestScreenshot.formattedDateTime,
+                                    style: const TextStyle(
+                                      color: Color(0xFF94A3B8),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                if (_deletingScreenshotId == latestScreenshot.id)
+                                  const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFFEF4444),
+                                    ),
+                                  )
+                                else
+                                  IconButton(
+                                    key: const ValueKey('delete_latest_screenshot_button'),
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Color(0xFFEF4444),
+                                      size: 20,
+                                    ),
+                                    tooltip: 'Screenshot löschen',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    onPressed: _isDeletingAll || _deletingScreenshotId != null
+                                        ? null
+                                        : () => _confirmDeleteScreenshot(context, repo, latestScreenshot),
+                                  ),
+                              ],
                             ),
                           ],
                         ),
@@ -1097,7 +1463,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                   ),
 
                   // 3. History Section
-                  if (history.length > 1) ...[
+                  if (history.isNotEmpty) ...[
                     const SizedBox(height: 28),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1110,11 +1476,32 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const Text(
-                          'Alle Aufnahmen',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 12,
+                        TextButton.icon(
+                          key: const ValueKey('delete_all_screenshots_button'),
+                          onPressed: _isDeletingAll || _deletingScreenshotId != null
+                              ? null
+                              : () => _confirmDeleteAllScreenshots(context, repo),
+                          icon: _isDeletingAll
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFFEF4444),
+                                  ),
+                                )
+                              : const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 18),
+                          label: Text(
+                            _isDeletingAll ? 'Wird gelöscht...' : 'Alle löschen',
+                            style: const TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
                         ),
                       ],
@@ -1128,7 +1515,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                         crossAxisCount: 2,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        childAspectRatio: 0.72,
+                        childAspectRatio: 0.68,
                       ),
                       itemCount: history.length,
                       itemBuilder: (context, index) {
@@ -1212,39 +1599,69 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                     color: const Color(0xFF1E293B),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
+                                    child: Row(
                                       children: [
-                                        if (item.foregroundApp != null) ...[
-                                          Text(
-                                            item.foregroundApp!,
-                                            style: const TextStyle(
-                                              color: Color(0xFF818CF8),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (item.foregroundApp != null) ...[
+                                                Text(
+                                                  item.foregroundApp!,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF818CF8),
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 2),
+                                              ],
+                                              Text(
+                                                item.formattedTime,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                item.formattedDate,
+                                                style: const TextStyle(
+                                                  color: Color(0xFF94A3B8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (_deletingScreenshotId == item.id)
+                                          const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Color(0xFFEF4444),
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                          )
+                                        else
+                                          IconButton(
+                                            key: ValueKey('delete_history_screenshot_${item.id}'),
+                                            icon: const Icon(
+                                              Icons.delete_outline_rounded,
+                                              color: Color(0xFFEF4444),
+                                              size: 18,
+                                            ),
+                                            tooltip: 'Screenshot löschen',
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                            onPressed: _isDeletingAll || _deletingScreenshotId != null
+                                                ? null
+                                                : () => _confirmDeleteScreenshot(context, repo, item),
                                           ),
-                                          const SizedBox(height: 2),
-                                        ],
-                                        Text(
-                                          item.formattedTime,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          item.formattedDate,
-                                          style: const TextStyle(
-                                            color: Color(0xFF94A3B8),
-                                            fontSize: 10,
-                                          ),
-                                        ),
                                       ],
                                     ),
                                   ),

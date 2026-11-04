@@ -1,4 +1,6 @@
+// ignore_for_file: subtype_of_sealed_class
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -454,6 +456,127 @@ void main() {
 
       expect(result, isFalse);
     });
+
+    test('deleteScreenshot removes item from history and notifies listeners', () async {
+      final repo = ScreenshotRepository();
+      final item1 = ScreenshotItem(
+        id: 'del-1',
+        timestamp: DateTime.now(),
+        base64Image: 'aW1nMQ==',
+      );
+      final item2 = ScreenshotItem(
+        id: 'del-2',
+        timestamp: DateTime.now(),
+        base64Image: 'aW1nMg==',
+      );
+      repo.setHistoryForTesting([item1, item2]);
+
+      bool notified = false;
+      repo.addListener(() => notified = true);
+
+      final success = await repo.deleteScreenshot('child_token', 'del-1');
+
+      expect(success, isTrue);
+      expect(notified, isTrue);
+      expect(repo.history.length, 1);
+      expect(repo.history.first.id, 'del-2');
+    });
+
+    test('deleteScreenshot with Firestore calls delete on specific document path', () async {
+      final fakeFirestore = FakeFirestore();
+      final repo = ScreenshotRepository(firestore: fakeFirestore);
+      final item = ScreenshotItem(
+        id: 'shot-to-delete',
+        timestamp: DateTime.now(),
+        base64Image: 'aW1n',
+      );
+      repo.setHistoryForTesting([item]);
+
+      final success = await repo.deleteScreenshot('child_device_token', 'shot-to-delete');
+
+      expect(success, isTrue);
+      expect(fakeFirestore.deletedDocPaths, contains('pairings/child_device_token/screenshots/shot-to-delete'));
+      expect(repo.history, isEmpty);
+    });
+
+    test('deleteScreenshot handles Firestore error, sets lastError and preserves history', () async {
+      final fakeFirestore = FakeFirestore()..throwOnDelete = true;
+      final repo = ScreenshotRepository(firestore: fakeFirestore);
+      final item = ScreenshotItem(
+        id: 'shot-fail',
+        timestamp: DateTime.now(),
+        base64Image: 'aW1n',
+      );
+      repo.setHistoryForTesting([item]);
+
+      final success = await repo.deleteScreenshot('child_token', 'shot-fail');
+
+      expect(success, isFalse);
+      expect(repo.hasPermissionError, isTrue);
+      expect(repo.history.length, 1);
+      expect(repo.history.first.id, 'shot-fail');
+    });
+
+    test('deleteAllScreenshots clears history and notifies listeners', () async {
+      final repo = ScreenshotRepository();
+      final item1 = ScreenshotItem(
+        id: 'all-1',
+        timestamp: DateTime.now(),
+        base64Image: 'aW1nMQ==',
+      );
+      final item2 = ScreenshotItem(
+        id: 'all-2',
+        timestamp: DateTime.now(),
+        base64Image: 'aW1nMg==',
+      );
+      repo.setHistoryForTesting([item1, item2]);
+
+      bool notified = false;
+      repo.addListener(() => notified = true);
+
+      final success = await repo.deleteAllScreenshots('child_token');
+
+      expect(success, isTrue);
+      expect(notified, isTrue);
+      expect(repo.history, isEmpty);
+      expect(repo.latestScreenshot, isNull);
+    });
+
+    test('deleteAllScreenshots with Firestore commits batch delete for all docs', () async {
+      final fakeFirestore = FakeFirestore()..existingDocIds = ['doc-1', 'doc-2', 'doc-3'];
+      final repo = ScreenshotRepository(firestore: fakeFirestore);
+      repo.setHistoryForTesting([
+        ScreenshotItem(id: 'doc-1', timestamp: DateTime.now(), base64Image: 'aW1n'),
+        ScreenshotItem(id: 'doc-2', timestamp: DateTime.now(), base64Image: 'aW1n'),
+        ScreenshotItem(id: 'doc-3', timestamp: DateTime.now(), base64Image: 'aW1n'),
+      ]);
+
+      final success = await repo.deleteAllScreenshots('child_device_token');
+
+      expect(success, isTrue);
+      expect(fakeFirestore.deletedDocPaths, [
+        'pairings/child_device_token/screenshots/doc-1',
+        'pairings/child_device_token/screenshots/doc-2',
+        'pairings/child_device_token/screenshots/doc-3',
+      ]);
+      expect(repo.history, isEmpty);
+    });
+
+    test('deleteAllScreenshots handles Firestore error, sets lastError and returns false', () async {
+      final fakeFirestore = FakeFirestore()
+        ..existingDocIds = ['doc-1']
+        ..throwOnDelete = true;
+      final repo = ScreenshotRepository(firestore: fakeFirestore);
+      repo.setHistoryForTesting([
+        ScreenshotItem(id: 'doc-1', timestamp: DateTime.now(), base64Image: 'aW1n'),
+      ]);
+
+      final success = await repo.deleteAllScreenshots('child_token');
+
+      expect(success, isFalse);
+      expect(repo.hasPermissionError, isTrue);
+      expect(repo.history.length, 1);
+    });
   });
 
   group('ScreenshotScreen Widget & Dynamic IP Tests', () {
@@ -693,5 +816,310 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Tablet-Bildschirm sperren?'), findsNothing);
     });
+
+    testWidgets('delete button on latest screenshot card prompts confirmation dialog and deletes on confirm', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      final item1 = ScreenshotItem(
+        id: 'shot-card-1',
+        timestamp: DateTime(2026, 11, 4, 10, 0),
+        base64Image: 'dGVzdDE=',
+        foregroundApp: 'YouTube Kids',
+      );
+      final item2 = ScreenshotItem(
+        id: 'shot-card-2',
+        timestamp: DateTime(2026, 11, 4, 9, 30),
+        base64Image: 'dGVzdDI=',
+        foregroundApp: 'Scratch Jr',
+      );
+      screenshotRepo.setHistoryForTesting([item1, item2]);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final deleteLatestBtn = find.byKey(const ValueKey('delete_latest_screenshot_button'));
+      expect(deleteLatestBtn, findsOneWidget);
+
+      // Tap delete button -> dialog appears
+      await tester.tap(deleteLatestBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Screenshot löschen?'), findsOneWidget);
+      expect(find.text('Abbrechen'), findsOneWidget);
+      expect(find.text('Löschen'), findsOneWidget);
+
+      // Cancel dismissal
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Screenshot löschen?'), findsNothing);
+      expect(screenshotRepo.history.length, 2);
+
+      // Tap delete button again and confirm
+      await tester.tap(deleteLatestBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm_delete_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Screenshot gelöscht.'), findsOneWidget);
+      expect(screenshotRepo.history.length, 1);
+      expect(screenshotRepo.latestScreenshot!.id, 'shot-card-2');
+    });
+
+    testWidgets('delete button in fullscreen viewer prompts confirmation dialog, closes viewer, and deletes screenshot', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      final item = ScreenshotItem(
+        id: 'shot-fullscreen-1',
+        timestamp: DateTime(2026, 11, 4, 11, 0),
+        base64Image: 'dGVzdA==',
+        foregroundApp: 'Minecraft',
+      );
+      screenshotRepo.setHistoryForTesting([item]);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap preview container to open fullscreen viewer
+      await tester.tap(find.text('Vergrößern'));
+      await tester.pumpAndSettle();
+
+      final fsDeleteBtn = find.byKey(const ValueKey('fullscreen_delete_button'));
+      expect(fsDeleteBtn, findsOneWidget);
+
+      // Tap fullscreen delete button
+      await tester.tap(fsDeleteBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Screenshot löschen?'), findsOneWidget);
+
+      // Confirm deletion
+      await tester.tap(find.byKey(const ValueKey('confirm_delete_button')));
+      await tester.pumpAndSettle();
+
+      // Fullscreen viewer closed, SnackBar shown, empty state displayed
+      expect(find.byKey(const ValueKey('fullscreen_delete_button')), findsNothing);
+      expect(find.text('Screenshot gelöscht.'), findsOneWidget);
+      expect(screenshotRepo.history, isEmpty);
+      expect(find.text('Noch kein Screenshot vorhanden'), findsOneWidget);
+    });
+
+    testWidgets('individual delete button in history gallery prompts dialog and deletes that item', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      final item1 = ScreenshotItem(
+        id: 'item-h1',
+        timestamp: DateTime(2026, 11, 4, 12, 0),
+        base64Image: 'dGVzdDE=',
+        foregroundApp: 'App 1',
+      );
+      final item2 = ScreenshotItem(
+        id: 'item-h2',
+        timestamp: DateTime(2026, 11, 4, 11, 0),
+        base64Image: 'dGVzdDI=',
+        foregroundApp: 'App 2',
+      );
+      screenshotRepo.setHistoryForTesting([item1, item2]);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final deleteH2Btn = find.byKey(const ValueKey('delete_history_screenshot_item-h2'));
+      await tester.ensureVisible(deleteH2Btn);
+      await tester.pumpAndSettle();
+
+      await tester.tap(deleteH2Btn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Screenshot löschen?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('confirm_delete_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Screenshot gelöscht.'), findsOneWidget);
+      expect(screenshotRepo.history.length, 1);
+      expect(screenshotRepo.history.first.id, 'item-h1');
+      expect(find.byKey(const ValueKey('delete_history_screenshot_item-h2')), findsNothing);
+    });
+
+    testWidgets('delete all button in history gallery prompts confirmation dialog and deletes all screenshots', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      screenshotRepo.setHistoryForTesting([
+        ScreenshotItem(id: 'all-h1', timestamp: DateTime.now(), base64Image: 'dGVzdDE='),
+        ScreenshotItem(id: 'all-h2', timestamp: DateTime.now(), base64Image: 'dGVzdDI='),
+      ]);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final deleteAllBtn = find.byKey(const ValueKey('delete_all_screenshots_button'));
+      await tester.ensureVisible(deleteAllBtn);
+      await tester.pumpAndSettle();
+      expect(find.text('Alle löschen'), findsOneWidget);
+
+      // Tap "Alle löschen" -> confirmation dialog appears
+      await tester.tap(deleteAllBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alle Screenshots löschen?'), findsOneWidget);
+      expect(find.textContaining('Möchtest du alle 2 Aufnahmen wirklich unwiderruflich löschen?'), findsOneWidget);
+
+      // Cancel
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(screenshotRepo.history.length, 2);
+
+      // Tap again and confirm
+      await tester.tap(deleteAllBtn);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('confirm_delete_all_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alle Screenshots wurden gelöscht.'), findsOneWidget);
+      expect(screenshotRepo.history, isEmpty);
+      expect(find.text('Noch kein Screenshot vorhanden'), findsOneWidget);
+      expect(find.byKey(const ValueKey('delete_all_screenshots_button')), findsNothing);
+    });
   });
+}
+
+class FakeFirestore extends Fake implements FirebaseFirestore {
+  final List<String> deletedDocPaths = [];
+  bool throwOnDelete = false;
+  bool throwOnGet = false;
+  List<String> existingDocIds = [];
+
+  @override
+  CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
+    return FakeCollectionReference(this, collectionPath);
+  }
+
+  @override
+  WriteBatch batch() => FakeWriteBatch(this);
+}
+
+class FakeCollectionReference extends Fake implements CollectionReference<Map<String, dynamic>> {
+  final FakeFirestore firestoreInstance;
+  @override
+  final String path;
+  FakeCollectionReference(this.firestoreInstance, this.path);
+
+  @override
+  DocumentReference<Map<String, dynamic>> doc([String? docId]) {
+    return FakeDocumentReference(firestoreInstance, '$path/$docId');
+  }
+
+  @override
+  Future<QuerySnapshot<Map<String, dynamic>>> get([GetOptions? options]) async {
+    if (firestoreInstance.throwOnGet) {
+      throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Missing permissions');
+    }
+    return FakeQuerySnapshot(
+      firestoreInstance.existingDocIds
+          .map((id) => FakeQueryDocumentSnapshot(firestoreInstance, '$path/$id', id))
+          .toList(),
+    );
+  }
+}
+
+class FakeDocumentReference extends Fake implements DocumentReference<Map<String, dynamic>> {
+  final FakeFirestore firestoreInstance;
+  final String docPath;
+  FakeDocumentReference(this.firestoreInstance, this.docPath);
+
+  @override
+  String get path => docPath;
+
+  @override
+  CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
+    return FakeCollectionReference(firestoreInstance, '$docPath/$collectionPath');
+  }
+
+  @override
+  Future<void> delete() async {
+    if (firestoreInstance.throwOnDelete) {
+      throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Delete failed');
+    }
+    firestoreInstance.deletedDocPaths.add(docPath);
+  }
+}
+
+class FakeQuerySnapshot extends Fake implements QuerySnapshot<Map<String, dynamic>> {
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> _docs;
+  FakeQuerySnapshot(this._docs);
+
+  @override
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> get docs => _docs;
+}
+
+class FakeQueryDocumentSnapshot extends Fake implements QueryDocumentSnapshot<Map<String, dynamic>> {
+  final FakeFirestore firestoreInstance;
+  final String docPath;
+  final String _id;
+  FakeQueryDocumentSnapshot(this.firestoreInstance, this.docPath, this._id);
+
+  @override
+  String get id => _id;
+
+  @override
+  DocumentReference<Map<String, dynamic>> get reference =>
+      FakeDocumentReference(firestoreInstance, docPath);
+}
+
+class FakeWriteBatch extends Fake implements WriteBatch {
+  final FakeFirestore firestoreInstance;
+  final List<DocumentReference> deletedReferences = [];
+  FakeWriteBatch(this.firestoreInstance);
+
+  @override
+  void delete(DocumentReference document) {
+    deletedReferences.add(document);
+  }
+
+  @override
+  Future<void> commit() async {
+    if (firestoreInstance.throwOnDelete) {
+      throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Batch failed');
+    }
+    for (final ref in deletedReferences) {
+      firestoreInstance.deletedDocPaths.add(ref.path);
+    }
+  }
 }
