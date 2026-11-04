@@ -50,6 +50,20 @@ class ScreenshotLogicTest {
     }
 
     @Test
+    fun testHttpServerLockScreenPayloadSerialization() {
+        val json = JSONObject().apply {
+            put("status", "success")
+            put("message", "Screen locked")
+        }
+
+        val jsonString = json.toString()
+        val parsed = JSONObject(jsonString)
+
+        assertEquals("success", parsed.getString("status"))
+        assertEquals("Screen locked", parsed.getString("message"))
+    }
+
+    @Test
     fun testHttpServerErrorPayloadSerialization() {
         val errorMessage = "Accessibility Service is not connected"
         val json = JSONObject().apply {
@@ -129,6 +143,48 @@ class ScreenshotLogicTest {
         assertTrue(processCloseApp(cmd2))
         assertEquals(2, closeExecutedCount)
         assertEquals(1700000005000L, lastCloseAppTimestamp)
+    }
+
+    @Test
+    fun testLockScreenCommandProcessingAndDeduplication() {
+        var lastLockScreenTimestamp = 0L
+        var lockExecutedCount = 0
+
+        fun processLockScreen(data: Map<String, Any?>): Boolean {
+            val lockScreenCommand = data["lockScreenCommand"] as? Map<*, *> ?: return false
+            val timestamp = when (val ts = lockScreenCommand["timestamp"]) {
+                is Number -> ts.toLong()
+                is String -> ts.toLongOrNull() ?: 0L
+                else -> 0L
+            }
+            if (timestamp > lastLockScreenTimestamp) {
+                lastLockScreenTimestamp = timestamp
+                lockExecutedCount++
+                return true
+            }
+            return false
+        }
+
+        // 1. Initial command
+        val cmd1 = mapOf<String, Any?>("lockScreenCommand" to mapOf("timestamp" to 1700000000000L))
+        assertTrue(processLockScreen(cmd1))
+        assertEquals(1, lockExecutedCount)
+        assertEquals(1700000000000L, lastLockScreenTimestamp)
+
+        // 2. Duplicate snapshot
+        assertFalse(processLockScreen(cmd1))
+        assertEquals(1, lockExecutedCount)
+
+        // 3. Stale command with earlier timestamp
+        val staleCmd = mapOf<String, Any?>("lockScreenCommand" to mapOf("timestamp" to 1699999999000L))
+        assertFalse(processLockScreen(staleCmd))
+        assertEquals(1, lockExecutedCount)
+
+        // 4. Newer command
+        val cmd2 = mapOf<String, Any?>("lockScreenCommand" to mapOf("timestamp" to 1700000005000L))
+        assertTrue(processLockScreen(cmd2))
+        assertEquals(2, lockExecutedCount)
+        assertEquals(1700000005000L, lastLockScreenTimestamp)
     }
 
     @Test

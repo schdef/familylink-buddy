@@ -163,6 +163,9 @@ class WifiAccessibilityHelperService : AccessibilityService() {
     fun closeCurrentApp(context: Context = this): Boolean =
         Companion.closeCurrentApp(context)
 
+    fun lockScreen(context: Context = this): Boolean =
+        Companion.lockScreen(context)
+
     companion object {
         private const val TAG = "WifiAccessibility"
 
@@ -288,6 +291,44 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to post toast to main looper", e)
+            }
+
+            return executed
+        }
+
+        /**
+         * Locks the screen / turns off the display using AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
+         * and displays a toast notification to the child.
+         */
+        fun lockScreen(context: Context): Boolean {
+            var executed = false
+            val service = instance
+            if (service != null) {
+                val actionSuccess = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                if (actionSuccess) {
+                    executed = true
+                    Log.i(TAG, "GLOBAL_ACTION_LOCK_SCREEN executed successfully")
+                } else {
+                    Log.w(TAG, "performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) returned false")
+                }
+            } else {
+                Log.w(TAG, "lockScreen: AccessibilityService instance is null")
+            }
+
+            try {
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        Toast.makeText(
+                            context.applicationContext,
+                            "Bildschirm wurde von Elternteil gesperrt",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to display lock screen toast notification", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to post lock screen toast to main looper", e)
             }
 
             return executed

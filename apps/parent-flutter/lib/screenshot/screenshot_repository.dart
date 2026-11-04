@@ -380,6 +380,63 @@ class ScreenshotRepository extends ChangeNotifier {
     return lanSuccess || firestoreSuccess;
   }
 
+  /// Locks the tablet screen of the child device.
+  /// 1. If localIpAddress is provided, posts to http://$localIpAddress:8085/lock_screen (timeout 3s).
+  /// 2. Fallback / dual-write to Firestore pairings/$childFcmToken:
+  ///    lockScreenCommand: {'timestamp': FieldValue.serverTimestamp(), 'requestId': Uuid().v4()}
+  /// Returns `true` if LAN succeeds or Firestore write succeeds.
+  Future<bool> lockScreen(
+    String childFcmToken, {
+    String? localIpAddress,
+  }) async {
+    bool lanSuccess = false;
+
+    // Step 1: Direct LAN HTTP
+    if (localIpAddress != null && localIpAddress.isNotEmpty) {
+      try {
+        final url = Uri.parse('http://$localIpAddress:8085/lock_screen');
+        debugPrint('Attempting direct LAN lock_screen to: $url');
+
+        final client = _httpClient;
+        final http.Response response = client != null
+            ? await client.post(url).timeout(const Duration(seconds: 3))
+            : await http.post(url).timeout(const Duration(seconds: 3));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          lanSuccess = true;
+          debugPrint('Direct LAN lock_screen succeeded ($localIpAddress)');
+        } else {
+          debugPrint('Direct LAN lock_screen failed with status: ${response.statusCode}');
+        }
+      } catch (e) {
+        debugPrint('Direct LAN lock_screen error: $e');
+      }
+    }
+
+    // Step 2: Fallback / dual-write to Firestore
+    bool firestoreSuccess = false;
+    final fs = firestore;
+    if (fs != null && childFcmToken.isNotEmpty && childFcmToken != 'emulator') {
+      try {
+        final requestId = const Uuid().v4();
+        await fs.collection('pairings').doc(childFcmToken).set({
+          'lockScreenCommand': {
+            'timestamp': FieldValue.serverTimestamp(),
+            'requestId': requestId,
+          },
+        }, SetOptions(merge: true));
+        firestoreSuccess = true;
+        debugPrint('Firestore lockScreenCommand successfully written ($requestId)');
+      } catch (e) {
+        debugPrint('Firestore lockScreen error: $e');
+        _lastError = formatError(e);
+        notifyListeners();
+      }
+    }
+
+    return lanSuccess || firestoreSuccess;
+  }
+
   @override
   void dispose() {
     _historySubscription?.cancel();

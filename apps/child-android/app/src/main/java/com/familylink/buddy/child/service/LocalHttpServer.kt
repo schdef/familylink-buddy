@@ -184,6 +184,8 @@ class LocalHttpServer(
                 handleTakeScreenshot(writer)
             } else if (path == "/close_app") {
                 handleCloseApp(writer)
+            } else if (path == "/lock_screen") {
+                handleLockScreen(writer)
             } else {
                 sendHttpResponse(writer, 404, "Not Found", "{\"error\":\"Not Found\"}")
             }
@@ -311,6 +313,32 @@ class LocalHttpServer(
             val responseJson = JSONObject().apply {
                 put("status", "error")
                 put("message", "Failed to close foreground app: ${e.message}")
+            }
+            sendHttpResponse(writer, 500, "Internal Server Error", responseJson.toString())
+        }
+    }
+
+    private fun handleLockScreen(writer: PrintWriter) {
+        try {
+            val success = WifiAccessibilityHelperService.lockScreen(context)
+            if (success) {
+                val responseJson = JSONObject().apply {
+                    put("status", "success")
+                    put("message", "Screen locked")
+                }
+                sendHttpResponse(writer, 200, "OK", responseJson.toString())
+            } else {
+                val responseJson = JSONObject().apply {
+                    put("status", "error")
+                    put("message", "Failed to lock screen (accessibility service may not be running)")
+                }
+                sendHttpResponse(writer, 500, "Internal Server Error", responseJson.toString())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error locking screen", e)
+            val responseJson = JSONObject().apply {
+                put("status", "error")
+                put("message", "Failed to lock screen: ${e.message}")
             }
             sendHttpResponse(writer, 500, "Internal Server Error", responseJson.toString())
         }

@@ -414,6 +414,46 @@ void main() {
 
       expect(result, isFalse);
     });
+
+    test('lockScreen succeeds via direct LAN HTTP', () async {
+      bool lockScreenCalled = false;
+      final mockClient = MockClient((request) async {
+        expect(request.url.toString(), 'http://192.168.1.120:8085/lock_screen');
+        expect(request.method, 'POST');
+        lockScreenCalled = true;
+        return http.Response(jsonEncode({'status': 'success', 'message': 'Screen locked'}), 200);
+      });
+
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      final result = await repo.lockScreen(
+        'child_device_fcm_token_123',
+        localIpAddress: '192.168.1.120',
+      );
+
+      expect(lockScreenCalled, isTrue);
+      expect(result, isTrue);
+    });
+
+    test('lockScreen LAN failure falls back gracefully when firestore is null', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response('Internal Server Error', 500);
+      });
+
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      final result = await repo.lockScreen(
+        'child_device_fcm_token_123',
+        localIpAddress: '192.168.1.120',
+      );
+
+      expect(result, isFalse);
+    });
+
+    test('lockScreen without localIpAddress falls back gracefully when firestore is null', () async {
+      final repo = ScreenshotRepository();
+      final result = await repo.lockScreen('child_device_fcm_token_123');
+
+      expect(result, isFalse);
+    });
   });
 
   group('ScreenshotScreen Widget & Dynamic IP Tests', () {
@@ -522,6 +562,136 @@ void main() {
 
       expect(find.byKey(const ValueKey('screenshot_permission_error_banner')), findsNothing);
       expect(find.textContaining('Screenshot konnte nicht empfangen werden: Connection reset by peer'), findsOneWidget);
+    });
+
+    testWidgets('lock screen button is rendered in action area and tapping opens confirmation dialog', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Top action button is visible even without screenshots
+      final lockBtn = find.byKey(const ValueKey('action_lock_screen_button'));
+      expect(lockBtn, findsOneWidget);
+      expect(find.text('Bildschirm sperren'), findsOneWidget);
+      expect(find.byIcon(Icons.screen_lock_portrait_rounded), findsOneWidget);
+
+      // Tap button to open dialog
+      await tester.tap(lockBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tablet-Bildschirm sperren?'), findsOneWidget);
+      expect(find.text('Möchtest du den Bildschirm des Tablets jetzt sofort ausschalten und sperren?'), findsOneWidget);
+      expect(find.text('Abbrechen'), findsOneWidget);
+      expect(find.text('Jetzt sperren'), findsOneWidget);
+
+      // Cancel dismisses dialog
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tablet-Bildschirm sperren?'), findsNothing);
+    });
+
+    testWidgets('confirming lock screen dialog invokes lockScreen and displays success SnackBar', (tester) async {
+      bool lockCalled = false;
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/lock_screen') {
+          lockCalled = true;
+          return http.Response(jsonEncode({'status': 'success', 'message': 'Screen locked'}), 200);
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final screenshotRepo = ScreenshotRepository(httpClient: mockClient);
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+          localIpAddress: '192.168.1.50',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('action_lock_screen_button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Jetzt sperren'));
+      await tester.pumpAndSettle();
+
+      expect(lockCalled, isTrue);
+      expect(find.text('Tablet-Bildschirm wurde gesperrt.'), findsOneWidget);
+    });
+
+    testWidgets('failed lockScreen displays error SnackBar', (tester) async {
+      final mockClient = MockClient((request) async {
+        return http.Response('Error', 500);
+      });
+
+      final screenshotRepo = ScreenshotRepository(httpClient: mockClient);
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+          localIpAddress: '192.168.1.50',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('action_lock_screen_button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Jetzt sperren'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bildschirm konnte nicht gesperrt werden. Ist das Gerät online?'), findsOneWidget);
+    });
+
+    testWidgets('when screenshot is loaded, both action button and card button are available', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      final item = ScreenshotItem(
+        id: 'shot-card-test',
+        timestamp: DateTime.now(),
+        base64Image: 'dGVzdA==',
+        foregroundApp: 'YouTube Kids',
+        foregroundPackage: 'com.google.android.apps.youtube.kids',
+      );
+      screenshotRepo.setHistoryForTesting([item]);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('action_lock_screen_button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('card_lock_screen_button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('close_app_button')), findsOneWidget);
+      expect(find.text('Tablet sperren'), findsOneWidget);
+      expect(find.text('App sofort beenden'), findsOneWidget);
+
+      // Scroll to and tap card lock screen button opens confirmation dialog
+      await tester.ensureVisible(find.byKey(const ValueKey('card_lock_screen_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('card_lock_screen_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tablet-Bildschirm sperren?'), findsOneWidget);
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tablet-Bildschirm sperren?'), findsNothing);
     });
   });
 }

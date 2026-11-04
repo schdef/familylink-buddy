@@ -23,6 +23,7 @@ class ScreenshotScreen extends StatefulWidget {
 
 class _ScreenshotScreenState extends State<ScreenshotScreen> {
   bool _isClosingApp = false;
+  bool _isLockingScreen = false;
 
   @override
   void initState() {
@@ -241,6 +242,118 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     }
   }
 
+  Future<void> _confirmLockScreen(
+    BuildContext context,
+    ScreenshotRepository repo,
+    String? effectiveIp,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF334155)),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.screen_lock_portrait_rounded,
+                color: Color(0xFFF59E0B),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Tablet-Bildschirm sperren?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Möchtest du den Bildschirm des Tablets jetzt sofort ausschalten und sperren?',
+          style: TextStyle(
+            color: Color(0xFFCBD5E1),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Abbrechen',
+              style: TextStyle(color: Color(0xFF94A3B8)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD97706),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              elevation: 0,
+            ),
+            child: const Text('Jetzt sperren'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isLockingScreen = true;
+    });
+
+    try {
+      final success = await repo.lockScreen(
+        widget.device.fcmToken,
+        localIpAddress: effectiveIp,
+      );
+
+      if (!mounted || !context.mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tablet-Bildschirm wurde gesperrt.'),
+            backgroundColor: Color(0xFF10B981),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bildschirm konnte nicht gesperrt werden. Ist das Gerät online?'),
+            backgroundColor: Color(0xFFEF4444),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLockingScreen = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Dynamically resolve effective IP from widget or VolumeRepository
@@ -425,6 +538,72 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // 2. Action Button: "Bildschirm sperren" (Available even before screenshot)
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.5),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const ValueKey('action_lock_screen_button'),
+                      onTap: _isLockingScreen
+                          ? null
+                          : () => _confirmLockScreen(context, repo, effectiveIp),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_isLockingScreen) ...[
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Color(0xFFF59E0B),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Wird gesperrt...',
+                                style: TextStyle(
+                                  color: Color(0xFFF59E0B),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ] else ...[
+                              const Icon(
+                                Icons.screen_lock_portrait_rounded,
+                                color: Color(0xFFF59E0B),
+                                size: 22,
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Bildschirm sperren',
+                                style: TextStyle(
+                                  color: Color(0xFFFBBF24),
+                                  fontSize: 15,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -837,32 +1016,78 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              ElevatedButton.icon(
-                                onPressed: repo.isCapturing || _isClosingApp
-                                    ? null
-                                    : () => _confirmCloseApp(context, repo, latestScreenshot, effectiveIp),
-                                icon: _isClosingApp
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      key: const ValueKey('close_app_button'),
+                                      onPressed: repo.isCapturing || _isClosingApp
+                                          ? null
+                                          : () => _confirmCloseApp(context, repo, latestScreenshot, effectiveIp),
+                                      icon: _isClosingApp
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(Icons.stop_circle_outlined, size: 18),
+                                      label: Text(
+                                        _isClosingApp ? 'Wird beendet...' : 'App sofort beenden',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFDC2626),
+                                        foregroundColor: Colors.white,
+                                        disabledBackgroundColor: const Color(0xFF7F1D1D),
+                                        disabledForegroundColor: Colors.white60,
+                                        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10),
                                         ),
-                                      )
-                                    : const Icon(Icons.stop_circle_outlined, size: 18),
-                                label: Text(_isClosingApp ? 'Wird beendet...' : 'App sofort beenden'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFDC2626),
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor: const Color(0xFF7F1D1D),
-                                  disabledForegroundColor: Colors.white60,
-                                  padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                                        elevation: 0,
+                                      ),
+                                    ),
                                   ),
-                                  elevation: 0,
-                                ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      key: const ValueKey('card_lock_screen_button'),
+                                      onPressed: _isLockingScreen
+                                          ? null
+                                          : () => _confirmLockScreen(context, repo, effectiveIp),
+                                      icon: _isLockingScreen
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(Icons.screen_lock_portrait_rounded, size: 18),
+                                      label: Text(
+                                        _isLockingScreen ? 'Wird gesperrt...' : 'Tablet sperren',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFD97706),
+                                        foregroundColor: Colors.white,
+                                        disabledBackgroundColor: const Color(0xFF78350F),
+                                        disabledForegroundColor: Colors.white60,
+                                        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        elevation: 0,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

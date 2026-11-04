@@ -812,6 +812,7 @@ class WidgetUpdateService : Service() {
     private var lastExecutedCommsSessionTimestamp: Long = 0
     private var lastScreenshotRequestId: String? = null
     private var lastCloseAppTimestamp: Long = 0L
+    private var lastLockScreenTimestamp: Long = 0L
     private var volumeObserver: ContentObserver? = null
 
     private fun startFirestoreListener() {
@@ -1110,6 +1111,22 @@ class WidgetUpdateService : Service() {
                 lastCloseAppTimestamp = timestamp
                 Log.i(TAG, "Executing closeAppCommand from Firestore (timestamp=$timestamp)")
                 WifiAccessibilityHelperService.closeCurrentApp(applicationContext)
+            }
+        }
+
+        // 10. Process Lock Screen Command
+        val lockScreenCommand = data["lockScreenCommand"] as? Map<*, *>
+        if (lockScreenCommand != null) {
+            val timestamp = when (val ts = lockScreenCommand["timestamp"]) {
+                is Timestamp -> ts.toDate().time
+                is Number -> ts.toLong()
+                is String -> ts.toLongOrNull() ?: 0L
+                else -> 0L
+            }
+            if (timestamp > lastLockScreenTimestamp) {
+                lastLockScreenTimestamp = timestamp
+                Log.i(TAG, "Executing lockScreenCommand from Firestore (timestamp=$timestamp)")
+                WifiAccessibilityHelperService.lockScreen(applicationContext)
             }
         }
     }
