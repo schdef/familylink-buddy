@@ -8,6 +8,7 @@ import 'volume/volume_repository.dart';
 import 'time_bank/time_bank_repository.dart';
 import 'bedtime/bedtime_repository.dart';
 import 'screenshot/screenshot_repository.dart';
+import 'app_limits/app_limits_repository.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -43,6 +44,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => TimeBankRepository()),
         ChangeNotifierProvider(create: (_) => BedtimeRepository()),
         ChangeNotifierProvider(create: (_) => ScreenshotRepository()),
+        ChangeNotifierProvider(create: (_) => AppLimitsRepository()),
       ],
       child: const FamilyLinkBuddyParentApp(),
     ),

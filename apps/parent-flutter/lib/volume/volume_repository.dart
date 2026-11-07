@@ -66,46 +66,50 @@ class VolumeRepository extends ChangeNotifier {
     _subscription?.cancel();
     if (childFcmToken.isEmpty || childFcmToken == 'emulator') return;
 
-    _subscription = FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childFcmToken)
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.exists) {
-        final data = snapshot.data();
-        if (data != null) {
-          _localIpAddress = data['localIpAddress'] as String?;
+    try {
+      _subscription = FirebaseFirestore.instance
+          .collection('pairings')
+          .doc(childFcmToken)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists) {
+          final data = snapshot.data();
+          if (data != null) {
+            _localIpAddress = data['localIpAddress'] as String?;
 
-          final dbLastSeen = data['lastSeen'] as Timestamp?;
-          if (dbLastSeen != null) {
-            _lastSeen = dbLastSeen.toDate();
-            _isConnected = true;
-          }
-
-          final report = data['volumeReport'] as Map<dynamic, dynamic>?;
-          if (report != null) {
-            final int mediaVol = (report['mediaVolume'] as num?)?.toInt() ?? -1;
-            final int ringtoneVol = (report['ringtoneVolume'] as num?)?.toInt() ?? -1;
-            final int alarmVol = (report['alarmVolume'] as num?)?.toInt() ?? -1;
-            _volumeState = VolumeState(
-              mediaVolume: mediaVol,
-              ringtoneVolume: ringtoneVol,
-              alarmVolume: alarmVol,
-              maxMediaVolume: (report['maxMediaVolume'] as num?)?.toInt() ?? 15,
-              maxRingtoneVolume: (report['maxRingtoneVolume'] as num?)?.toInt() ?? 15,
-              maxAlarmVolume: (report['maxAlarmVolume'] as num?)?.toInt() ?? 15,
-              isMuted: mediaVol == 0 && ringtoneVol == 0,
-              timestamp: DateTime.now(),
-            );
-            _isConnected = true;
-            if (dbLastSeen == null) {
-              _lastSeen = DateTime.now();
+            final dbLastSeen = data['lastSeen'] as Timestamp?;
+            if (dbLastSeen != null) {
+              _lastSeen = dbLastSeen.toDate();
+              _isConnected = true;
             }
+
+            final report = data['volumeReport'] as Map<dynamic, dynamic>?;
+            if (report != null) {
+              final int mediaVol = (report['mediaVolume'] as num?)?.toInt() ?? -1;
+              final int ringtoneVol = (report['ringtoneVolume'] as num?)?.toInt() ?? -1;
+              final int alarmVol = (report['alarmVolume'] as num?)?.toInt() ?? -1;
+              _volumeState = VolumeState(
+                mediaVolume: mediaVol,
+                ringtoneVolume: ringtoneVol,
+                alarmVolume: alarmVol,
+                maxMediaVolume: (report['maxMediaVolume'] as num?)?.toInt() ?? 15,
+                maxRingtoneVolume: (report['maxRingtoneVolume'] as num?)?.toInt() ?? 15,
+                maxAlarmVolume: (report['maxAlarmVolume'] as num?)?.toInt() ?? 15,
+                isMuted: mediaVol == 0 && ringtoneVol == 0,
+                timestamp: DateTime.now(),
+              );
+              _isConnected = true;
+              if (dbLastSeen == null) {
+                _lastSeen = DateTime.now();
+              }
+            }
+            notifyListeners();
           }
-          notifyListeners();
         }
-      }
-    });
+      });
+    } catch (e) {
+      debugPrint('VolumeRepository subscribe error: $e');
+    }
   }
 
   @override

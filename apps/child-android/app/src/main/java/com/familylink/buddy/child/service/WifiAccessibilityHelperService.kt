@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
@@ -15,6 +16,11 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
+import com.familylink.buddy.child.data.AppInterceptionResult
+import com.familylink.buddy.child.data.AppLimitsManager
+import com.familylink.buddy.child.data.AppRules
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import java.io.ByteArrayOutputStream
 
 /**
@@ -24,14 +30,35 @@ import java.io.ByteArrayOutputStream
  */
 class WifiAccessibilityHelperService : AccessibilityService() {
 
+    private val tickerHandler = Handler(Looper.getMainLooper())
+    private var tickerCounter = 0L
+    private var lastToastTime = 0L
+    private var lastToastMessage: String? = null
+
+    private val tickerRunnable = object : Runnable {
+        override fun run() {
+            onLimitsTimerTick()
+            tickerHandler.postDelayed(this, 1000L)
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         Log.i(TAG, "WifiAccessibilityHelperService connected")
+        AppLimitsManager.getInstance(this)
+        startLimitsTicker()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        stopLimitsTicker()
+        try {
+            val prefs = getSharedPreferences(AppLimitsManager.PREFS_NAME, Context.MODE_PRIVATE)
+            AppLimitsManager.getInstance(this).saveToPreferences(prefs)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed saving app limits preferences on destroy", e)
+        }
         if (instance == this) {
             instance = null
         }
@@ -45,6 +72,13 @@ class WifiAccessibilityHelperService : AccessibilityService() {
         if (!pkg.isNullOrBlank()) {
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || latestPackageName == null) {
                 latestPackageName = pkg
+            }
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val interception = checkAndInterceptPackage(pkg)
+                if (interception is AppInterceptionResult.BlockedBlacklist ||
+                    interception is AppInterceptionResult.BlockedCategoryLimit) {
+                    return
+                }
             }
         }
 
@@ -166,6 +200,104 @@ class WifiAccessibilityHelperService : AccessibilityService() {
     fun lockScreen(context: Context = this): Boolean =
         Companion.lockScreen(context)
 
+    fun checkAndInterceptPackage(pkg: String): AppInterceptionResult {
+        if (pkg.isBlank()) return AppInterceptionResult.None
+
+        // Ignore launcher, our own child app, and System UI
+        if (isLauncherPackage(this, pkg) || pkg == packageName || pkg == "com.android.systemui") {
+            AppLimitsManager.getInstance(this).onSystemOrLauncherActive(pkg)
+            return AppInterceptionResult.None
+        }
+
+        val appLabel = getAppLabel(pkg)
+        val manager = AppLimitsManager.getInstance(this)
+        val result = manager.onPackageChanged(pkg, appLabel)
+
+        when (result) {
+            is AppInterceptionResult.BlockedBlacklist -> {
+                Log.w(TAG, "Blocking blacklisted app: $pkg ($appLabel)")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                showInterceptionToast(result.message)
+            }
+            is AppInterceptionResult.BlockedCategoryLimit -> {
+                Log.w(TAG, "Blocking category-limited app: $pkg ($appLabel) - Category: ${result.categoryName}")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                showInterceptionToast(result.message)
+            }
+            is AppInterceptionResult.Allowed -> {
+                Log.d(TAG, "App allowed: $pkg (activeCategory=${result.activeCategoryId})")
+            }
+            AppInterceptionResult.None -> {}
+        }
+        return result
+    }
+
+    private fun getAppLabel(pkg: String): String {
+        return try {
+            val pm = packageManager
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getApplicationInfo(pkg, 0)
+            }
+            val label = pm.getApplicationLabel(appInfo).toString()
+            if (label.isNotBlank()) label else pkg
+        } catch (e: Exception) {
+            pkg
+        }
+    }
+
+    private fun showInterceptionToast(message: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastToastTime < 1500L && lastToastMessage == message) {
+            return
+        }
+        lastToastTime = now
+        lastToastMessage = message
+
+        Handler(Looper.getMainLooper()).post {
+            try {
+                Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to display toast: $message", e)
+            }
+        }
+    }
+
+    private fun startLimitsTicker() {
+        tickerHandler.removeCallbacks(tickerRunnable)
+        tickerHandler.postDelayed(tickerRunnable, 1000L)
+    }
+
+    private fun stopLimitsTicker() {
+        tickerHandler.removeCallbacks(tickerRunnable)
+    }
+
+    private fun onLimitsTimerTick() {
+        tickerCounter++
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isInteractive = powerManager?.isInteractive ?: true
+        val manager = AppLimitsManager.getInstance(this)
+
+        val result = manager.onTick(isInteractive)
+        if (result is AppInterceptionResult.BlockedCategoryLimit) {
+            Log.i(TAG, "Limit reached during active foreground usage for category ${result.categoryName}")
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            showInterceptionToast(result.message)
+        }
+
+        if (tickerCounter % 30 == 0L) {
+            try {
+                val prefs = getSharedPreferences(AppLimitsManager.PREFS_NAME, Context.MODE_PRIVATE)
+                manager.saveToPreferences(prefs)
+                syncCategoryUsageToFirestore(this)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during periodic limits persistence", e)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "WifiAccessibility"
 
@@ -174,6 +306,69 @@ class WifiAccessibilityHelperService : AccessibilityService() {
 
         @Volatile
         var latestPackageName: String? = null
+
+        @Volatile
+        var childToken: String? = null
+
+        fun updateAppRules(context: Context, rules: AppRules) {
+            val manager = AppLimitsManager.getInstance(context)
+            manager.updateRules(rules)
+            try {
+                val prefs = context.getSharedPreferences(AppLimitsManager.PREFS_NAME, Context.MODE_PRIVATE)
+                manager.saveToPreferences(prefs)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving rules to preferences", e)
+            }
+
+            // Immediately check current foreground app
+            val service = instance
+            if (service != null) {
+                val currentPkg = latestPackageName ?: service.rootInActiveWindow?.packageName?.toString()
+                if (!currentPkg.isNullOrBlank()) {
+                    service.checkAndInterceptPackage(currentPkg)
+                }
+            }
+        }
+
+        fun addBonusMinutes(context: Context, categoryId: String, extraMinutes: Int) {
+            val manager = AppLimitsManager.getInstance(context)
+            manager.addBonusMinutes(categoryId, extraMinutes)
+            try {
+                val prefs = context.getSharedPreferences(AppLimitsManager.PREFS_NAME, Context.MODE_PRIVATE)
+                manager.saveToPreferences(prefs)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving bonus minutes to preferences", e)
+            }
+
+            val service = instance
+            if (service != null) {
+                val currentPkg = latestPackageName ?: service.rootInActiveWindow?.packageName?.toString()
+                if (!currentPkg.isNullOrBlank()) {
+                    service.checkAndInterceptPackage(currentPkg)
+                }
+            }
+        }
+
+        fun syncCategoryUsageToFirestore(context: Context? = null) {
+            val token = childToken ?: return
+            try {
+                val ctx = context ?: instance?.applicationContext ?: return
+                val manager = AppLimitsManager.getInstance(ctx)
+                val usageSeconds = manager.getAllCategoryUsageSeconds()
+                val usageMinutes = usageSeconds.mapValues { it.value / 60 }
+
+                val db = FirebaseFirestore.getInstance()
+                val updates = hashMapOf<String, Any>(
+                    "categoryUsage" to usageSeconds,
+                    "categoryUsageMinutes" to usageMinutes,
+                    "categoryUsageUpdatedAt" to FieldValue.serverTimestamp()
+                )
+                db.collection("pairings").document(token).update(updates)
+                Log.d(TAG, "Synced category usage to Firestore pairings/$token: $usageSeconds")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed syncing category usage to Firestore", e)
+            }
+        }
 
         const val TARGET_STATE_NONE = 0
         const val TARGET_STATE_OFF = 1

@@ -7,12 +7,16 @@ import android.media.AudioManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.familylink.buddy.child.data.AppLimitsManager
+import com.familylink.buddy.child.data.AppRules
 import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.data.FamilyTimeRepository
+import com.familylink.buddy.child.data.InstalledAppsManager
 import com.familylink.buddy.child.data.VolumeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -186,6 +190,26 @@ class LocalHttpServer(
                 handleCloseApp(writer)
             } else if (path == "/lock_screen") {
                 handleLockScreen(writer)
+            } else if (path == "/set_app_rules") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                handleSetAppRules(writer, queryParams, bodyJson, bodyString)
+            } else if (path == "/get_app_rules") {
+                handleGetAppRules(writer)
+            } else if (path == "/installed_apps") {
+                handleGetInstalledApps(writer)
+            } else if (path == "/add_bonus_minutes") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                handleAddBonusMinutes(writer, queryParams, bodyJson)
             } else {
                 sendHttpResponse(writer, 404, "Not Found", "{\"error\":\"Not Found\"}")
             }
@@ -525,6 +549,116 @@ class LocalHttpServer(
             maxAlarmVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
             isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
         )
+    }
+
+    private fun handleSetAppRules(
+        writer: PrintWriter,
+        queryParams: Map<String, String>,
+        bodyJson: JSONObject?,
+        bodyString: String
+    ) {
+        try {
+            val rules = if (bodyJson != null) {
+                AppRules.fromJson(bodyJson.toString())
+            } else if (queryParams.containsKey("rules")) {
+                AppRules.fromJson(queryParams["rules"] ?: "")
+            } else if (bodyString.isNotBlank()) {
+                AppRules.fromJson(bodyString)
+            } else {
+                AppRules()
+            }
+
+            WifiAccessibilityHelperService.updateAppRules(context, rules)
+
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("blacklistedCount", rules.blacklistedPackages.size)
+                put("categoriesCount", rules.categories.size)
+                put("bonusCount", rules.bonusMinutes.size)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting app rules over LAN", e)
+            sendHttpResponse(writer, 400, "Bad Request", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
+    private fun handleGetAppRules(writer: PrintWriter) {
+        try {
+            val manager = AppLimitsManager.getInstance(context)
+            val rules = manager.getRules()
+            val usage = manager.getAllCategoryUsageSeconds()
+            val bonus = manager.getAllBonusMinutes()
+
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("rules", JSONObject(rules.toJson()))
+                val usageObj = JSONObject()
+                usage.forEach { (k, v) -> usageObj.put(k, v) }
+                put("categoryUsageSeconds", usageObj)
+                val bonusObj = JSONObject()
+                bonus.forEach { (k, v) -> bonusObj.put(k, v) }
+                put("bonusMinutes", bonusObj)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting app rules over LAN", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
+    private fun handleGetInstalledApps(writer: PrintWriter) {
+        try {
+            val apps = InstalledAppsManager.scanInstalledLauncherApps(context)
+            val array = JSONArray()
+            apps.forEach { app ->
+                val obj = JSONObject()
+                obj.put("packageName", app["packageName"])
+                obj.put("label", app["label"])
+                array.put(obj)
+            }
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("installedApps", array)
+                put("count", apps.size)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting installed apps over LAN", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
+    private fun handleAddBonusMinutes(
+        writer: PrintWriter,
+        queryParams: Map<String, String>,
+        bodyJson: JSONObject?
+    ) {
+        try {
+            val categoryId = bodyJson?.optString("categoryId")
+                ?: queryParams["categoryId"]
+                ?: ""
+            val minutes = bodyJson?.optInt("minutes", -1).let {
+                if (it != null && it != -1) it else queryParams["minutes"]?.toIntOrNull() ?: 0
+            }
+
+            if (categoryId.isBlank() || minutes <= 0) {
+                sendHttpResponse(writer, 400, "Bad Request", "{\"status\":\"error\",\"message\":\"Missing categoryId or valid minutes\"}")
+                return
+            }
+
+            WifiAccessibilityHelperService.addBonusMinutes(context, categoryId, minutes)
+
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("categoryId", categoryId)
+                put("addedMinutes", minutes)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding bonus minutes over LAN", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
     }
 
     private fun sendHttpResponse(writer: PrintWriter, statusCode: Int, statusText: String, body: String) {

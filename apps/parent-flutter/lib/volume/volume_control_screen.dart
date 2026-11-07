@@ -8,6 +8,7 @@ import '../auth/sign_in_screen.dart';
 import '../pairing/pairing_repository.dart';
 import '../bedtime/bedtime_schedule_screen.dart';
 import '../screenshot/screenshot_screen.dart';
+import '../app_limits/app_limits_screen.dart';
 import '../updater/p2p_updater_service.dart';
 import 'volume_repository.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -258,7 +259,28 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
         ),
         Row(
           children: [
-            // 1. WLAN-Nachtruhe
+            // 1. App-Limits & Sperren
+            Expanded(
+              child: _buildQuickActionCard(
+                key: const ValueKey('action_app_limits_button'),
+                icon: Icons.timer_outlined,
+                label: 'App-Limits & Sperren',
+                accentColor: const Color(0xFFEC4899),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => AppLimitsScreen(
+                        device: widget.device,
+                        localIpAddress: repo.localIpAddress,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // 2. WLAN-Nachtruhe
             Expanded(
               child: _buildQuickActionCard(
                 icon: Icons.bedtime_rounded,
@@ -276,9 +298,12 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 },
               ),
             ),
-            const SizedBox(width: 10),
-
-            // 2. Live-Screenshot
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            // 3. Live-Screenshot
             Expanded(
               child: _buildQuickActionCard(
                 icon: Icons.camera_alt_rounded,
@@ -298,7 +323,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
             ),
             const SizedBox(width: 10),
 
-            // 3. WLAN-Update
+            // 4. WLAN-Update
             Expanded(
               child: _buildQuickActionCard(
                 icon: Icons.wifi_protected_setup_rounded,
@@ -316,12 +341,14 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   }
 
   Widget _buildQuickActionCard({
+    Key? key,
     required IconData icon,
     required String label,
     required Color accentColor,
     required VoidCallback onTap,
   }) {
     return Container(
+      key: key,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [

@@ -32,7 +32,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.Timestamp
 import com.familylink.buddy.child.data.AppUsage
+import com.familylink.buddy.child.data.AppRules
 import com.familylink.buddy.child.data.BedtimeSchedule
+import com.familylink.buddy.child.data.InstalledAppsManager
 import com.familylink.buddy.child.data.VolumeState
 import android.media.AudioManager
 import android.provider.Settings
@@ -82,6 +84,7 @@ class WidgetUpdateService : Service() {
     private var currentSizePreset = 2 // 0 = Small, 1 = Medium, 2 = Large
     private var lastManualWifiBlock: Boolean? = null
     private var lastBedtimeSchedule: BedtimeSchedule? = null
+    private var lastInstalledAppsScanMs: Long = 0L
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -250,6 +253,10 @@ class WidgetUpdateService : Service() {
                 val volumeState = repository.volumeState.first()
                 val token = volumeState.deviceToken
                 if (token.isNotEmpty()) {
+                    WifiAccessibilityHelperService.childToken = token
+                    if (lastInstalledAppsScanMs == 0L || System.currentTimeMillis() - lastInstalledAppsScanMs > 3_600_000L) {
+                        reportInstalledApps(token)
+                    }
                     try {
                         val db = FirebaseFirestore.getInstance()
                         val ip = getLocalIpAddress() ?: ""
@@ -904,6 +911,10 @@ class WidgetUpdateService : Service() {
     }
 
     private fun registerFirestoreListener(token: String) {
+        WifiAccessibilityHelperService.childToken = token
+        if (lastInstalledAppsScanMs == 0L || System.currentTimeMillis() - lastInstalledAppsScanMs > 3_600_000L) {
+            reportInstalledApps(token)
+        }
         firestoreListenerRegistration?.remove()
         try {
             val db = FirebaseFirestore.getInstance()
@@ -1129,6 +1140,56 @@ class WidgetUpdateService : Service() {
                 WifiAccessibilityHelperService.lockScreen(applicationContext)
             }
         }
+
+        // 11. Process App Rules (Blacklist & Categories)
+        val appRulesMap = data["appRules"] as? Map<*, *>
+        if (appRulesMap != null) {
+            try {
+                @Suppress("UNCHECKED_CAST")
+                val rules = AppRules.fromMap(appRulesMap as Map<String, Any?>)
+                WifiAccessibilityHelperService.updateAppRules(applicationContext, rules)
+                Log.d(TAG, "App rules updated from Firestore: blacklist=${rules.blacklistedPackages.size}, categories=${rules.categories.size}, bonus=${rules.bonusMinutes}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling appRules from Firestore", e)
+            }
+        }
+
+        // 12. Process Bonus Minutes (if updated separately at root level)
+        val bonusMinutesMap = data["bonusMinutes"] as? Map<*, *>
+        if (bonusMinutesMap != null) {
+            try {
+                bonusMinutesMap.forEach { (catIdObj, minutesObj) ->
+                    val catId = catIdObj?.toString() ?: return@forEach
+                    val minutes = (minutesObj as? Number)?.toInt() ?: minutesObj?.toString()?.toIntOrNull() ?: 0
+                    WifiAccessibilityHelperService.addBonusMinutes(applicationContext, catId, minutes)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling bonusMinutes from Firestore", e)
+            }
+        }
+
+        // 13. Process Installed Apps Scan Request
+        if (data["scanInstalledApps"] as? Boolean == true || data["refreshInstalledApps"] as? Boolean == true) {
+            reportInstalledApps(token)
+        }
+    }
+
+    private fun reportInstalledApps(token: String) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val appsList = InstalledAppsManager.scanInstalledLauncherApps(applicationContext)
+                val db = FirebaseFirestore.getInstance()
+                val updates = hashMapOf<String, Any>(
+                    "installedApps" to appsList,
+                    "installedAppsUpdatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+                db.collection("pairings").document(token).update(updates)
+                lastInstalledAppsScanMs = System.currentTimeMillis()
+                Log.i(TAG, "Reported ${appsList.size} installed apps to Firestore pairings/$token")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed reporting installed apps to Firestore", e)
+            }
+        }
     }
 
     private fun triggerCoinAwardFeedback(amount: Int, description: String, emoji: String) {
@@ -1291,7 +1352,7 @@ class WidgetUpdateService : Service() {
                     val address = addresses.nextElement()
                     if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
                         val ip = address.hostAddress
-                        if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) {
+                        if (ip != null && (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172."))) {
                             return ip
                         }
                     }
