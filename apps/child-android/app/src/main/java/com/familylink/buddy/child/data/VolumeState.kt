@@ -8,5 +8,6 @@ data class VolumeState(
     val maxRingtoneVolume: Int = 15,
     val maxAlarmVolume: Int = 15,
     val isMuted: Boolean = false,
+    val isMusicActive: Boolean = false,
     val deviceToken: String = ""     // FCM token for this device (shown for pairing)
 )

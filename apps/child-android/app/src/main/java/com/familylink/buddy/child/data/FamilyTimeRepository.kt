@@ -1,12 +1,16 @@
 package com.familylink.buddy.child.data
 
 import android.content.Context
+import android.provider.Settings
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import java.io.IOException
+import java.util.UUID
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "family_time_prefs")
 
@@ -67,6 +71,44 @@ class FamilyTimeRepository(private val context: Context) {
             )
         }
 
+    val parentPin: Flow<String?> = context.dataStore.data
+        .map { preferences -> preferences[KEY_PARENT_PIN] }
+
+    suspend fun setParentPin(pin: String?) {
+        context.dataStore.edit { preferences ->
+            if (pin.isNullOrBlank()) {
+                preferences.remove(KEY_PARENT_PIN)
+            } else {
+                require(ParentPinManager.isValidPinFormat(pin)) {
+                    "Parent PIN must be exactly 4 digits"
+                }
+                preferences[KEY_PARENT_PIN] = pin
+            }
+        }
+    }
+
+    suspend fun getParentPin(): String? {
+        return context.dataStore.data.first()[KEY_PARENT_PIN]
+    }
+
+    fun getParentPinSync(): String? {
+        return runBlocking { getParentPin() }
+    }
+
+    suspend fun isPinConfigured(): Boolean {
+        val pin = getParentPin()
+        return !pin.isNullOrBlank() && ParentPinManager.isValidPinFormat(pin)
+    }
+
+    fun isPinConfiguredSync(): Boolean {
+        return runBlocking { isPinConfigured() }
+    }
+
+    fun verifyParentPin(enteredPin: String): Boolean {
+        val configured = getParentPinSync()
+        return ParentPinManager.verifyPin(enteredPin, configured)
+    }
+
     suspend fun updateBedtimeSchedule(schedule: BedtimeSchedule) {
         context.dataStore.edit { preferences ->
             preferences[KEY_BEDTIME_ENABLED] = schedule.isEnabled
@@ -114,6 +156,55 @@ class FamilyTimeRepository(private val context: Context) {
         }
     }
 
+    val deviceToken: Flow<String> = context.dataStore.data
+        .map { preferences -> preferences[KEY_DEVICE_TOKEN] ?: "" }
+
+    suspend fun getOrCreateDeviceToken(): String {
+        val current = context.dataStore.data.first()[KEY_DEVICE_TOKEN]
+        if (!current.isNullOrBlank()) {
+            return current
+        }
+        val newToken = UUID.randomUUID().toString()
+        updateDeviceToken(newToken)
+        return newToken
+    }
+
+    fun getOrCreateDeviceTokenSync(): String {
+        return runBlocking {
+            getOrCreateDeviceToken()
+        }
+    }
+
+    fun getDeviceIdSync(): String {
+        val androidId = try {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        } catch (e: Exception) {
+            null
+        }
+        if (!androidId.isNullOrBlank()) {
+            return androidId
+        }
+        val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
+        var cached = prefs.getString("device_id", null)
+        if (cached.isNullOrBlank()) {
+            cached = UUID.randomUUID().toString().replace("-", "").take(12)
+            prefs.edit().putString("device_id", cached).apply()
+        }
+        return cached
+    }
+
+    suspend fun getOrCreateDeviceId(): String {
+        val current = context.dataStore.data.first()[KEY_DEVICE_ID]
+        if (!current.isNullOrBlank()) {
+            return current
+        }
+        val id = getDeviceIdSync()
+        context.dataStore.edit { preferences ->
+            preferences[KEY_DEVICE_ID] = id
+        }
+        return id
+    }
+
     companion object {
         private val KEY_REMAINING_MINUTES = intPreferencesKey("remaining_minutes")
         private val KEY_LIMIT_MINUTES = intPreferencesKey("limit_minutes")
@@ -128,6 +219,7 @@ class FamilyTimeRepository(private val context: Context) {
         private val KEY_VOLUME_ALARM_MAX = intPreferencesKey("volume_alarm_max")
         private val KEY_VOLUME_MUTED = booleanPreferencesKey("volume_muted")
         private val KEY_DEVICE_TOKEN = stringPreferencesKey("device_token")
+        private val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         private val KEY_TIME_BANK_ENABLED = booleanPreferencesKey("time_bank_enabled")
         private val KEY_TIME_BANK_CHILD_VISIBLE = booleanPreferencesKey("time_bank_child_visible")
         private val KEY_TIME_BANK_BALANCE = intPreferencesKey("time_bank_balance")
@@ -139,6 +231,7 @@ class FamilyTimeRepository(private val context: Context) {
         private val KEY_WAKEUP_MINUTE = intPreferencesKey("bedtime_wakeup_minute")
         private val KEY_BEDTIME_ACTIVE_DAYS = stringPreferencesKey("bedtime_active_days")
         private val KEY_BEDTIME_CURRENTLY_BLOCKED = booleanPreferencesKey("bedtime_currently_blocked")
+        private val KEY_PARENT_PIN = stringPreferencesKey("parent_pin")
 
         fun serializeAppUsages(usages: List<AppUsage>): String {
             val array = org.json.JSONArray()

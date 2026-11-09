@@ -1,24 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:parent_app/auth/sign_in_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:parent_app/pairing/device_list_screen.dart';
+import 'package:parent_app/l10n/app_strings.dart';
 
 void main() {
-  testWidgets('SignInScreen renders correctly', (WidgetTester tester) async {
-    // Build SignInScreen inside a MaterialApp context
+  setUp(() => AppStrings.manualLocale = const Locale('de'));
+  tearDown(() => AppStrings.manualLocale = null);
+
+  testWidgets('DeviceListScreen renders correctly', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+
     await tester.pumpWidget(
       const MaterialApp(
-        home: SignInScreen(),
+        home: DeviceListScreen(),
       ),
     );
+    await tester.pumpAndSettle();
 
-    // Verify Title and Subtitle exist
-    expect(find.text('FamilyLink Buddy'), findsOneWidget);
-    expect(find.text('Eltern-App'), findsOneWidget);
+    // Verify Title and LAN indicator exist
+    expect(find.text('Meine Kinder'), findsOneWidget);
+    expect(find.text('LAN Local'), findsOneWidget);
 
-    // Verify Sign In Button exists
-    expect(find.text('Mit Google anmelden'), findsOneWidget);
-
-    // Verify Bypass Button exists
-    expect(find.text('Bypass Google Login (für Simulator/Test)'), findsOneWidget);
+    // Verify Empty state exists
+    expect(find.text('Noch keine Kinder gekoppelt'), findsOneWidget);
+    expect(find.text('Gerät koppeln'), findsOneWidget);
   });
 }

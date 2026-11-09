@@ -16,11 +16,12 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
+import com.familylink.buddy.child.R
 import com.familylink.buddy.child.data.AppInterceptionResult
 import com.familylink.buddy.child.data.AppLimitsManager
 import com.familylink.buddy.child.data.AppRules
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
+import com.familylink.buddy.child.data.AntiTamperDetector
+import com.familylink.buddy.child.data.FamilyTimeRepository
 import java.io.ByteArrayOutputStream
 
 /**
@@ -73,6 +74,32 @@ class WifiAccessibilityHelperService : AccessibilityService() {
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || latestPackageName == null) {
                 latestPackageName = pkg
             }
+
+            // Anti-tamper check: prevent child from disabling accessibility or uninstalling
+            if (AntiTamperDetector.isSettingsApp(pkg)) {
+                val repository = FamilyTimeRepository(applicationContext)
+                val pinConfigured = try {
+                    repository.isPinConfiguredSync()
+                } catch (e: Exception) {
+                    false
+                }
+                val isUnlocked = isParentUnlocked()
+
+                val texts = mutableListOf<String>()
+                event.text.forEach { if (it.isNotBlank()) texts.add(it.toString()) }
+                rootInActiveWindow?.let { root ->
+                    collectNodeTexts(root, texts, maxDepth = 4)
+                }
+                val cls = event.className?.toString()
+
+                if (AntiTamperDetector.shouldEnforceTamperProtection(pkg, cls, texts, pinConfigured, isUnlocked)) {
+                    Log.w(TAG, "Anti-tamper: Accessibility settings access prevented for package $pkg ($cls)")
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    showInterceptionToast(getString(R.string.pin_required_toast))
+                    return
+                }
+            }
+
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 val interception = checkAndInterceptPackage(pkg)
                 if (interception is AppInterceptionResult.BlockedBlacklist ||
@@ -186,6 +213,17 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                 str.contains("Internet", ignoreCase = true)
     }
 
+    private fun collectNodeTexts(node: AccessibilityNodeInfo?, list: MutableList<String>, maxDepth: Int) {
+        if (node == null || maxDepth <= 0 || list.size >= 25) return
+        node.text?.toString()?.takeIf { it.isNotBlank() }?.let { list.add(it) }
+        node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { list.add(it) }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectNodeTexts(child, list, maxDepth - 1)
+            if (list.size >= 25) break
+        }
+    }
+
     override fun onInterrupt() {
         Log.w(TAG, "WifiAccessibilityHelperService interrupted")
         pendingTargetState = TARGET_STATE_NONE
@@ -217,12 +255,12 @@ class WifiAccessibilityHelperService : AccessibilityService() {
             is AppInterceptionResult.BlockedBlacklist -> {
                 Log.w(TAG, "Blocking blacklisted app: $pkg ($appLabel)")
                 performGlobalAction(GLOBAL_ACTION_HOME)
-                showInterceptionToast(result.message)
+                showInterceptionToast(getString(R.string.app_blocked_toast, appLabel))
             }
             is AppInterceptionResult.BlockedCategoryLimit -> {
                 Log.w(TAG, "Blocking category-limited app: $pkg ($appLabel) - Category: ${result.categoryName}")
                 performGlobalAction(GLOBAL_ACTION_HOME)
-                showInterceptionToast(result.message)
+                showInterceptionToast(getString(R.string.category_limit_toast, result.categoryName))
             }
             is AppInterceptionResult.Allowed -> {
                 Log.d(TAG, "App allowed: $pkg (activeCategory=${result.activeCategoryId})")
@@ -284,14 +322,13 @@ class WifiAccessibilityHelperService : AccessibilityService() {
         if (result is AppInterceptionResult.BlockedCategoryLimit) {
             Log.i(TAG, "Limit reached during active foreground usage for category ${result.categoryName}")
             performGlobalAction(GLOBAL_ACTION_HOME)
-            showInterceptionToast(result.message)
+            showInterceptionToast(getString(R.string.category_limit_toast, result.categoryName))
         }
 
         if (tickerCounter % 30 == 0L) {
             try {
                 val prefs = getSharedPreferences(AppLimitsManager.PREFS_NAME, Context.MODE_PRIVATE)
                 manager.saveToPreferences(prefs)
-                syncCategoryUsageToFirestore(this)
             } catch (e: Exception) {
                 Log.e(TAG, "Error during periodic limits persistence", e)
             }
@@ -309,6 +346,23 @@ class WifiAccessibilityHelperService : AccessibilityService() {
 
         @Volatile
         var childToken: String? = null
+
+        @Volatile
+        private var parentUnlockExpiryTime: Long = 0L
+
+        fun isParentUnlocked(): Boolean {
+            return System.currentTimeMillis() < parentUnlockExpiryTime
+        }
+
+        fun unlockAntiTamper(durationMillis: Long = 3 * 60 * 1000L) {
+            parentUnlockExpiryTime = System.currentTimeMillis() + durationMillis
+            Log.i(TAG, "Anti-tamper temporarily unlocked for ${durationMillis / 1000}s")
+        }
+
+        fun lockAntiTamper() {
+            parentUnlockExpiryTime = 0L
+            Log.i(TAG, "Anti-tamper locked")
+        }
 
         fun updateAppRules(context: Context, rules: AppRules) {
             val manager = AppLimitsManager.getInstance(context)
@@ -349,27 +403,6 @@ class WifiAccessibilityHelperService : AccessibilityService() {
             }
         }
 
-        fun syncCategoryUsageToFirestore(context: Context? = null) {
-            val token = childToken ?: return
-            try {
-                val ctx = context ?: instance?.applicationContext ?: return
-                val manager = AppLimitsManager.getInstance(ctx)
-                val usageSeconds = manager.getAllCategoryUsageSeconds()
-                val usageMinutes = usageSeconds.mapValues { it.value / 60 }
-
-                val db = FirebaseFirestore.getInstance()
-                val updates = hashMapOf<String, Any>(
-                    "categoryUsage" to usageSeconds,
-                    "categoryUsageMinutes" to usageMinutes,
-                    "categoryUsageUpdatedAt" to FieldValue.serverTimestamp()
-                )
-                db.collection("pairings").document(token).update(updates)
-                Log.d(TAG, "Synced category usage to Firestore pairings/$token: $usageSeconds")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed syncing category usage to Firestore", e)
-            }
-        }
-
         const val TARGET_STATE_NONE = 0
         const val TARGET_STATE_OFF = 1
         const val TARGET_STATE_ON = 2
@@ -393,7 +426,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
             val pm = context.packageManager
 
             if (isLauncherPackage(context, rawPackage)) {
-                return Pair("Startbildschirm", rawPackage)
+                return Pair(context.getString(R.string.label_home_screen), rawPackage)
             }
             if (rawPackage == context.packageName) {
                 return Pair("FamilyLink Buddy", rawPackage)
@@ -412,7 +445,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                     rawPackage.contains("launcher", ignoreCase = true) ||
                     rawPackage.contains("nexuslauncher", ignoreCase = true) ||
                     rawPackage.contains("trebuchet", ignoreCase = true) ||
-                    rawPackage.contains("quickstep", ignoreCase = true) -> "Startbildschirm"
+                    rawPackage.contains("quickstep", ignoreCase = true) -> context.getString(R.string.label_home_screen)
                     rawPackage.contains("systemui", ignoreCase = true) -> "System UI"
                     rawPackage == context.packageName -> "FamilyLink Buddy"
                     else -> rawPackage
@@ -477,7 +510,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                     try {
                         Toast.makeText(
                             context.applicationContext,
-                            "App wurde von Elternteil beendet",
+                            context.getString(R.string.toast_app_closed_by_parent),
                             Toast.LENGTH_SHORT
                         ).show()
                     } catch (e: Exception) {
@@ -515,7 +548,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                     try {
                         Toast.makeText(
                             context.applicationContext,
-                            "Bildschirm wurde von Elternteil gesperrt",
+                            context.getString(R.string.toast_screen_locked_by_parent),
                             Toast.LENGTH_SHORT
                         ).show()
                     } catch (e: Exception) {

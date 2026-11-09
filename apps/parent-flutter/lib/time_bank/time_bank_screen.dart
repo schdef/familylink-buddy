@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth/google_sign_in_service.dart';
 import '../pairing/pairing_repository.dart';
 import 'time_bank_repository.dart';
 import 'time_bank_tasks_screen.dart';
 import 'time_bank_activity_screen.dart';
 import 'time_bank_settings_screen.dart';
+import '../l10n/app_strings.dart';
 
 class TimeBankScreen extends StatefulWidget {
-  final ParentAccount? account;
   final PairedDevice device;
 
   const TimeBankScreen({
     super.key,
-    this.account,
     required this.device,
   });
 
@@ -73,7 +71,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Coins vergeben ⏳', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: Text(context.strings.awardCoinsTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -81,7 +79,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Schnellauswahl:', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+                      Text(context.strings.quickSelect, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -107,7 +105,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                         initialValue: description,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Grund (z.B. 30 Min gelesen)',
+                          labelText: context.strings.reasonLabel,
                           labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
                           enabledBorder: OutlineInputBorder(
                             borderSide: const BorderSide(color: Color(0xFF334155)),
@@ -122,7 +120,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
-                            return 'Bitte einen Grund eingeben';
+                            return context.strings.enterReasonValidator;
                           }
                           return null;
                         },
@@ -131,7 +129,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                         },
                       ),
                       const SizedBox(height: 16),
-                      const Text('Symbol wählen:', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+                      Text(context.strings.selectIcon, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -161,7 +159,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
               ),
               actions: [
                 TextButton(
-                  child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
+                  child: Text(context.strings.cancel, style: const TextStyle(color: Colors.white)),
                   onPressed: () => Navigator.of(ctx).pop(),
                 ),
                 ElevatedButton(
@@ -170,14 +168,16 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Vergeben ✓'),
+                  child: Text(context.strings.awardButton),
                   onPressed: () async {
                     if (formKey.currentState!.validate()) {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final strings = context.strings;
                       Navigator.of(ctx).pop();
                       await _repository.awardCoins(widget.device.fcmToken, selectedAmount, description, emoji);
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$selectedAmount Coins erfolgreich vergeben!')),
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(strings.coinsAwarded(selectedAmount))),
                         );
                       }
                     }
@@ -196,7 +196,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Zeitkonto'),
+        title: Text(context.strings.timeBankTitle),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         actions: [
@@ -228,7 +228,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          repo.isEnabled ? 'Aktiviert' : 'Deaktiviert',
+                          repo.isEnabled ? context.strings.activated : context.strings.deactivated,
                           style: TextStyle(
                             color: repo.isEnabled ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                             fontWeight: FontWeight.bold,
@@ -236,7 +236,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                           ),
                         ),
                         Text(
-                          repo.isChildVisible ? 'Sichtbar für Kind' : 'Versteckt für Kind',
+                          repo.isChildVisible ? context.strings.visibleForChild : context.strings.hiddenForChild,
                           style: TextStyle(
                             color: repo.isChildVisible ? const Color(0xFF6366F1) : const Color(0xFF94A3B8),
                             fontWeight: FontWeight.bold,
@@ -275,8 +275,8 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                                 color: Colors.white,
                               ),
                             ),
-                            const Text(
-                              'Time Coins ⏳',
+                            Text(
+                              context.strings.timeCoins,
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF94A3B8),
@@ -302,7 +302,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                             ),
                             onPressed: repo.isEnabled ? _showAwardCoinsDialog : null,
                             icon: const Icon(Icons.add),
-                            label: const Text('Coins vergeben', style: TextStyle(fontWeight: FontWeight.bold)),
+                            label: Text(context.strings.awardCoins, style: const TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -320,7 +320,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                               ),
                             ),
                             icon: const Icon(Icons.list),
-                            label: const Text('Aufgaben & Bel.', style: TextStyle(fontWeight: FontWeight.bold)),
+                            label: Text(context.strings.tasksAndRewards, style: const TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -329,8 +329,8 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
 
                     // Pending Claims Alert Section
                     if (pendingClaims.isNotEmpty) ...[
-                      const Text(
-                        'Offene Auszahlungen',
+                      Text(
+                        context.strings.pendingClaims,
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -361,7 +361,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Kosten: ${claim.cost} Coins ⏳',
+                                      context.strings.costCoins(claim.cost),
                                       style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w600, fontSize: 13),
                                     ),
                                   ],
@@ -373,12 +373,14 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
-                                child: const Text('Erledigt ✓'),
+                                child: Text(context.strings.doneButton),
                                 onPressed: () async {
+                                  final title = claim.title;
+                                  final strings = context.strings;
                                   await repo.fulfillClaim(widget.device.fcmToken, claim.id);
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Belohnung "${claim.title}" freigegeben.')),
+                                      SnackBar(content: Text(strings.rewardFulfilled(title))),
                                     );
                                   }
                                 },
@@ -386,7 +388,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                             ],
                           ),
                         );
-                      }).toList(),
+                      }),
                       const SizedBox(height: 24),
                     ],
 
@@ -394,8 +396,8 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Aktivitäten von heute',
+                        Text(
+                          context.strings.todayActivity,
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -403,7 +405,7 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                           ),
                         ),
                         TextButton(
-                          child: const Text('Verlauf 📊', style: TextStyle(color: Color(0xFF6366F1))),
+                          child: Text(context.strings.historyButton, style: const TextStyle(color: Color(0xFF6366F1))),
                           onPressed: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => TimeBankActivityScreen(device: widget.device),
@@ -422,10 +424,10 @@ class _TimeBankScreenState extends State<TimeBankScreen> with SingleTickerProvid
                           color: const Color(0xFF1E293B).withOpacity(0.4),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
-                            'Heute noch keine Buchungen.',
-                            style: TextStyle(color: Color(0xFF475569)),
+                            context.strings.noTransactionsToday,
+                            style: const TextStyle(color: Color(0xFF475569)),
                           ),
                         ),
                       )

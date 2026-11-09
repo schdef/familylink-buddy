@@ -190,7 +190,7 @@ void main() {
           expect(request.url.toString(), 'http://192.168.1.150:8085/upload_update');
           expect(request.method, 'POST');
           expect(request.headers['Content-Type'], 'application/vnd.android.package-archive');
-          final bytes = await request.bodyBytes;
+          final bytes = request.bodyBytes;
           expect(bytes.length, dummyBytes.length);
           return http.Response('{"status":"success"}', 200);
         });

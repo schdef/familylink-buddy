@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
 }
 
 android {
@@ -82,12 +81,6 @@ dependencies {
 
     // DataStore (Preferences and caching)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-
-    // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
-    implementation("com.google.firebase:firebase-messaging-ktx")
-    implementation("com.google.firebase:firebase-functions-ktx")
-    implementation("com.google.firebase:firebase-firestore-ktx")
 
     // QR Code Generation
     implementation("com.google.zxing:core:3.5.3")

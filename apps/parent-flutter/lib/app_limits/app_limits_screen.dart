@@ -5,6 +5,7 @@ import '../pairing/pairing_repository.dart';
 import '../volume/volume_repository.dart';
 import 'app_limits_model.dart';
 import 'app_limits_repository.dart';
+import '../l10n/app_strings.dart';
 
 class AppLimitsScreen extends StatefulWidget {
   final PairedDevice device;
@@ -71,10 +72,11 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
 
     if (mounted) {
       setState(() => _isSaving = false);
+      final strings = context.strings;
       final appName = repo.state.getAppName(packageName);
       final msg = isBlocked
-          ? '„$appName“ wurde sofort gesperrt.'
-          : '„$appName“ wurde entsperrt.';
+          ? strings.appBlockedInstant(appName)
+          : strings.appUnblocked(appName);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),
@@ -99,13 +101,14 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
     );
 
     if (mounted) {
+      final strings = context.strings;
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             success
-                ? '+$minutes Min. Bonus für „$categoryName“ hinzugefügt!'
-                : 'Bonus konnte nicht synchronisiert werden.',
+                ? strings.bonusAdded(minutes, categoryName)
+                : strings.bonusSyncFailed,
           ),
           backgroundColor:
               success ? const Color(0xFF10B981) : const Color(0xFFEF4444),
@@ -127,13 +130,14 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
     );
 
     if (mounted) {
+      final strings = context.strings;
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             success
-                ? 'Kategorie „${rule.name}“ erfolgreich gespeichert.'
-                : 'Kategorie konnte nicht gespeichert werden.',
+                ? strings.categorySaved(rule.name)
+                : strings.categorySaveFailed,
           ),
           backgroundColor:
               success ? const Color(0xFF10B981) : const Color(0xFFEF4444),
@@ -144,22 +148,23 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
   }
 
   Future<void> _deleteCategory(String categoryId, String categoryName) async {
+    final strings = context.strings;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text(
-          'Kategorie löschen?',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          strings.deleteCategoryTitle,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'Möchtest du die Kategorie „$categoryName“ wirklich entfernen? Die zugewiesenen Apps haben dann kein gemeinsames Gruppen-Limit mehr.',
+          strings.deleteCategoryConfirm(categoryName),
           style: const TextStyle(color: Color(0xFF94A3B8)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Abbrechen', style: TextStyle(color: Color(0xFF94A3B8))),
+            child: Text(strings.cancel, style: const TextStyle(color: Color(0xFF94A3B8))),
           ),
           ElevatedButton(
             key: const ValueKey('confirm_delete_category_button'),
@@ -168,7 +173,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Löschen'),
+            child: Text(strings.delete),
           ),
         ],
       ),
@@ -191,8 +196,8 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
           SnackBar(
             content: Text(
               success
-                  ? 'Kategorie „$categoryName“ gelöscht.'
-                  : 'Kategorie konnte nicht gelöscht werden.',
+                  ? strings.categoryDeleted(categoryName)
+                  : strings.categoryDeleteFailed,
             ),
             backgroundColor:
                 success ? const Color(0xFF10B981) : const Color(0xFFEF4444),
@@ -205,6 +210,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.strings;
     final effectiveIp = _resolveEffectiveIp(context);
     final isLanDirect = effectiveIp != null && effectiveIp.isNotEmpty;
 
@@ -224,9 +230,9 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'App-Limits & Sperren',
-                  style: TextStyle(
+                Text(
+                  strings.appLimitsTitle,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -273,7 +279,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          isLanDirect ? 'LAN Direct' : 'Cloud Sync',
+                          isLanDirect ? strings.lanDirect : strings.cloudSync,
                           style: TextStyle(
                             color: isLanDirect
                                 ? const Color(0xFF10B981)
@@ -303,7 +309,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                       const Icon(Icons.block_rounded, size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        'Sofort-Sperre (${state.blacklistedPackages.length})',
+                        strings.tabBlacklist(state.blacklistedPackages.length),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -317,7 +323,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                       const Icon(Icons.hourglass_top_rounded, size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        'Zeit-Kategorien (${state.categories.length})',
+                        strings.tabCategories(state.categories.length),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -353,6 +359,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
   // TAB 1: SOFORT-SPERRE (BLACKLIST)
   // ==========================================
   Widget _buildBlacklistTab(BuildContext context, AppLimitsRepository repo) {
+    final strings = context.strings;
     final state = repo.state;
     final blocked = state.blacklistedPackages;
 
@@ -393,10 +400,10 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Apps in dieser Liste werden auf dem Tablet sofort blockiert und schließen sich automatisch beim Öffnen.',
-                    style: TextStyle(
+                    strings.blacklistBanner,
+                    style: const TextStyle(
                       color: Color(0xFFF1F5F9),
                       fontSize: 13,
                       height: 1.35,
@@ -413,7 +420,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Blockierte Apps (${blocked.length})',
+                strings.blockedApps(blocked.length),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -423,7 +430,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               ElevatedButton.icon(
                 key: const ValueKey('btn_add_blacklist'),
                 icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-                label: const Text('App sperren'),
+                label: Text(strings.blockApp),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFEF4444),
                   foregroundColor: Colors.white,
@@ -515,9 +522,9 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                           color: const Color(0xFFEF4444).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text(
-                          'Gesperrt',
-                          style: TextStyle(
+                        child: Text(
+                          strings.statusBlocked,
+                          style: const TextStyle(
                             color: Color(0xFFEF4444),
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
@@ -532,7 +539,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                           color: Color(0xFF10B981),
                           size: 22,
                         ),
-                        tooltip: 'App entsperren',
+                        tooltip: strings.unblock,
                         onPressed: () => _toggleBlacklist(pkg, false),
                       ),
                     ],
@@ -568,19 +575,19 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Keine Apps gesperrt',
-            style: TextStyle(
+          Text(
+            context.strings.noAppsBlocked,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Alle installierten Apps können aktuell im Rahmen der Zeit-Kategorien genutzt werden.',
+          Text(
+            context.strings.noAppsBlockedDesc,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: Color(0xFF94A3B8),
               fontSize: 13,
               height: 1.4,
@@ -589,7 +596,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
           const SizedBox(height: 18),
           OutlinedButton.icon(
             icon: const Icon(Icons.add, size: 16),
-            label: const Text('App zur Sperrliste hinzufügen'),
+            label: Text(context.strings.addAppToBlacklist),
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFFEF4444),
               side: const BorderSide(color: Color(0xFFEF4444)),
@@ -613,13 +620,14 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
+        final strings = context.strings;
         return _SearchableAppChecklistModal(
-          title: 'App sperren',
-          subtitle: 'Wähle Apps aus, die sofort auf dem Kindergerät gesperrt werden sollen.',
+          title: strings.blockApp,
+          subtitle: strings.addAppToBlacklist,
           installedApps: repo.state.installedApps,
           selectedPackages: repo.state.blacklistedPackages.toSet(),
           actionColor: const Color(0xFFEF4444),
-          actionLabel: 'Sperren',
+          actionLabel: strings.blockApp,
           onToggle: (pkg, isSelected) {
             _toggleBlacklist(pkg, isSelected);
           },
@@ -632,6 +640,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
   // TAB 2: ZEIT-KATEGORIEN (SHARED POOLS)
   // ==========================================
   Widget _buildCategoriesTab(BuildContext context, AppLimitsRepository repo) {
+    final strings = context.strings;
     final state = repo.state;
     final categories = state.categories;
 
@@ -692,7 +701,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Zeit-Kategorien (${categories.length})',
+                strings.timeCategoriesHeader(categories.length),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -702,7 +711,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               ElevatedButton.icon(
                 key: const ValueKey('btn_new_category'),
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Neue Kategorie'),
+                label: Text(strings.newCategory),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF8B5CF6),
                   foregroundColor: Colors.white,
@@ -760,19 +769,19 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Keine Zeit-Kategorien vorhanden',
-            style: TextStyle(
+          Text(
+            context.strings.noCategoriesYet,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Definiere Gruppen wie „Spiele“ oder „Videos“, um ein tägliches Kontingent für mehrere Apps gemeinsam festzulegen.',
+          Text(
+            context.strings.noCategoriesDesc,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: Color(0xFF94A3B8),
               fontSize: 13,
               height: 1.4,
@@ -781,7 +790,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
           const SizedBox(height: 18),
           OutlinedButton.icon(
             icon: const Icon(Icons.add, size: 16),
-            label: const Text('Erste Kategorie anlegen'),
+            label: Text(context.strings.createFirstCategory),
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF8B5CF6),
               side: const BorderSide(color: Color(0xFF8B5CF6)),
@@ -801,6 +810,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
     AppLimitsRepository repo,
     AppCategoryRule category,
   ) {
+    final strings = context.strings;
     final state = repo.state;
     final progress = category.usageProgress;
     final isDepleted = category.isLimitReached;
@@ -871,8 +881,8 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                     const SizedBox(height: 2),
                     Text(
                       category.packageNames.isEmpty
-                          ? 'Keine Apps zugewiesen'
-                          : '${category.packageNames.length} Apps zugewiesen',
+                          ? strings.noAppsInGroup
+                          : '${category.packageNames.length} ${strings.assignedApps}',
                       style: TextStyle(
                         color: category.packageNames.isEmpty
                             ? const Color(0xFFEF4444)
@@ -886,13 +896,13 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               IconButton(
                 key: ValueKey('btn_edit_category_${category.id}'),
                 icon: const Icon(Icons.tune_rounded, color: Color(0xFF94A3B8), size: 20),
-                tooltip: 'Kategorie bearbeiten',
+                tooltip: strings.editCategory,
                 onPressed: () => _showCategoryEditor(context, repo, existing: category),
               ),
               IconButton(
                 key: ValueKey('btn_delete_category_${category.id}'),
                 icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 20),
-                tooltip: 'Kategorie löschen',
+                tooltip: strings.deleteCategoryTitle,
                 onPressed: () => _deleteCategory(category.id, category.name),
               ),
             ],
@@ -949,7 +959,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               Row(
                 children: [
                   Text(
-                    'Limit: ${category.dailyLimitMinutes} Min.',
+                    '${strings.dailyLimit}: ${category.dailyLimitMinutes} Min.',
                     style: const TextStyle(
                       color: Color(0xFF94A3B8),
                       fontSize: 13,
@@ -1034,8 +1044,8 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
           // Quick Bonus Buttons: „+15 Min.“ and „+30 Min.“
           Row(
             children: [
-              const Text(
-                'Schnell-Bonus:',
+              Text(
+                '${strings.bonusToday}:',
                 style: TextStyle(
                   color: Color(0xFF94A3B8),
                   fontSize: 12,
@@ -1046,7 +1056,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               OutlinedButton.icon(
                 key: ValueKey('btn_bonus_15_${category.id}'),
                 icon: const Icon(Icons.add_circle_outline_rounded, size: 14),
-                label: const Text('+15 Min.'),
+                label: Text(strings.add15MinBonus),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF10B981),
                   side: BorderSide(
@@ -1063,7 +1073,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
               OutlinedButton.icon(
                 key: ValueKey('btn_bonus_30_${category.id}'),
                 icon: const Icon(Icons.add_circle_outline_rounded, size: 14),
-                label: const Text('+30 Min.'),
+                label: Text(strings.add30MinBonus),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF10B981),
                   side: BorderSide(
@@ -1214,7 +1224,7 @@ class _SearchableAppChecklistModalState
               controller: _searchCtrl,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Apps durchsuchen...',
+                hintText: context.strings.searchApps,
                 hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                 prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF94A3B8)),
                 filled: true,
@@ -1240,12 +1250,12 @@ class _SearchableAppChecklistModalState
             // App Checklist
             Flexible(
               child: filtered.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 30),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 30),
                       child: Center(
                         child: Text(
-                          'Keine passenden Apps gefunden',
-                          style: TextStyle(color: Color(0xFF94A3B8)),
+                          context.strings.noInstalledAppsFound,
+                          style: const TextStyle(color: Color(0xFF94A3B8)),
                         ),
                       ),
                     )
@@ -1331,7 +1341,7 @@ class _SearchableAppChecklistModalState
                 ),
               ),
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fertig', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: Text(context.strings.confirm, style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -1385,9 +1395,9 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bitte gib einen Namen für die Kategorie ein.'),
-          backgroundColor: Color(0xFFEF4444),
+        SnackBar(
+          content: Text(context.strings.categoryNameValidator),
+          backgroundColor: const Color(0xFFEF4444),
         ),
       );
       return;
@@ -1446,7 +1456,7 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
 
             // Title
             Text(
-              isNew ? 'Neue Zeit-Kategorie' : 'Kategorie bearbeiten',
+              isNew ? context.strings.newTimeCategory : context.strings.editCategory,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -1461,7 +1471,7 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
               controller: _nameCtrl,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                labelText: 'Kategoriename (z.B. Spiele oder Videos)',
+                labelText: context.strings.categoryNameLabel,
                 labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
@@ -1485,8 +1495,8 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Tägliches Limit:',
+                Text(
+                  '${context.strings.dailyLimit}:',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 14,
@@ -1539,14 +1549,17 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Zugehörige Apps auswählen:',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    context.strings.selectAppsForCategory,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   '${_selectedPackages.length} ausgewählt',
                   style: const TextStyle(
@@ -1563,7 +1576,7 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
               controller: _searchCtrl,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Apps filtern...',
+                hintText: context.strings.searchApps,
                 hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                 prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8), size: 18),
                 filled: true,
@@ -1649,7 +1662,7 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
                       ),
                     ),
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Abbrechen'),
+                    child: Text(context.strings.cancel),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1665,9 +1678,9 @@ class _CategoryEditorModalState extends State<_CategoryEditorModal> {
                       ),
                     ),
                     onPressed: _submit,
-                    child: const Text(
-                      'Speichern',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    child: Text(
+                      context.strings.save,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),

@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.familylink.buddy.child.R
 
 /**
  * Helper object providing hardware and permission state checks and intent launchers
@@ -139,7 +141,7 @@ object SetupGuideHelper {
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open accessibility settings", e)
-            Toast.makeText(context, "Bedienungshilfen konnten nicht geöffnet werden.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.setup_toast_a11y_err), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -163,7 +165,7 @@ object SetupGuideHelper {
                     context.startActivity(fallbackIntent)
                 } catch (fallbackEx: Exception) {
                     Log.e(TAG, "Failed to open battery optimization settings", fallbackEx)
-                    Toast.makeText(context, "Akku-Einstellungen konnten nicht geöffnet werden.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.setup_toast_battery_err), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -181,7 +183,7 @@ object SetupGuideHelper {
                 context.startActivity(intent)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to open notification policy access settings", e)
-                Toast.makeText(context, "Nicht-Stören-Einstellungen konnten nicht geöffnet werden.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.setup_toast_dnd_err), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -307,13 +309,13 @@ fun SetupGuideContent(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "🛠️ Einrichtungs-Assistent",
+                    text = stringResource(R.string.setup_guide_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF66FCF1)
                 )
                 Text(
-                    text = "Wichtige Systemrechte für Nachtruhe & Hintergrund",
+                    text = stringResource(R.string.setup_guide_subtitle),
                     fontSize = 13.sp,
                     color = Color(0xFFC5C6C7)
                 )
@@ -342,7 +344,11 @@ fun SetupGuideContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (allCompleted) "🎉 Alles vollständig eingerichtet!" else "Fortschritt: $completedCount von 4 erledigt",
+                    text = if (allCompleted) {
+                        stringResource(R.string.setup_progress_complete)
+                    } else {
+                        stringResource(R.string.setup_progress_count, completedCount, 4)
+                    },
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (allCompleted) Color(0xFF10B981) else Color(0xFFE2E8F0)
@@ -368,15 +374,19 @@ fun SetupGuideContent(
         // 1. WLAN-Nachtruhe Helfer (Accessibility Service)
         SetupItemCard(
             itemNumber = 1,
-            title = "WLAN-Nachtruhe Helfer",
-            subtitle = "Bedienungshilfen-Dienst (Accessibility)",
-            description = "Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe in den Schnelleinstellungen ohne Root.\n\nFalls ausgegraut: Auf 'App-Info' tippen -> oben rechts auf die 3 Punkte (⋮) -> 'Eingeschränkte Einstellungen zulassen'. Danach hier 'Aktivieren' wählen.",
+            title = stringResource(R.string.setup_guide_item1_title),
+            subtitle = stringResource(R.string.setup_guide_item1_subtitle),
+            description = stringResource(R.string.setup_guide_item1_desc),
             isCompleted = isAccessibilityEnabled,
-            actionButtonText = if (isAccessibilityEnabled) "Aktiviert" else "Aktivieren",
+            actionButtonText = if (isAccessibilityEnabled) {
+                stringResource(R.string.setup_guide_item1_active)
+            } else {
+                stringResource(R.string.setup_guide_item1_enable)
+            },
             onActionClick = {
                 SetupGuideHelper.openAccessibilitySettings(context)
             },
-            secondaryActionText = "App-Info (3 Punkte)",
+            secondaryActionText = stringResource(R.string.setup_guide_item1_app_info),
             onSecondaryActionClick = {
                 SetupGuideHelper.openAppDetailsSettings(context)
             }
@@ -387,17 +397,21 @@ fun SetupGuideContent(
         // 2. Google Family Link: 'Immer zulassen'
         SetupItemCard(
             itemNumber = 2,
-            title = "Google Family Link: 'Immer zulassen'",
-            subtitle = "Wichtig gegen Schlafenszeit-Pausierung",
-            description = "In der Family Link Eltern-App unter 'App-Limits' -> 'FamilyLink Buddy' auf 'Immer zulassen' setzen. Sonst wird die App während der Nachtruhe von Google pausiert und kann das WLAN nicht schalten.",
+            title = stringResource(R.string.setup_guide_item2_title),
+            subtitle = stringResource(R.string.setup_guide_item2_subtitle),
+            description = stringResource(R.string.setup_guide_item2_desc),
             isCompleted = isFamilyLinkAcknowledged,
-            actionButtonText = if (isFamilyLinkAcknowledged) "Bestätigt ✓" else "Als erledigt markieren",
+            actionButtonText = if (isFamilyLinkAcknowledged) {
+                stringResource(R.string.setup_guide_item2_confirmed)
+            } else {
+                stringResource(R.string.setup_guide_item2_mark)
+            },
             onActionClick = {
                 val newState = !isFamilyLinkAcknowledged
                 isFamilyLinkAcknowledged = newState
                 SetupGuideHelper.setFamilyLinkAlwaysAllowedAcknowledged(context, newState)
             },
-            secondaryActionText = "App-Details",
+            secondaryActionText = stringResource(R.string.setup_guide_item2_details),
             onSecondaryActionClick = {
                 SetupGuideHelper.openAppDetailsSettings(context)
             }
@@ -408,11 +422,15 @@ fun SetupGuideContent(
         // 3. Akku-Optimierung deaktiviert
         SetupItemCard(
             itemNumber = 3,
-            title = "Akku-Optimierung deaktivieren",
-            subtitle = "Ununterbrochene Hintergrund-Ausführung",
-            description = "Stellt sicher, dass das Android-System die App und deren Zeit-Alarme nicht schlafen legt oder vorzeitig beendet.",
+            title = stringResource(R.string.setup_guide_item3_title),
+            subtitle = stringResource(R.string.setup_guide_item3_subtitle),
+            description = stringResource(R.string.setup_guide_item3_desc),
             isCompleted = isBatteryOptIgnored,
-            actionButtonText = if (isBatteryOptIgnored) "Deaktiviert" else "Ausnehmen",
+            actionButtonText = if (isBatteryOptIgnored) {
+                stringResource(R.string.setup_guide_item3_disabled)
+            } else {
+                stringResource(R.string.setup_guide_item3_exempt)
+            },
             onActionClick = {
                 SetupGuideHelper.requestIgnoreBatteryOptimization(context)
             }
@@ -423,11 +441,15 @@ fun SetupGuideContent(
         // 4. Nicht-Stören-Zugriff (DND)
         SetupItemCard(
             itemNumber = 4,
-            title = "Nicht-Stören-Zugriff (DND)",
-            subtitle = "Benachrichtigungs-Richtlinie",
-            description = "Erlaubt der App, Klingeltöne und Töne zur Nachtruhe stummzuschalten bzw. DND-Status zu verwalten.",
+            title = stringResource(R.string.setup_guide_item4_title),
+            subtitle = stringResource(R.string.setup_guide_item4_subtitle),
+            description = stringResource(R.string.setup_guide_item4_desc),
             isCompleted = isDndGranted,
-            actionButtonText = if (isDndGranted) "Erteilt" else "Erlauben",
+            actionButtonText = if (isDndGranted) {
+                stringResource(R.string.setup_guide_item4_granted)
+            } else {
+                stringResource(R.string.setup_guide_item4_grant)
+            },
             onActionClick = {
                 SetupGuideHelper.openNotificationPolicySettings(context)
             }
@@ -442,7 +464,11 @@ fun SetupGuideContent(
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Text(
-                    text = if (allCompleted) "Schließen" else "Später fortsetzen",
+                    text = if (allCompleted) {
+                        stringResource(R.string.setup_guide_close)
+                    } else {
+                        stringResource(R.string.setup_guide_later)
+                    },
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -457,7 +483,7 @@ fun SetupGuideContent(
                     contentColor = Color(0xFF66FCF1)
                 )
             ) {
-                Text("Vollständigen Assistenten öffnen ↗", fontSize = 13.sp, color = Color(0xFF66FCF1))
+                Text(stringResource(R.string.setup_guide_open_full), fontSize = 13.sp, color = Color(0xFF66FCF1))
             }
         }
     }

@@ -1,6 +1,6 @@
 // ignore_for_file: subtype_of_sealed_class
+import 'dart:async';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -11,8 +11,17 @@ import 'package:parent_app/screenshot/screenshot_model.dart';
 import 'package:parent_app/screenshot/screenshot_repository.dart';
 import 'package:parent_app/screenshot/screenshot_screen.dart';
 import 'package:parent_app/volume/volume_repository.dart';
+import 'package:parent_app/l10n/app_strings.dart';
 
 void main() {
+  setUp(() {
+    AppStrings.manualLocale = const Locale('de');
+  });
+
+  tearDown(() {
+    AppStrings.manualLocale = null;
+  });
+
   group('ScreenshotItem Model Tests', () {
     test('Constructs with required and optional properties', () {
       final now = DateTime(2026, 11, 1, 14, 30, 45);
@@ -180,6 +189,53 @@ void main() {
       expect(item1, equals(item2));
       expect(item1.hashCode, equals(item2.hashCode));
       expect(item1, isNot(equals(item3)));
+    });
+
+    test('Constructs camera capture item and validates isCamera and properties', () {
+      final now = DateTime(2026, 11, 1, 12, 0);
+      final item = ScreenshotItem(
+        id: 'cam-1',
+        timestamp: now,
+        base64Image: 'base64cam',
+        captureType: 'camera',
+        facing: 'front',
+        flash: false,
+      );
+
+      expect(item.captureType, 'camera');
+      expect(item.isCamera, isTrue);
+      expect(item.facing, 'front');
+      expect(item.flash, isFalse);
+
+      final json = item.toJson();
+      expect(json['captureType'], 'camera');
+      expect(json['facing'], 'front');
+      expect(json['flash'], false);
+
+      final fromJson = ScreenshotItem.fromJson(json);
+      expect(fromJson.isCamera, isTrue);
+      expect(fromJson.facing, 'front');
+      expect(fromJson.flash, isFalse);
+      expect(fromJson, equals(item));
+    });
+
+    test('copyWith updates camera fields properly', () {
+      final shot = ScreenshotItem(
+        id: 'cp-cam',
+        timestamp: DateTime(2026, 1, 1),
+        base64Image: 'abc',
+        captureType: 'screenshot',
+      );
+      expect(shot.isCamera, isFalse);
+
+      final cameraShot = shot.copyWith(
+        captureType: 'camera',
+        facing: 'back',
+        flash: true,
+      );
+      expect(cameraShot.isCamera, isTrue);
+      expect(cameraShot.facing, 'back');
+      expect(cameraShot.flash, isTrue);
     });
   });
 
@@ -482,9 +538,8 @@ void main() {
       expect(repo.history.first.id, 'del-2');
     });
 
-    test('deleteScreenshot with Firestore calls delete on specific document path', () async {
-      final fakeFirestore = FakeFirestore();
-      final repo = ScreenshotRepository(firestore: fakeFirestore);
+    test('deleteScreenshot removes specific item from history', () async {
+      final repo = ScreenshotRepository();
       final item = ScreenshotItem(
         id: 'shot-to-delete',
         timestamp: DateTime.now(),
@@ -495,26 +550,7 @@ void main() {
       final success = await repo.deleteScreenshot('child_device_token', 'shot-to-delete');
 
       expect(success, isTrue);
-      expect(fakeFirestore.deletedDocPaths, contains('pairings/child_device_token/screenshots/shot-to-delete'));
       expect(repo.history, isEmpty);
-    });
-
-    test('deleteScreenshot handles Firestore error, sets lastError and preserves history', () async {
-      final fakeFirestore = FakeFirestore()..throwOnDelete = true;
-      final repo = ScreenshotRepository(firestore: fakeFirestore);
-      final item = ScreenshotItem(
-        id: 'shot-fail',
-        timestamp: DateTime.now(),
-        base64Image: 'aW1n',
-      );
-      repo.setHistoryForTesting([item]);
-
-      final success = await repo.deleteScreenshot('child_token', 'shot-fail');
-
-      expect(success, isFalse);
-      expect(repo.hasPermissionError, isTrue);
-      expect(repo.history.length, 1);
-      expect(repo.history.first.id, 'shot-fail');
     });
 
     test('deleteAllScreenshots clears history and notifies listeners', () async {
@@ -542,40 +578,97 @@ void main() {
       expect(repo.latestScreenshot, isNull);
     });
 
-    test('deleteAllScreenshots with Firestore commits batch delete for all docs', () async {
-      final fakeFirestore = FakeFirestore()..existingDocIds = ['doc-1', 'doc-2', 'doc-3'];
-      final repo = ScreenshotRepository(firestore: fakeFirestore);
-      repo.setHistoryForTesting([
-        ScreenshotItem(id: 'doc-1', timestamp: DateTime.now(), base64Image: 'aW1n'),
-        ScreenshotItem(id: 'doc-2', timestamp: DateTime.now(), base64Image: 'aW1n'),
-        ScreenshotItem(id: 'doc-3', timestamp: DateTime.now(), base64Image: 'aW1n'),
-      ]);
+    test('takeCameraPhoto succeeds via direct LAN HTTP and prepends to history', () async {
+      bool cameraEndpointCalled = false;
+      final mockClient = MockClient((request) async {
+        expect(request.url.toString(), 'http://192.168.1.120:8085/take_camera_photo?facing=front&flash=false');
+        expect(request.method, 'POST');
+        expect(request.headers['X-Buddy-Token'], 'child_device_fcm_token_123');
+        cameraEndpointCalled = true;
 
-      final success = await repo.deleteAllScreenshots('child_device_token');
+        return http.Response(jsonEncode({
+          'id': 'shot-camera-1',
+          'base64Image': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'deviceModel': 'Galaxy Tab A9',
+          'timestamp': 1762000000000,
+        }), 200);
+      });
 
-      expect(success, isTrue);
-      expect(fakeFirestore.deletedDocPaths, [
-        'pairings/child_device_token/screenshots/doc-1',
-        'pairings/child_device_token/screenshots/doc-2',
-        'pairings/child_device_token/screenshots/doc-3',
-      ]);
-      expect(repo.history, isEmpty);
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      final result = await repo.takeCameraPhoto(
+        childFcmToken: 'child_device_fcm_token_123',
+        localIpAddress: '192.168.1.120',
+        facing: 'front',
+        flash: false,
+      );
+
+      expect(cameraEndpointCalled, isTrue);
+      expect(result, isNotNull);
+      expect(result!.id, 'shot-camera-1');
+      expect(result.captureType, 'camera');
+      expect(result.facing, 'front');
+      expect(result.flash, isFalse);
+      expect(result.isCamera, isTrue);
+      expect(result.deviceModel, 'Galaxy Tab A9');
+      expect(repo.history.first.id, 'shot-camera-1');
+      expect(repo.screenshots.first.id, 'shot-camera-1');
+      expect(repo.isCapturing, isFalse);
     });
 
-    test('deleteAllScreenshots handles Firestore error, sets lastError and returns false', () async {
-      final fakeFirestore = FakeFirestore()
-        ..existingDocIds = ['doc-1']
-        ..throwOnDelete = true;
-      final repo = ScreenshotRepository(firestore: fakeFirestore);
-      repo.setHistoryForTesting([
-        ScreenshotItem(id: 'doc-1', timestamp: DateTime.now(), base64Image: 'aW1n'),
-      ]);
+    test('takeCameraPhoto respects custom facing and flash options', () async {
+      final mockClient = MockClient((request) async {
+        expect(request.url.toString(), 'http://192.168.1.88:8085/take_camera_photo?facing=back&flash=true');
+        return http.Response(jsonEncode({
+          'id': 'shot-camera-back',
+          'base64Image': 'YWJjZGVm',
+        }), 200);
+      });
 
-      final success = await repo.deleteAllScreenshots('child_token');
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      final result = await repo.takeCameraPhoto(
+        childFcmToken: 'child_device_token',
+        localIpAddress: '192.168.1.88',
+        facing: 'back',
+        flash: true,
+      );
 
-      expect(success, isFalse);
-      expect(repo.hasPermissionError, isTrue);
-      expect(repo.history.length, 1);
+      expect(result, isNotNull);
+      expect(result!.facing, 'back');
+      expect(result.flash, isTrue);
+    });
+
+    test('takeCameraPhoto handles error gracefully on HTTP 500', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response('Camera hardware error', 500);
+      });
+
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      final result = await repo.takeCameraPhoto(
+        childFcmToken: 'child_token',
+        localIpAddress: '192.168.1.55',
+      );
+
+      expect(result, isNull);
+      expect(repo.lastError, contains('500'));
+      expect(repo.isCapturing, isFalse);
+    });
+
+    test('takeCameraPhoto prevents concurrent captures', () async {
+      final completer = Completer<http.Response>();
+      final mockClient = MockClient((request) => completer.future);
+      final repo = ScreenshotRepository(httpClient: mockClient);
+
+      final future1 = repo.takeCameraPhoto(childFcmToken: 'tok', localIpAddress: '192.168.1.10');
+      expect(repo.isCapturing, isTrue);
+
+      final future2 = repo.takeCameraPhoto(childFcmToken: 'tok', localIpAddress: '192.168.1.10');
+      final result2 = await future2;
+      expect(result2, isNull);
+
+      completer.complete(http.Response(jsonEncode({'base64Image': 'img'}), 200));
+      final result1 = await future1;
+      expect(result1, isNotNull);
+      expect(repo.isCapturing, isFalse);
     });
   });
 
@@ -1017,109 +1110,118 @@ void main() {
       expect(find.text('Noch kein Screenshot vorhanden'), findsOneWidget);
       expect(find.byKey(const ValueKey('delete_all_screenshots_button')), findsNothing);
     });
+
+    testWidgets('renders camera facing selector, flash badge, and camera photo capture button', (tester) async {
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('camera_facing_selector')), findsOneWidget);
+      expect(find.text('Frontkamera (Standard)'), findsOneWidget);
+      expect(find.text('Blitz: Aus'), findsOneWidget);
+
+      final cameraBtn = find.byKey(const ValueKey('take_camera_photo_button'));
+      expect(cameraBtn, findsOneWidget);
+      expect(find.byIcon(Icons.camera_alt_outlined), findsOneWidget);
+      expect(find.text('Kamera-Foto aufnehmen'), findsOneWidget);
+    });
+
+    testWidgets('tapping camera capture button triggers takeCameraPhoto and adds to history', (tester) async {
+      final mockClient = MockClient((request) async {
+        expect(request.url.path, '/take_camera_photo');
+        expect(request.url.queryParameters['facing'], 'front');
+        expect(request.url.queryParameters['flash'], 'false');
+        return http.Response(jsonEncode({
+          'id': 'shot-cam-test',
+          'base64Image': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'deviceModel': 'Tablet Front',
+          'timestamp': 1762000000000,
+        }), 200);
+      });
+
+      final screenshotRepo = ScreenshotRepository(httpClient: mockClient);
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+          localIpAddress: '192.168.1.150',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final cameraBtn = find.byKey(const ValueKey('take_camera_photo_button'));
+      await tester.tap(cameraBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Kamera-Foto erfolgreich aufgenommen!'), findsOneWidget);
+      expect(screenshotRepo.history.length, 1);
+      expect(screenshotRepo.history.first.isCamera, isTrue);
+      expect(screenshotRepo.history.first.facing, 'front');
+    });
+
+    testWidgets('gallery and latest card display distinct badges for camera photos vs screenshots', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final screenshotRepo = ScreenshotRepository();
+      final volumeRepo = VolumeRepository();
+
+      final camItem = ScreenshotItem(
+        id: 'cam-item-1',
+        timestamp: DateTime(2026, 11, 2, 10, 30),
+        base64Image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        captureType: 'camera',
+        facing: 'front',
+        deviceModel: 'Kind Tablet',
+      );
+
+      final screenItem = ScreenshotItem(
+        id: 'screen-item-2',
+        timestamp: DateTime(2026, 11, 2, 10, 20),
+        base64Image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        captureType: 'screenshot',
+        foregroundApp: 'YouTube Kids',
+        deviceModel: 'Kind Tablet',
+      );
+
+      screenshotRepo.setHistoryForTesting([camItem, screenItem]);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          screenshotRepo: screenshotRepo,
+          volumeRepo: volumeRepo,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Latest card shows "📷 Front-Kamera"
+      expect(find.text('📷 Front-Kamera'), findsNWidgets(2)); // Once in header, once in grid thumbnail
+      // Grid thumbnail 2 shows "📱 Bildschirm"
+      expect(find.text('📱 Bildschirm'), findsOneWidget);
+
+      // Tap on camera photo in gallery to open fullscreen viewer
+      final camThumb = find.text('📷 Front-Kamera').last;
+      await tester.ensureVisible(camThumb);
+      await tester.tap(camThumb);
+      await tester.pumpAndSettle();
+
+      // Fullscreen viewer shows subtitle with camera badge
+      expect(find.textContaining('📷 Front-Kamera'), findsWidgets);
+      expect(find.byKey(const ValueKey('fullscreen_delete_button')), findsOneWidget);
+
+      // Close viewer
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pumpAndSettle();
+    });
   });
-}
-
-class FakeFirestore extends Fake implements FirebaseFirestore {
-  final List<String> deletedDocPaths = [];
-  bool throwOnDelete = false;
-  bool throwOnGet = false;
-  List<String> existingDocIds = [];
-
-  @override
-  CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
-    return FakeCollectionReference(this, collectionPath);
-  }
-
-  @override
-  WriteBatch batch() => FakeWriteBatch(this);
-}
-
-class FakeCollectionReference extends Fake implements CollectionReference<Map<String, dynamic>> {
-  final FakeFirestore firestoreInstance;
-  @override
-  final String path;
-  FakeCollectionReference(this.firestoreInstance, this.path);
-
-  @override
-  DocumentReference<Map<String, dynamic>> doc([String? docId]) {
-    return FakeDocumentReference(firestoreInstance, '$path/$docId');
-  }
-
-  @override
-  Future<QuerySnapshot<Map<String, dynamic>>> get([GetOptions? options]) async {
-    if (firestoreInstance.throwOnGet) {
-      throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Missing permissions');
-    }
-    return FakeQuerySnapshot(
-      firestoreInstance.existingDocIds
-          .map((id) => FakeQueryDocumentSnapshot(firestoreInstance, '$path/$id', id))
-          .toList(),
-    );
-  }
-}
-
-class FakeDocumentReference extends Fake implements DocumentReference<Map<String, dynamic>> {
-  final FakeFirestore firestoreInstance;
-  final String docPath;
-  FakeDocumentReference(this.firestoreInstance, this.docPath);
-
-  @override
-  String get path => docPath;
-
-  @override
-  CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
-    return FakeCollectionReference(firestoreInstance, '$docPath/$collectionPath');
-  }
-
-  @override
-  Future<void> delete() async {
-    if (firestoreInstance.throwOnDelete) {
-      throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Delete failed');
-    }
-    firestoreInstance.deletedDocPaths.add(docPath);
-  }
-}
-
-class FakeQuerySnapshot extends Fake implements QuerySnapshot<Map<String, dynamic>> {
-  final List<QueryDocumentSnapshot<Map<String, dynamic>>> _docs;
-  FakeQuerySnapshot(this._docs);
-
-  @override
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> get docs => _docs;
-}
-
-class FakeQueryDocumentSnapshot extends Fake implements QueryDocumentSnapshot<Map<String, dynamic>> {
-  final FakeFirestore firestoreInstance;
-  final String docPath;
-  final String _id;
-  FakeQueryDocumentSnapshot(this.firestoreInstance, this.docPath, this._id);
-
-  @override
-  String get id => _id;
-
-  @override
-  DocumentReference<Map<String, dynamic>> get reference =>
-      FakeDocumentReference(firestoreInstance, docPath);
-}
-
-class FakeWriteBatch extends Fake implements WriteBatch {
-  final FakeFirestore firestoreInstance;
-  final List<DocumentReference> deletedReferences = [];
-  FakeWriteBatch(this.firestoreInstance);
-
-  @override
-  void delete(DocumentReference document) {
-    deletedReferences.add(document);
-  }
-
-  @override
-  Future<void> commit() async {
-    if (firestoreInstance.throwOnDelete) {
-      throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Batch failed');
-    }
-    for (final ref in deletedReferences) {
-      firestoreInstance.deletedDocPaths.add(ref.path);
-    }
-  }
 }

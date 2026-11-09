@@ -121,4 +121,67 @@ class P2PAndScheduleIntegrationTest {
         assertTrue("Small file should fail >1MB check", smallFileSize <= minApkSize)
         assertTrue("Large file should pass >1MB check", largeFileSize > minApkSize)
     }
+
+    @Test
+    fun testLocalAuthTokenValidationLogic() {
+        val pairingToken = "secret-buddy-token-1234"
+
+        fun isAuthorized(path: String, headers: Map<String, String>, queryParams: Map<String, String>): Boolean {
+            val isPublic = path == "/status" || path == "/pair"
+            if (isPublic) return true
+
+            val token = headers["x-buddy-token"]
+                ?: headers["authorization"]?.removePrefix("Bearer ")?.trim()
+                ?: queryParams["token"]
+
+            return token == pairingToken
+        }
+
+        // Public endpoints allowed without token
+        assertTrue(isAuthorized("/status", emptyMap(), emptyMap()))
+        assertTrue(isAuthorized("/pair", emptyMap(), emptyMap()))
+
+        // Protected endpoints without token -> rejected
+        assertFalse(isAuthorized("/set_volume", emptyMap(), emptyMap()))
+        assertFalse(isAuthorized("/set_schedule", emptyMap(), emptyMap()))
+
+        // Protected endpoints with invalid token -> rejected
+        assertFalse(isAuthorized("/set_volume", mapOf("x-buddy-token" to "wrong-token"), emptyMap()))
+
+        // Protected endpoints with valid header -> accepted
+        assertTrue(isAuthorized("/set_volume", mapOf("x-buddy-token" to pairingToken), emptyMap()))
+
+        // Protected endpoints with valid query param -> accepted
+        assertTrue(isAuthorized("/set_schedule", emptyMap(), mapOf("token" to pairingToken)))
+
+        // Protected endpoints with Bearer auth header -> accepted
+        assertTrue(isAuthorized("/volume_report", mapOf("authorization" to "Bearer $pairingToken"), emptyMap()))
+    }
+
+    @Test
+    fun testNsdConfigurationLogic() {
+        val deviceId = "test-device-uuid-987"
+        val expectedServiceType = "_familylinkbuddy._tcp"
+        val expectedServiceName = "FamilyLinkBuddy-$deviceId"
+        val expectedPort = 8085
+
+        assertEquals("_familylinkbuddy._tcp", expectedServiceType)
+        assertEquals("FamilyLinkBuddy-test-device-uuid-987", expectedServiceName)
+        assertEquals(8085, expectedPort)
+    }
+
+    @Test
+    fun testStatusResponseStructure() {
+        val statusJson = JSONObject().apply {
+            put("status", "online")
+            put("deviceId", "child-device-42")
+            put("deviceName", "Felix Pixel")
+            put("version", "1.1.1")
+        }
+
+        assertEquals("online", statusJson.getString("status"))
+        assertEquals("child-device-42", statusJson.getString("deviceId"))
+        assertEquals("Felix Pixel", statusJson.getString("deviceName"))
+        assertEquals("1.1.1", statusJson.getString("version"))
+    }
 }

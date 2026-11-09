@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FamilyLink Buddy</string>
+    <string name="widget_description">Zeigt die verbleibende Bildschirmzeit und App-Nutzung in Echtzeit an.</string>
+    
+    <!-- Widget Strings -->
+    <string name="widget_header">FamilyLink Buddy</string>
+    <string name="widget_sync">Synchronisiert: %1$s</string>
+    <string name="widget_min_left">%1$d Min. verbleibend</string>
+    <string name="widget_no_limits">Keine aktiven App-Limits</string>
+    <string name="widget_app_remaining">%1$d Min. übrig</string>
+    <string name="widget_app_unlimited">Unbegrenzt (%1$d Min.)</string>
+    <string name="widget_talk_action">🎙️ Sprechen</string>
+    <string name="widget_coins_balance">⏳ %1$d Coins</string>
+    <string name="widget_tap_to_open">Tippen zum Öffnen! 🎮</string>
+    
+    <!-- Overlay Strings -->
+    <string name="overlay_label">Sperrung</string>
+    <string name="overlay_size_btn">GRÖSSE</string>
+    <string name="rocket_preparing">Bereitmachen...</string>
+    <string name="rocket_launching">Abheben!</string>
+    <string name="rocket_orbit">Im Orbit!</string>
+    <string name="lock_reason_device">Gerät</string>
+    <string name="text_locked">GESPERRT</string>
+    
+    <!-- Notification Strings -->
+    <string name="notification_title">FamilyLink Buddy Aktiv</string>
+    <string name="notification_text">Hält das Widget in Echtzeit auf dem neuesten Stand.</string>
+    <string name="notification_channel_name">Gerätestatus (Hintergrund-Keep-Alive)</string>
+    <string name="notification_channel_desc">Führt die Synchronisierung im Hintergrund aus. Ausschalten verbirgt das Symbol, behält aber die Funktion.</string>
+    
+    <!-- Companion Dashboard Strings -->
+    <string name="main_title">FamilyLink Buddy</string>
+    <string name="main_subtitle">Kinder-Gerätebegleiter (MVP-Modus)</string>
+    <string name="setup_wizard_btn">🛠️ Einrichtungs-Assistent (Eltern-Setup)</string>
+    <string name="perm_title">Berechtigung erforderlich: Über anderen Apps einblenden</string>
+    <string name="perm_desc">Dies ermöglicht es der App, einen schwebenden 3-Minuten-Countdown vor der Sperrung anzuzeigen.</string>
+    <string name="perm_btn">Berechtigung erteilen</string>
+    <string name="perm_usage_title">Nutzungsdaten-Zugriff benötigt</string>
+    <string name="perm_usage_desc">Diese App benötigt Zugriff auf die Nutzungsstatistiken, um installierte Apps und deren Nutzungszeiten im Widget anzuzeigen und Zeitlimits durchzusetzen.</string>
+    <string name="perm_usage_btn">Zugriff erlauben</string>
+    <string name="main_remaining">Verbleibende Gesamtzeit: %1$d Min.</string>
+    <string name="main_limit">Tägliches Limit: %1$d Min.</string>
+    <string name="main_app_status">%1$s übrig (%2$d Min. genutzt von %3$d Min.)</string>
+    <string name="main_control_panel">Mock-Kontrollpanel</string>
+    
+    <!-- Mock Buttons -->
+    <string name="btn_add_time">+15 Min.</string>
+    <string name="btn_sub_time">-15 Min.</string>
+    <string name="btn_mock_alert">Mock 3 Min. Alarm</string>
+    <string name="btn_mock_rocket">Mock Raketenstart</string>
+    <string name="btn_mock_comms">Mock Walkie-Talkie Anruf 🎙️</string>
+    <string name="btn_reset_data">Mock-Daten zurücksetzen</string>
+    <string name="main_sync_title">Echtzeit-Widget-Synchronisierung</string>
+    <string name="main_sync_desc">Verwendet den Hintergrund-Foreground-Service</string>
+
+    <!-- Volume Control Strings -->
+    <string name="volume_changed_title">Lautstärke geändert</string>
+    <string name="volume_changed_body">%1$s auf %2$d gesetzt (von Elternteil)</string>
+    <string name="volume_changed_by_parent">Lautstärke wurde von einem Elternteil geändert</string>
+    <string name="volume_notif_channel_name">Lautstärke-Fernsteuerung</string>
+    <string name="volume_stream_media">Medien</string>
+    <string name="volume_stream_ringtone">Klingelton</string>
+    <string name="volume_stream_alarm">Wecker</string>
+    <string name="volume_stream_all">Alle</string>
+    <string name="volume_card_title">🔊 Lautstärke</string>
+    <string name="volume_media_label">Medien</string>
+    <string name="volume_ringtone_label">Klingelton</string>
+    <string name="volume_alarm_label">Wecker</string>
+    <string name="volume_device_id_label">Geräte-ID (zum Koppeln)</string>
+    <string name="volume_copy_btn">Geräte-ID kopieren</string>
+    <string name="volume_loading_token">Lade Token...</string>
+    <string name="toast_copied">Kopiert!</string>
+    <string name="pairing_code_label">6-stelliger Code:</string>
+
+    <!-- Time Coins Strings -->
+    <string name="time_bank_card_title">⏳ Mein Zeitkonto</string>
+    <string name="time_bank_balance">%1$d Time Coins</string>
+    <string name="time_bank_tasks_section">🌟 Aufgaben (Verdienen)</string>
+    <string name="time_bank_rewards_section">🎁 Belohnungen (Ausgeben)</string>
+    <string name="time_bank_buy_btn">Kaufen (%1$d Coins)</string>
+    <string name="time_bank_welcome">Willkommen bei deinem Zeitkonto! ⏳</string>
+    <string name="time_bank_zero_coins">Verdiene Coins für tolle Belohnungen! 🎁</string>
+    <string name="time_bank_pending">Warten auf Eltern...</string>
+    <string name="time_bank_completed">Erledigt!</string>
+    <string name="time_bank_claimed">Gekauft! 🎮</string>
+    <string name="time_bank_coins_label">Coins ⏳</string>
+    <string name="time_bank_low_coins">Noch %1$d Coins übrig! ⏳ Wieder aufladen?</string>
+    <string name="time_bank_task_start">%1$d Min Start</string>
+    <string name="time_bank_coins_reward">+%1$d Coins</string>
+    <string name="time_bank_no_rewards">Keine Belohnungen vorhanden.</string>
+    <string name="time_bank_coins_cost">%1$d Coins</string>
+
+    <!-- Walkie-Talkie Strings -->
+    <string name="walkie_talkie_title">📡 Walkie-Talkie</string>
+    <string name="walkie_talkie_desc">Sende oder empfange hier Sprachnachrichten mit deinen Eltern.</string>
+    <string name="walkie_talkie_btn">Walkie-Talkie öffnen 🎙️</string>
+    <string name="comms_overlay_title">Walkie-Talkie</string>
+    <string name="comms_overlay_connecting">Verbinde...</string>
+    <string name="comms_overlay_listening">Elternteil spricht...</string>
+    <string name="comms_overlay_recording">Du sprichst...</string>
+    <string name="comms_overlay_idle">Bereit</string>
+    <string name="comms_overlay_ok_btn">OK / Verstanden</string>
+    <string name="comms_overlay_hold_talk">Halten zum Sprechen</string>
+
+    <!-- Accessibility Service Strings -->
+    <string name="accessibility_service_desc">Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe</string>
+    <string name="pin_required_toast">Eltern-PIN erforderlich! 🔒</string>
+    <string name="app_blocked_toast">%1$s ist auf diesem Tablet gesperrt</string>
+    <string name="category_limit_toast">Zeitlimit für \'%1$s\' heute aufgebraucht</string>
+    <string name="toast_app_closed_by_parent">App wurde von Elternteil beendet</string>
+    <string name="toast_screen_locked_by_parent">Bildschirm wurde von Elternteil gesperrt</string>
+    <string name="label_home_screen">Startbildschirm</string>
+    <string name="unknown_app">Unbekannt</string>
+    <string name="err_a11y_not_connected">Bedienungshilfe-Dienst ist nicht verbunden</string>
+
+    <!-- Auto-Updater Strings -->
+    <string name="update_dialog_title">Update Verfügbar 🚀</string>
+    <string name="update_dialog_desc">Eine neue Version von FamilyLink Buddy Child (%1$s) ist verfügbar. Bitte installieren Sie das Update, um fortzufahren.</string>
+    <string name="update_downloading">Herunterladen: %1$d%%</string>
+    <string name="btn_download_install">Download &amp; Installieren</string>
+
+    <!-- Setup Wizard Strings -->
+    <string name="setup_wizard_back">← Zurück</string>
+    <string name="setup_wizard_parent_mode">Eltern-Modus 🛡️</string>
+    <string name="setup_wizard_title">🛠️ Einrichtungs-Assistent</string>
+    <string name="setup_wizard_subtitle">In 4 einfachen Schritten für Android 13, 14 &amp; 15 einrichten</string>
+    <string name="setup_wizard_complete">🎉 Vollständig eingerichtet!</string>
+    <string name="setup_wizard_progress">Fortschritt: %1$d von %2$d erledigt</string>
+    <string name="setup_wizard_complete_desc">Das Tablet ist optimal konfiguriert.</string>
+    <string name="setup_wizard_steps_desc">Folge den 4 Schritten unten.</string>
+    <string name="wizard_step1_title">Sicherheitseinstellung entsperren</string>
+    <string name="wizard_step1_subtitle_a13">Wichtig für Android 13, 14 &amp; 15</string>
+    <string name="wizard_step1_subtitle_legacy">Android &lt; 13: Automatisch freigeschaltet</string>
+    <string name="wizard_step1_desc">Falls Android die Bedienungshilfe blockiert: Tippe auf den Button, dann oben rechts auf die 3 Punkte und wähle \'Eingeschränkte Einstellungen zulassen\'.</string>
+    <string name="wizard_step1_btn">App-Info öffnen (3 Punkte ⋮)</string>
+    <string name="wizard_step1_btn_done">Erledigt ✓</string>
+    <string name="wizard_step1_toast_error">Konnte App-Info nicht öffnen</string>
+    <string name="wizard_step2_title">Bedienungshilfe einschalten</string>
+    <string name="wizard_step2_subtitle">Automatisches WLAN-Management zur Nachtruhe</string>
+    <string name="wizard_step2_desc">Erlaubt der App, das WLAN während der Schlafenszeit ohne Root automatisch umzuschalten. Wähle in der Liste \'FamilyLink Buddy\' und aktiviere den Schalter.</string>
+    <string name="wizard_step2_btn_active">✓ Aktiviert</string>
+    <string name="wizard_step2_btn_enable">Bedienungshilfe einschalten</string>
+    <string name="wizard_step2_toast_error">Konnte Bedienungshilfen nicht öffnen</string>
+    <string name="wizard_step3_title">Akku-Optimierung deaktivieren</string>
+    <string name="wizard_step3_subtitle">Zuverlässiger Hintergrundbetrieb</string>
+    <string name="wizard_step3_desc">Stellt sicher, dass das Android-System die App und das Zeit-Widget nicht nach wenigen Minuten im Hintergrund stoppt.</string>
+    <string name="wizard_step3_btn_exempt">✓ Ausgenommen</string>
+    <string name="wizard_step3_btn_disable">Akku-Optimierung ausschalten</string>
+    <string name="wizard_step3_toast_error">Konnte Akku-Einstellungen nicht öffnen</string>
+    <string name="wizard_step4_title">Mit Eltern-Handy verbinden</string>
+    <string name="wizard_step4_card_title">4. Mit Eltern-Handy verbinden</string>
+    <string name="wizard_step4_subtitle">Kopplung per QR-Code oder Direkt-IP</string>
+    <string name="wizard_step4_desc">Scanne diesen QR-Code mit der Eltern-App auf deinem Smartphone, um die sichere Steuerung über das Heimnetzwerk einzurichten.</string>
+    <string name="wizard_step4_wifi_connected">WLAN verbunden: %1$s : %2$d</string>
+    <string name="wizard_step4_no_wifi">Kein WLAN verbunden! Bitte mit Heimnetzwerk verbinden.</string>
+    <string name="wizard_step4_code_label">6-stelliger Code:</string>
+    <string name="wizard_step4_port_label">Port: %1$d</string>
+    <string name="wizard_step4_qr_desc">Pairing QR-Code</string>
+    <string name="wizard_pin_title">Eltern-PIN &amp; Anti-Tamper</string>
+    <string name="wizard_pin_card_title">Eltern-PIN (Anti-Tamper Schutz)</string>
+    <string name="wizard_pin_active">4-stelliger Schutz ist aktiv ✓</string>
+    <string name="wizard_pin_inactive">Kein PIN festgelegt</string>
+    <string name="wizard_pin_desc">Schützt die App vor Manipulation durch dein Kind. Ist ein PIN eingerichtet, wird beim Versuch, die Bedienungshilfe in den Android-Einstellungen zu deaktivieren oder die Einstellungen der App zu öffnen, der 4-stellige PIN abgefragt.</string>
+    <string name="wizard_pin_remove_btn">PIN entfernen</string>
+    <string name="wizard_pin_setup_btn">PIN einrichten (4 Ziffern)</string>
+    <string name="wizard_pin_change_btn">PIN ändern</string>
+    <string name="wizard_pin_removed_toast">Eltern-PIN entfernt</string>
+    <string name="wizard_pin_saved_toast">Eltern-PIN erfolgreich gespeichert! 🔒</string>
+    <string name="wizard_finish_done">Einrichtung abschließen ✓</string>
+    <string name="wizard_finish_back">Zurück zur Hauptansicht</string>
+
+    <!-- Parent PIN Dialog Strings -->
+    <string name="pin_dialog_title_enter">Eltern-PIN eingeben</string>
+    <string name="pin_dialog_title_set">Neuen Eltern-PIN festlegen</string>
+    <string name="pin_dialog_title_confirm">PIN bestätigen</string>
+    <string name="pin_dialog_subtitle_enter">Gib deinen 4-stelligen PIN ein, um die Einstellungen zu öffnen.</string>
+    <string name="pin_dialog_subtitle_set">Wähle einen 4-stelligen PIN zum Schutz vor Änderungen durch dein Kind.</string>
+    <string name="pin_dialog_subtitle_confirm">Gib den 4-stelligen PIN zur Bestätigung erneut ein.</string>
+    <string name="pin_dialog_error_wrong">Falscher PIN! Bitte erneut versuchen.</string>
+    <string name="pin_dialog_error_mismatch">PINs stimmen nicht überein! Bitte von vorne beginnen.</string>
+    <string name="btn_cancel">Abbrechen</string>
+
+    <!-- Setup Guide Checklist Strings -->
+    <string name="setup_guide_title">🛠️ Einrichtungs-Assistent</string>
+    <string name="setup_guide_subtitle">Wichtige Systemrechte für Nachtruhe &amp; Hintergrund</string>
+    <string name="setup_progress_complete">🎉 Alles vollständig eingerichtet!</string>
+    <string name="setup_progress_count">Fortschritt: %1$d von %2$d erledigt</string>
+    <string name="setup_guide_item1_title">WLAN-Nachtruhe Helfer</string>
+    <string name="setup_guide_item1_subtitle">Bedienungshilfen-Dienst (Accessibility)</string>
+    <string name="setup_guide_item1_desc">Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe in den Schnelleinstellungen ohne Root.\n\nFalls ausgegraut: Auf \'App-Info\' tippen -&gt; oben rechts auf die 3 Punkte (⋮) -&gt; \'Eingeschränkte Einstellungen zulassen\'. Danach hier \'Aktivieren\' wählen.</string>
+    <string name="setup_guide_item1_active">Aktiviert</string>
+    <string name="setup_guide_item1_enable">Aktivieren</string>
+    <string name="setup_guide_item1_app_info">App-Info (3 Punkte)</string>
+    <string name="setup_guide_item2_title">Google Family Link: \'Immer zulassen\'</string>
+    <string name="setup_guide_item2_subtitle">Wichtig gegen Schlafenszeit-Pausierung</string>
+    <string name="setup_guide_item2_desc">In der Family Link Eltern-App unter \'App-Limits\' -&gt; \'FamilyLink Buddy\' auf \'Immer zulassen\' setzen. Sonst wird die App während der Nachtruhe von Google pausiert und kann das WLAN nicht schalten.</string>
+    <string name="setup_guide_item2_confirmed">Bestätigt ✓</string>
+    <string name="setup_guide_item2_mark">Als erledigt markieren</string>
+    <string name="setup_guide_item2_details">App-Details</string>
+    <string name="setup_guide_item3_title">Akku-Optimierung deaktivieren</string>
+    <string name="setup_guide_item3_subtitle">Ununterbrochene Hintergrund-Ausführung</string>
+    <string name="setup_guide_item3_desc">Stellt sicher, dass das Android-System die App und deren Zeit-Alarme nicht schlafen legt oder vorzeitig beendet.</string>
+    <string name="setup_guide_item3_disabled">Deaktiviert</string>
+    <string name="setup_guide_item3_exempt">Ausnehmen</string>
+    <string name="setup_guide_item4_title">Nicht-Stören-Zugriff (DND)</string>
+    <string name="setup_guide_item4_subtitle">Benachrichtigungs-Richtlinie</string>
+    <string name="setup_guide_item4_desc">Erlaubt der App, Klingeltöne und Töne zur Nachtruhe stummzuschalten bzw. DND-Status zu verwalten.</string>
+    <string name="setup_guide_item4_granted">Erteilt</string>
+    <string name="setup_guide_item4_grant">Erlauben</string>
+    <string name="setup_guide_close">Schließen</string>
+    <string name="setup_guide_later">Später fortsetzen</string>
+    <string name="setup_guide_open_full">Vollständigen Assistenten öffnen ↗</string>
+    <string name="setup_toast_a11y_err">Bedienungshilfen konnten nicht geöffnet werden.</string>
+    <string name="setup_toast_battery_err">Akku-Einstellungen konnten nicht geöffnet werden.</string>
+    <string name="setup_toast_dnd_err">Nicht-Stören-Einstellungen konnten nicht geöffnet werden.</string>
+</resources>

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../pairing/pairing_repository.dart';
 import 'bedtime_repository.dart';
 import 'bedtime_schedule.dart';
+import '../l10n/app_strings.dart';
 
 class BedtimeScheduleScreen extends StatefulWidget {
   final PairedDevice device;
@@ -46,7 +47,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            success ? 'WLAN-Zeitplan erfolgreich gespeichert' : 'Zeitplan konnte nicht gespeichert werden',
+            success ? context.strings.scheduleSaved : context.strings.scheduleSaveFailed,
           ),
           backgroundColor: success ? const Color(0xFF10B981) : const Color(0xFFEF4444),
           duration: const Duration(seconds: 2),
@@ -58,7 +59,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
   Future<void> _toggleManualBlock(bool block) async {
     setState(() => _isSaving = true);
     final repo = Provider.of<BedtimeRepository>(context, listen: false);
-    final success = await repo.toggleManualBlock(
+    await repo.toggleManualBlock(
       widget.device.fcmToken,
       block,
       localIpAddress: widget.localIpAddress,
@@ -69,7 +70,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            block ? 'WLAN wurde sofort gesperrt' : 'WLAN wurde wieder freigegeben',
+            block ? context.strings.wifiBlockedInstant : context.strings.wifiUnblockedInstant,
           ),
           backgroundColor: block ? const Color(0xFFEF4444) : const Color(0xFF10B981),
           duration: const Duration(seconds: 2),
@@ -89,9 +90,9 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: initialHour, minute: initialMinute),
-      helpText: isBedtime ? 'Schlafenszeit festlegen' : 'Aufstehzeit festlegen',
-      cancelText: 'Abbrechen',
-      confirmText: 'Übernehmen',
+      helpText: isBedtime ? context.strings.setBedtime : context.strings.setWakeupTime,
+      cancelText: context.strings.cancel,
+      confirmText: context.strings.apply,
       builder: (context, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
@@ -129,9 +130,9 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text(
-          'WLAN-Nachtruhe',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: Text(
+          context.strings.bedtimeTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
@@ -163,23 +164,23 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Live Status Card
-                _buildLiveStatusCard(isBlocked),
+                _buildLiveStatusCard(context, isBlocked),
                 const SizedBox(height: 20),
 
                 // Manual Override Button
-                _buildManualOverrideButton(isBlocked),
+                _buildManualOverrideButton(context, isBlocked),
                 const SizedBox(height: 24),
 
                 // Master Schedule Switch Card
-                _buildMasterSwitchCard(schedule),
+                _buildMasterSwitchCard(context, schedule),
                 const SizedBox(height: 16),
 
                 // Time Pickers Card
-                _buildTimePickersCard(schedule),
+                _buildTimePickersCard(context, schedule),
                 const SizedBox(height: 16),
 
                 // Weekday Selector Card
-                _buildWeekdaySelectorCard(schedule),
+                _buildWeekdaySelectorCard(context, schedule),
                 const SizedBox(height: 32),
               ],
             ),
@@ -189,13 +190,14 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     );
   }
 
-  Widget _buildLiveStatusCard(bool isBlocked) {
+  Widget _buildLiveStatusCard(BuildContext context, bool isBlocked) {
+    final strings = context.strings;
     final color = isBlocked ? const Color(0xFFEF4444) : const Color(0xFF10B981);
     final icon = isBlocked ? Icons.wifi_off_rounded : Icons.wifi_rounded;
-    final statusText = isBlocked ? 'WLAN ist gesperrt' : 'WLAN ist aktiv';
+    final statusText = isBlocked ? strings.wifiBlockedStatus : strings.wifiActiveStatus;
     final descText = isBlocked
-        ? 'Die WLAN-Verbindung des Kindergeräts ist derzeit blockiert.'
-        : 'Das Kind hat uneingeschränkten Zugriff auf das WLAN-Netzwerk.';
+        ? strings.wifiBlockedDesc
+        : strings.wifiActiveDesc;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -251,7 +253,8 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     );
   }
 
-  Widget _buildManualOverrideButton(bool isBlocked) {
+  Widget _buildManualOverrideButton(BuildContext context, bool isBlocked) {
+    final strings = context.strings;
     return SizedBox(
       height: 52,
       child: ElevatedButton.icon(
@@ -262,7 +265,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
           size: 22,
         ),
         label: Text(
-          isBlocked ? 'WLAN jetzt einschalten' : 'WLAN jetzt ausschalten',
+          isBlocked ? strings.turnWifiOnNow : strings.turnWifiOffNow,
           style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.bold,
@@ -280,7 +283,8 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     );
   }
 
-  Widget _buildMasterSwitchCard(BedtimeSchedule schedule) {
+  Widget _buildMasterSwitchCard(BuildContext context, BedtimeSchedule schedule) {
+    final strings = context.strings;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -303,22 +307,22 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
             ),
           ),
           const SizedBox(width: 16),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'WLAN-Nachtruhe automatisch steuern',
-                  style: TextStyle(
+                  strings.autoControlBedtime,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'WLAN zu festgelegten Uhrzeiten kappen',
-                  style: TextStyle(
+                  strings.autoControlBedtimeDesc,
+                  style: const TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 12,
                   ),
@@ -338,7 +342,8 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     );
   }
 
-  Widget _buildTimePickersCard(BedtimeSchedule schedule) {
+  Widget _buildTimePickersCard(BuildContext context, BedtimeSchedule schedule) {
+    final strings = context.strings;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -349,9 +354,9 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Uhrzeiten',
-            style: TextStyle(
+          Text(
+            strings.scheduleTimes,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 15,
               fontWeight: FontWeight.bold,
@@ -362,7 +367,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
             children: [
               Expanded(
                 child: _buildTimeTile(
-                  title: 'Schlafenszeit (WLAN Aus)',
+                  title: strings.bedtimeOff,
                   time: schedule.bedtimeFormattedWithUnit,
                   icon: Icons.nightlight_round,
                   color: const Color(0xFFEF4444),
@@ -376,7 +381,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildTimeTile(
-                  title: 'Aufstehzeit (WLAN An)',
+                  title: strings.wakeupOn,
                   time: schedule.wakeupFormattedWithUnit,
                   icon: Icons.wb_sunny_rounded,
                   color: const Color(0xFF10B981),
@@ -447,15 +452,16 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
     );
   }
 
-  Widget _buildWeekdaySelectorCard(BedtimeSchedule schedule) {
-    const dayMap = {
-      1: 'Mo',
-      2: 'Di',
-      3: 'Mi',
-      4: 'Do',
-      5: 'Fr',
-      6: 'Sa',
-      7: 'So',
+  Widget _buildWeekdaySelectorCard(BuildContext context, BedtimeSchedule schedule) {
+    final strings = context.strings;
+    final dayMap = {
+      1: strings.dayMo,
+      2: strings.dayDi,
+      3: strings.dayMi,
+      4: strings.dayDo,
+      5: strings.dayFr,
+      6: strings.daySa,
+      7: strings.daySo,
     };
 
     return Container(
@@ -471,8 +477,8 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Aktive Wochentage',
+              Text(
+                strings.activeWeekdays,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -506,7 +512,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text('Schultage (So–Do)', style: TextStyle(fontSize: 12)),
+                  child: Text(strings.schoolDaysPreset, style: const TextStyle(fontSize: 12)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -521,7 +527,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text('Jeden Tag', style: TextStyle(fontSize: 12)),
+                  child: Text(strings.everyDayPreset, style: const TextStyle(fontSize: 12)),
                 ),
               ),
             ],

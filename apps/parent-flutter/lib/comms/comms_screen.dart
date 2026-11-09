@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth/google_sign_in_service.dart';
 import '../pairing/pairing_repository.dart';
 import 'comms_repository.dart';
+import '../l10n/app_strings.dart';
 
 class CommsScreen extends StatefulWidget {
-  final ParentAccount? account;
   final PairedDevice device;
 
   const CommsScreen({
     super.key,
-    this.account,
     required this.device,
   });
 
@@ -57,7 +55,7 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
       child: Scaffold(
         backgroundColor: const Color(0xFF0F172A),
         appBar: AppBar(
-          title: const Text('Walkie-Talkie Comms'),
+          title: Text(context.strings.walkieTalkieTitle),
           backgroundColor: const Color(0xFF1E293B),
           elevation: 0,
         ),
@@ -86,8 +84,8 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Verpasster Walkie-Talkie Anruf',
+                                Text(
+                                  context.strings.missedCallTitle,
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
@@ -169,7 +167,7 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    isEmulator ? 'Simulierter Kanal Aktiv' : 'Kanal Bereit',
+                                    isEmulator ? context.strings.channelSimulatedActive : context.strings.channelReady,
                                     style: TextStyle(
                                       color: isEmulator ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                                       fontSize: 13,
@@ -255,7 +253,7 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      isTalking ? 'SPRECHEN...' : 'DRÜCKEN & HALTEN',
+                                      isTalking ? context.strings.talking : context.strings.holdToTalk,
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 11,
@@ -277,10 +275,10 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
 
                   // Waveform custom simulator display
                   if (isTalking) ...[
-                    const Center(
+                    Center(
                       child: Text(
-                        '🎙️ Audio wird übertragen...',
-                        style: TextStyle(
+                        context.strings.audioStreaming,
+                        style: const TextStyle(
                           color: Color(0xFFEF4444),
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -301,8 +299,8 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'WALKIE-TALKIE REGELN',
+                        Text(
+                          context.strings.walkieTalkieRules,
                           style: TextStyle(
                             color: Color(0xFF94A3B8),
                             fontSize: 12,
@@ -313,13 +311,13 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
                         const SizedBox(height: 16),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            'Direkt beim Kind abspielen',
-                            style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                          title: Text(
+                            context.strings.autoPlayVoiceTitle,
+                            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                           ),
-                          subtitle: const Text(
-                            'Audio wird sofort über Lautsprecher abgespielt ohne anzuklopfen.',
-                            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          subtitle: Text(
+                            context.strings.autoPlayVoiceSubtitle,
+                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                           ),
                           value: repo.autoPlayVoice,
                           activeColor: const Color(0xFF6366F1),
@@ -334,13 +332,13 @@ class _CommsScreenState extends State<CommsScreen> with SingleTickerProviderStat
                         const Divider(color: Color(0xFF334155), height: 32),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            'Kind darf Anruf starten',
-                            style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                          title: Text(
+                            context.strings.childCanInitiateTitle,
+                            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                           ),
-                          subtitle: const Text(
-                            'Erlaubt dem Kind, die Walkie-Talkie Verbindung über sein Widget zu initiieren.',
-                            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          subtitle: Text(
+                            context.strings.childCanInitiateSubtitle,
+                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                           ),
                           value: repo.childCanInitiate,
                           activeColor: const Color(0xFF6366F1),

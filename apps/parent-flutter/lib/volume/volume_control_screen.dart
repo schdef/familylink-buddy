@@ -1,27 +1,23 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import '../auth/google_sign_in_service.dart';
-import '../auth/sign_in_screen.dart';
 import '../pairing/pairing_repository.dart';
+import '../pairing/lan_discovery_service.dart';
+import '../pairing/device_list_screen.dart';
 import '../bedtime/bedtime_schedule_screen.dart';
 import '../screenshot/screenshot_screen.dart';
 import '../app_limits/app_limits_screen.dart';
 import '../updater/p2p_updater_service.dart';
+import '../l10n/app_strings.dart';
 import 'volume_repository.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 
 class VolumeControlScreen extends StatefulWidget {
-  final ParentAccount? account;
   final PairedDevice device;
 
   const VolumeControlScreen({
     super.key,
-    this.account,
     required this.device,
   });
 
@@ -61,13 +57,20 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     _volumeRepository = Provider.of<VolumeRepository>(context, listen: false);
     _volumeRepository.addListener(_onRepositoryUpdate);
     _volumeRepository.initialize().then((_) {
-      _volumeRepository.subscribeToDevice(widget.device.fcmToken);
+      _volumeRepository.subscribeToDevice(
+        widget.device.fcmToken,
+        ipAddress: widget.device.localIpAddress,
+        deviceId: widget.device.id,
+        pairingRepo: PairingRepository(),
+        discoveryService: LanDiscoveryService(),
+      );
       _volumeRepository.requestVolumeReport(widget.device.fcmToken);
     });
   }
 
   void _onRepositoryUpdate() {
     if (mounted) {
+      final strings = context.strings;
       setState(() {
         // Check if we were refreshing and just received a fresh volume report timestamp
         if (_isRefreshing &&
@@ -76,10 +79,10 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
           _isRefreshing = false;
           _refreshTimeoutTimer?.cancel();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Status erfolgreich aktualisiert!'),
-              backgroundColor: Color(0xFF10B981),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(strings.statusUpdated),
+              backgroundColor: const Color(0xFF10B981),
+              duration: const Duration(seconds: 2),
             ),
           );
         }
@@ -99,6 +102,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   void dispose() {
     _refreshTimeoutTimer?.cancel();
     _volumeRepository.removeListener(_onRepositoryUpdate);
+    _volumeRepository.stopPolling();
     _animController.dispose();
     super.dispose();
   }
@@ -110,6 +114,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
       _isRefreshing = true;
     });
 
+    final strings = context.strings;
     _refreshTimeoutTimer?.cancel();
     _refreshTimeoutTimer = Timer(const Duration(seconds: 8), () {
       if (mounted && _isRefreshing) {
@@ -117,12 +122,12 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
           _isRefreshing = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Fehler beim Aktualisieren: Keine Antwort vom Gerät. Ist das Kind online?',
-              style: TextStyle(color: Colors.white),
+              strings.updateErrorNoResponse,
+              style: const TextStyle(color: Colors.white),
             ),
-            backgroundColor: Color(0xFFEF4444),
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
       }
@@ -133,15 +138,131 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
 
   // Using static utility from VolumeRepository instead
 
-  Future<void> _handleSignOut() async {
+  Future<void> _handleUnpair() async {
     final pairingRepo = PairingRepository();
     await pairingRepo.clearPairedDevice();
-    await GoogleSignInService.signOut();
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const SignInScreen()),
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const DeviceListScreen()),
+        (route) => false,
       );
     }
+  }
+
+  Widget _buildActiveAudioCard(BuildContext context, VolumeRepository repo) {
+    final strings = context.strings;
+    return Container(
+      key: const ValueKey('active_audio_card'),
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF10B981).withValues(alpha: 0.15),
+            const Color(0xFF1E293B).withValues(alpha: 0.8),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withValues(alpha: 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.graphic_eq,
+                  color: Color(0xFF10B981),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      strings.audioPlayingSpotify,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      strings.activeMediaPlayback,
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            key: const ValueKey('stop_audio_button'),
+            onPressed: () async {
+              HapticFeedback.mediumImpact();
+              final success = await repo.stopAudioPlayback(childToken: widget.device.fcmToken);
+              if (!context.mounted) return;
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(strings.playbackStopped),
+                    backgroundColor: const Color(0xFF10B981),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(strings.errorStoppingPlayback),
+                    backgroundColor: const Color(0xFFEF4444),
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.pause_circle_filled, size: 20),
+            label: Text(strings.stopPlayback),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildVolumeSlider({
@@ -229,6 +350,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   }
 
   Widget _buildQuickActionBar(BuildContext context, VolumeRepository repo) {
+    final strings = context.strings;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -245,9 +367,9 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'SCHNELLZUGRIFF',
-                style: TextStyle(
+              Text(
+                strings.quickAccess,
+                style: const TextStyle(
                   color: Color(0xFF94A3B8),
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -264,7 +386,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
               child: _buildQuickActionCard(
                 key: const ValueKey('action_app_limits_button'),
                 icon: Icons.timer_outlined,
-                label: 'App-Limits & Sperren',
+                label: strings.quickActionAppLimits,
                 accentColor: const Color(0xFFEC4899),
                 onTap: () {
                   Navigator.of(context).push(
@@ -284,7 +406,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
             Expanded(
               child: _buildQuickActionCard(
                 icon: Icons.bedtime_rounded,
-                label: 'WLAN-Nachtruhe',
+                label: strings.quickActionBedtime,
                 accentColor: const Color(0xFF8B5CF6),
                 onTap: () {
                   Navigator.of(context).push(
@@ -307,7 +429,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
             Expanded(
               child: _buildQuickActionCard(
                 icon: Icons.camera_alt_rounded,
-                label: 'Live-Screenshot',
+                label: strings.quickActionScreenshot,
                 accentColor: const Color(0xFF06B6D4),
                 onTap: () {
                   Navigator.of(context).push(
@@ -327,7 +449,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
             Expanded(
               child: _buildQuickActionCard(
                 icon: Icons.wifi_protected_setup_rounded,
-                label: 'WLAN-Update',
+                label: strings.quickActionUpdate,
                 accentColor: const Color(0xFF10B981),
                 onTap: () {
                   _showP2PUpdateDialog(context, repo.localIpAddress);
@@ -423,20 +545,21 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.strings;
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Lautstärke-Steuerung'),
+            Text(strings.volumeControlTitle),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withOpacity(0.2),
+                color: const Color(0xFF6366F1).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.5)),
+                border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.5)),
               ),
               child: const Text(
                 'v1.1.2',
@@ -454,73 +577,32 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-            tooltip: 'Gerät entkoppeln',
+            tooltip: strings.unpairTooltip,
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (ctx) => AlertDialog(
                   backgroundColor: const Color(0xFF1E293B),
-                  title: const Text('Gerät entkoppeln?', style: TextStyle(color: Colors.white)),
+                  title: Text(strings.unpairDeviceTitle, style: const TextStyle(color: Colors.white)),
                   content: Text(
-                    'Möchten Sie das Gerät von ${widget.device.name} wirklich entkoppeln?',
+                    strings.unpairDeviceConfirm(widget.device.name),
                     style: const TextStyle(color: Color(0xFF94A3B8)),
                   ),
                   actions: [
                     TextButton(
-                      child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
+                      child: Text(strings.cancel, style: const TextStyle(color: Colors.white)),
                       onPressed: () => Navigator.of(ctx).pop(),
                     ),
                     TextButton(
-                      child: const Text('Entkoppeln', style: TextStyle(color: Color(0xFFEF4444))),
+                      child: Text(strings.unpair, style: const TextStyle(color: Color(0xFFEF4444))),
                       onPressed: () async {
                         Navigator.of(ctx).pop();
-                        await FirebaseFirestore.instance
-                            .collection('pairings')
-                            .doc(widget.device.fcmToken)
-                            .delete();
+                        await _handleUnpair();
                         if (context.mounted) {
-                          Navigator.of(context).pop();
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${widget.device.name} wurde entkoppelt.')),
+                            SnackBar(content: Text(strings.deviceUnpaired(widget.device.name))),
                           );
                         }
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFF94A3B8)),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: const Color(0xFF1E293B),
-                  title: const Text('Abmelden?', style: TextStyle(color: Colors.white)),
-                  content: const Text(
-                    'Möchten Sie sich abmelden und die Koppelung zu diesem Gerät aufheben?',
-                    style: TextStyle(color: Color(0xFF94A3B8)),
-                  ),
-                  actions: [
-                    TextButton(
-                      child: const Text('Abmelden', style: TextStyle(color: Colors.white)),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _handleSignOut();
-                      },
-                    ),
-                    TextButton(
-                      child: const Text('Konto löschen (GDPR)', style: TextStyle(color: Color(0xFFEF4444))),
-                      onPressed: () async {
-                        Navigator.of(ctx).pop();
-                        try {
-                          await FirebaseFunctions.instance.httpsCallable('deleteUserAccount').call();
-                        } catch (e) {
-                          debugPrint("GDPR delete failed: $e");
-                        }
-                        _handleSignOut();
                       },
                     ),
                   ],
@@ -555,10 +637,10 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.2)),
+                        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF6366F1).withOpacity(0.1),
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.1),
                             blurRadius: 20,
                             spreadRadius: 2,
                           ),
@@ -569,7 +651,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withOpacity(0.1),
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.person, color: Color(0xFF6366F1), size: 28),
@@ -601,7 +683,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                                       ),
                                     ),
                                     Text(
-                                      isOnline ? 'Verbunden' : 'Offline',
+                                      isOnline ? strings.connected : strings.offline,
                                       style: TextStyle(
                                         color: isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                                         fontSize: 13,
@@ -609,7 +691,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                                       ),
                                     ),
                                     Text(
-                                      '(${VolumeRepository.getLastSeenText(repo.lastSeen)})',
+                                      '(${VolumeRepository.getLastSeenText(repo.lastSeen, strings: strings)})',
                                       style: const TextStyle(
                                         color: Color(0xFF94A3B8),
                                         fontSize: 12,
@@ -646,9 +728,13 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
 
                     const SizedBox(height: 28),
 
+                    // Active Audio Card
+                    if (repo.volumeState.isMusicActive)
+                      _buildActiveAudioCard(context, repo),
+
                     // Volume Cards
                     _buildVolumeSlider(
-                      title: 'Medien-Lautstärke',
+                      title: strings.mediaVolume,
                       icon: Icons.music_note,
                       value: repo.volumeState.mediaVolume,
                       maxValue: repo.volumeState.maxMediaVolume,
@@ -663,7 +749,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                     ),
 
                     _buildVolumeSlider(
-                      title: 'Klingelton',
+                      title: strings.ringtoneVolume,
                       icon: Icons.notifications,
                       value: repo.volumeState.ringtoneVolume,
                       maxValue: repo.volumeState.maxRingtoneVolume,
@@ -678,7 +764,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                     ),
 
                     _buildVolumeSlider(
-                      title: 'Wecker-Lautstärke',
+                      title: strings.alarmVolume,
                       icon: Icons.alarm,
                       value: repo.volumeState.alarmVolume,
                       maxValue: repo.volumeState.maxAlarmVolume,
@@ -707,7 +793,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                               );
                             },
                             icon: const Icon(Icons.volume_mute, size: 20),
-                            label: const Text('Alles stumm'),
+                            label: Text(strings.muteAll),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFFEF4444),
                               side: const BorderSide(color: Color(0xFFEF4444)),
@@ -729,7 +815,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                               );
                             },
                             icon: const Icon(Icons.volume_up, size: 20),
-                            label: const Text('Maximal'),
+                            label: Text(strings.maxVolume),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF6366F1),
                               foregroundColor: Colors.white,
@@ -821,14 +907,15 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
     super.dispose();
   }
 
-  String _formatFileSize(int? bytes) {
-    if (bytes == null || bytes <= 0) return 'Unbekannte Größe';
+  String _formatFileSize(int? bytes, AppStrings strings) {
+    if (bytes == null || bytes <= 0) return strings.unknownSize;
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   Future<void> _pickApkFile() async {
+    final strings = context.strings;
     setState(() {
       _isPicking = true;
       _hasError = false;
@@ -847,14 +934,14 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
             _pathController.text = path;
             _selectedFileName = name ?? (File(path).existsSync() ? File(path).uri.pathSegments.last : 'update.apk');
             _selectedFileSize = size ?? (File(path).existsSync() ? File(path).lengthSync() : null);
-            _statusMessage = 'APK ausgewählt: $_selectedFileName (${_formatFileSize(_selectedFileSize)})';
+            _statusMessage = strings.apkSelected(_selectedFileName!, _formatFileSize(_selectedFileSize, strings));
           });
         }
       }
     } catch (e) {
       setState(() {
         _hasError = true;
-        _statusMessage = 'Fehler bei Dateiauswahl: $e';
+        _statusMessage = strings.filePickError(e);
       });
     } finally {
       if (mounted) {
@@ -866,11 +953,12 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
   }
 
   Future<void> _startP2PUpdate() async {
+    final strings = context.strings;
     final ip = _ipController.text.trim();
     if (ip.isEmpty) {
       setState(() {
         _hasError = true;
-        _statusMessage = 'Bitte geben Sie die IP-Adresse des Kinder-Geräts ein.';
+        _statusMessage = strings.enterChildIp;
       });
       return;
     }
@@ -879,59 +967,18 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
       _isUploading = true;
       _hasError = false;
       _progress = 0.0;
-      _statusMessage = 'Bereite Übertragung vor...';
+      _statusMessage = strings.preparingTransfer;
     });
 
     try {
       String apkPath = _pathController.text.trim();
 
-      // If user did not provide an existing local path, attempt download from releases metadata
       if (apkPath.isEmpty || !File(apkPath).existsSync()) {
-        try {
-          setState(() {
-            _statusMessage = 'Prüfe Online-Release-Kanal...';
-          });
-
-          final doc = await FirebaseFirestore.instance
-              .collection('app_metadata')
-              .doc('releases')
-              .get();
-
-          String? downloadUrl;
-          if (doc.exists && doc.data() != null) {
-            final data = doc.data()!;
-            if (data.containsKey('child')) {
-              final childData = Map<String, dynamic>.from(data['child']);
-              downloadUrl = childData['downloadUrl'] as String?;
-            }
-          }
-
-          if (downloadUrl != null && downloadUrl.isNotEmpty) {
-            setState(() {
-              _statusMessage = 'Lade neueste Kinder-App von Server...';
-            });
-            final response = await http.get(Uri.parse(downloadUrl));
-            if (response.statusCode == 200) {
-              final tempFile = File('${Directory.systemTemp.path}/child-update.apk');
-              await tempFile.writeAsBytes(response.bodyBytes);
-              apkPath = tempFile.path;
-            } else {
-              throw Exception('Konnte APK nicht herunterladen (Status ${response.statusCode})');
-            }
-          } else {
-            throw Exception('Keine APK-Download-URL verfügbar');
-          }
-        } catch (_) {
-          if (apkPath.isEmpty || !File(apkPath).existsSync()) {
-            throw Exception(
-              'Keine gültige APK vorhanden. Bitte wählen Sie eine APK-Datei über "APK auswählen" aus.',
-            );
-          }
-        }
+        throw Exception(strings.noValidApk);
       }
 
       setState(() {
-        _statusMessage = 'Sende APK per WLAN an $ip:8085...';
+        _statusMessage = strings.sendingApkWifi(ip);
       });
 
       final updater = P2PUpdaterService();
@@ -942,7 +989,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
           if (mounted) {
             setState(() {
               _progress = p;
-              _statusMessage = 'WLAN-Übertragung: ${(p * 100).toInt()}%';
+              _statusMessage = strings.wifiTransferProgress((p * 100).toInt());
             });
           }
         },
@@ -952,7 +999,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
         setState(() {
           _isUploading = false;
           _progress = 1.0;
-          _statusMessage = 'Update erfolgreich übertragen! Installation gestartet.';
+          _statusMessage = strings.updateSuccess;
         });
       }
     } catch (e) {
@@ -960,7 +1007,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
         setState(() {
           _isUploading = false;
           _hasError = true;
-          _statusMessage = 'Fehler: $e';
+          _statusMessage = '${strings.errorPrefix}$e';
         });
       }
     }
@@ -968,16 +1015,18 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.strings;
+
     return AlertDialog(
       backgroundColor: const Color(0xFF1E293B),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.wifi_protected_setup, color: Color(0xFF10B981)),
-          SizedBox(width: 10),
+          const Icon(Icons.wifi_protected_setup, color: Color(0xFF10B981)),
+          const SizedBox(width: 10),
           Text(
-            'P2P Wi-Fi Update',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            strings.p2pUpdateTitle,
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -986,15 +1035,15 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Aktualisiere die Kinder-App blitzschnell direkt über das lokale Heimnetzwerk ohne Internet-Download auf dem Zielgerät.',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13, height: 1.4),
+            Text(
+              strings.p2pUpdateDesc,
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 18),
 
-            const Text(
-              'IP-Adresse des Kindes (Port 8085)',
-              style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            Text(
+              strings.childIpLabel,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
             TextField(
@@ -1004,7 +1053,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
               decoration: InputDecoration(
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
-                hintText: 'z.B. 192.168.1.100',
+                hintText: strings.childIpHint,
                 hintStyle: const TextStyle(color: Color(0xFF64748B)),
                 prefixIcon: const Icon(Icons.lan, color: Color(0xFF6366F1), size: 18),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1020,9 +1069,9 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
             ),
             const SizedBox(height: 14),
 
-            const Text(
-              'APK-Datei (Gerät / Google Drive)',
-              style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            Text(
+              strings.apkFileLabel,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
             TextField(
@@ -1032,11 +1081,11 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
               decoration: InputDecoration(
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
-                hintText: 'Pfad zur APK oder Button unten nutzen',
+                hintText: strings.apkFileHint,
                 hintStyle: const TextStyle(color: Color(0xFF64748B)),
                 prefixIcon: const Icon(Icons.folder_zip_outlined, color: Color(0xFF94A3B8), size: 18),
                 suffixIcon: IconButton(
-                  tooltip: 'APK von Gerät oder Google Drive wählen',
+                  tooltip: strings.selectApkTooltip,
                   icon: _isPicking
                       ? const SizedBox(
                           width: 16,
@@ -1065,7 +1114,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
                 onPressed: _isUploading || _isPicking ? null : _pickApkFile,
                 icon: const Icon(Icons.add_to_drive, size: 18, color: Color(0xFF38BDF8)),
                 label: Text(
-                  _isPicking ? 'Wähle Datei...' : 'APK auswählen (Gerät / Google Drive)',
+                  _isPicking ? strings.selectingFile : strings.selectApkButton,
                   style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -1092,7 +1141,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '$_selectedFileName (${_formatFileSize(_selectedFileSize)})',
+                        '$_selectedFileName (${_formatFileSize(_selectedFileSize, strings)})',
                         style: const TextStyle(color: Color(0xFF6EE7B7), fontSize: 12, fontWeight: FontWeight.w500),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1132,7 +1181,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
       actions: [
         TextButton(
           onPressed: _isUploading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Schließen', style: TextStyle(color: Color(0xFF94A3B8))),
+          child: Text(strings.close, style: const TextStyle(color: Color(0xFF94A3B8))),
         ),
         ElevatedButton.icon(
           onPressed: _isUploading ? null : _startP2PUpdate,
@@ -1143,7 +1192,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
               : const Icon(Icons.send_rounded, size: 16),
-          label: Text(_isUploading ? 'Übertrage...' : 'Update übertragen'),
+          label: Text(_isUploading ? strings.transferring : strings.transferUpdate),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF10B981),
             foregroundColor: Colors.white,

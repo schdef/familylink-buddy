@@ -1,6 +1,5 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uuid/uuid.dart';
 
 class TransactionModel {
   final String id;
@@ -21,12 +20,31 @@ class TransactionModel {
     required this.date,
   });
 
-  factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    final timestampVal = data['timestamp'] as Timestamp?;
+  factory TransactionModel.fromFirestore(dynamic doc) {
+    final Map<String, dynamic> data = doc is Map<String, dynamic>
+        ? doc
+        : (doc.data() as Map<String, dynamic>? ?? {});
+    final id = doc is Map ? (doc['id'] as String? ?? '') : doc.id as String;
+    final timestampVal = data['timestamp'];
+    DateTime ts;
+    if (timestampVal is DateTime) {
+      ts = timestampVal;
+    } else if (timestampVal is int) {
+      ts = DateTime.fromMillisecondsSinceEpoch(timestampVal);
+    } else if (timestampVal != null && timestampVal.toString().isNotEmpty) {
+      try {
+        // Handle custom timestamp mocks with toDate()
+        ts = (timestampVal as dynamic).toDate();
+      } catch (_) {
+        ts = DateTime.tryParse(timestampVal.toString()) ?? DateTime.now();
+      }
+    } else {
+      ts = DateTime.now();
+    }
+
     return TransactionModel(
-      id: doc.id,
-      timestamp: timestampVal?.toDate() ?? DateTime.now(),
+      id: id,
+      timestamp: ts,
       type: data['type'] as String? ?? 'MANUAL_AWARD',
       amount: (data['amount'] as num?)?.toInt() ?? 0,
       description: data['description'] as String? ?? '',
@@ -57,10 +75,13 @@ class TaskModel {
     required this.createdBy,
   });
 
-  factory TaskModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  factory TaskModel.fromFirestore(dynamic doc) {
+    final Map<String, dynamic> data = doc is Map<String, dynamic>
+        ? doc
+        : (doc.data() as Map<String, dynamic>? ?? {});
+    final id = doc is Map ? (doc['id'] as String? ?? '') : doc.id as String;
     return TaskModel(
-      id: doc.id,
+      id: id,
       title: data['title'] as String? ?? '',
       emoji: data['emoji'] as String? ?? '📋',
       reward: (data['reward'] as num?)?.toInt() ?? 0,
@@ -89,10 +110,13 @@ class RewardModel {
     required this.createdBy,
   });
 
-  factory RewardModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  factory RewardModel.fromFirestore(dynamic doc) {
+    final Map<String, dynamic> data = doc is Map<String, dynamic>
+        ? doc
+        : (doc.data() as Map<String, dynamic>? ?? {});
+    final id = doc is Map ? (doc['id'] as String? ?? '') : doc.id as String;
     return RewardModel(
-      id: doc.id,
+      id: id,
       title: data['title'] as String? ?? '',
       emoji: data['emoji'] as String? ?? '🎁',
       cost: (data['cost'] as num?)?.toInt() ?? 0,
@@ -123,242 +147,163 @@ class ClaimModel {
     this.fulfilledAt,
   });
 
-  factory ClaimModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    final claimedAtVal = data['claimedAt'] as Timestamp?;
-    final fulfilledAtVal = data['fulfilledAt'] as Timestamp?;
+  factory ClaimModel.fromFirestore(dynamic doc) {
+    final Map<String, dynamic> data = doc is Map<String, dynamic>
+        ? doc
+        : (doc.data() as Map<String, dynamic>? ?? {});
+    final id = doc is Map ? (doc['id'] as String? ?? '') : doc.id as String;
+    final claimedAtVal = data['claimedAt'];
+    final fulfilledAtVal = data['fulfilledAt'];
+
+    DateTime claimed;
+    if (claimedAtVal is DateTime) {
+      claimed = claimedAtVal;
+    } else if (claimedAtVal is int) {
+      claimed = DateTime.fromMillisecondsSinceEpoch(claimedAtVal);
+    } else if (claimedAtVal != null) {
+      try {
+        claimed = (claimedAtVal as dynamic).toDate();
+      } catch (_) {
+        claimed = DateTime.tryParse(claimedAtVal.toString()) ?? DateTime.now();
+      }
+    } else {
+      claimed = DateTime.now();
+    }
+
+    DateTime? fulfilled;
+    if (fulfilledAtVal is DateTime) {
+      fulfilled = fulfilledAtVal;
+    } else if (fulfilledAtVal is int) {
+      fulfilled = DateTime.fromMillisecondsSinceEpoch(fulfilledAtVal);
+    } else if (fulfilledAtVal != null) {
+      try {
+        fulfilled = (fulfilledAtVal as dynamic).toDate();
+      } catch (_) {
+        fulfilled = DateTime.tryParse(fulfilledAtVal.toString());
+      }
+    }
+
     return ClaimModel(
-      id: doc.id,
+      id: id,
       rewardId: data['rewardId'] as String? ?? '',
       title: data['title'] as String? ?? '',
       emoji: data['emoji'] as String? ?? '🎁',
       cost: (data['cost'] as num?)?.toInt() ?? 0,
       status: data['status'] as String? ?? 'PENDING',
-      claimedAt: claimedAtVal?.toDate() ?? DateTime.now(),
-      fulfilledAt: fulfilledAtVal?.toDate(),
+      claimedAt: claimed,
+      fulfilledAt: fulfilled,
     );
   }
 }
 
 class TimeBankRepository extends ChangeNotifier {
   int _balance = 0;
-  bool _isEnabled = false;
-  bool _isChildVisible = false;
-  List<TransactionModel> _transactions = [];
-  List<TaskModel> _tasks = [];
-  List<RewardModel> _rewards = [];
-  List<ClaimModel> _claims = [];
+  bool _isEnabled = true;
+  bool _isChildVisible = true;
+  final List<TransactionModel> _transactions = [];
+  final List<TaskModel> _tasks = [];
+  final List<RewardModel> _rewards = [];
+  final List<ClaimModel> _claims = [];
 
   int get balance => _balance;
   bool get isEnabled => _isEnabled;
   bool get isChildVisible => _isChildVisible;
-  List<TransactionModel> get transactions => _transactions;
-  List<TaskModel> get tasks => _tasks;
-  List<RewardModel> get rewards => _rewards;
-  List<ClaimModel> get claims => _claims;
-
-  final Map<String, StreamSubscription> _subscriptions = {};
+  List<TransactionModel> get transactions => List.unmodifiable(_transactions);
+  List<TaskModel> get tasks => List.unmodifiable(_tasks);
+  List<RewardModel> get rewards => List.unmodifiable(_rewards);
+  List<ClaimModel> get claims => List.unmodifiable(_claims);
 
   void subscribeToDevice(String childToken) {
-    unsubscribe();
-    if (childToken.isEmpty) return;
-
-    final docRef = FirebaseFirestore.instance.collection('pairings').doc(childToken);
-
-    // 1. Subscribe to pairing metadata
-    _subscriptions['metadata'] = docRef.snapshots().listen((snapshot) {
-      if (snapshot.exists) {
-        final data = snapshot.data();
-        if (data != null) {
-          _balance = (data['timeBankBalance'] as num?)?.toInt() ?? 0;
-          _isEnabled = data['timeBankEnabled'] as bool? ?? false;
-          _isChildVisible = data['timeBankChildVisible'] as bool? ?? false;
-          notifyListeners();
-        }
-      }
-    });
-
-    // 2. Subscribe to transactions
-    _subscriptions['transactions'] = docRef
-        .collection('time_bank_transactions')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .listen((snapshot) {
-      _transactions = snapshot.docs.map((doc) => TransactionModel.fromFirestore(doc)).toList();
-      notifyListeners();
-    });
-
-    // 3. Subscribe to tasks
-    _subscriptions['tasks'] = docRef
-        .collection('time_bank_tasks')
-        .orderBy('sortOrder')
-        .snapshots()
-        .listen((snapshot) {
-      _tasks = snapshot.docs.map((doc) => TaskModel.fromFirestore(doc)).toList();
-      notifyListeners();
-    });
-
-    // 4. Subscribe to rewards
-    _subscriptions['rewards'] = docRef
-        .collection('time_bank_rewards')
-        .orderBy('sortOrder')
-        .snapshots()
-        .listen((snapshot) {
-      _rewards = snapshot.docs.map((doc) => RewardModel.fromFirestore(doc)).toList();
-      notifyListeners();
-    });
-
-    // 5. Subscribe to claims
-    _subscriptions['claims'] = docRef
-        .collection('time_bank_claims')
-        .orderBy('claimedAt', descending: true)
-        .snapshots()
-        .listen((snapshot) {
-      _claims = snapshot.docs.map((doc) => ClaimModel.fromFirestore(doc)).toList();
-      notifyListeners();
-    });
+    // Local-First: State is maintained locally
   }
 
   void unsubscribe() {
-    for (var sub in _subscriptions.values) {
-      sub.cancel();
-    }
-    _subscriptions.clear();
     _balance = 0;
-    _isEnabled = false;
-    _isChildVisible = false;
     _transactions.clear();
     _tasks.clear();
     _rewards.clear();
     _claims.clear();
   }
 
-  @override
-  void dispose() {
-    unsubscribe();
-    super.dispose();
-  }
-
   Future<void> awardCoins(String childToken, int amount, String description, String emoji) async {
-    if (childToken.isEmpty) return;
-    final docRef = FirebaseFirestore.instance.collection('pairings').doc(childToken);
-    final txRef = docRef.collection('time_bank_transactions').doc();
-    
-    final batch = FirebaseFirestore.instance.batch();
-    batch.update(docRef, {
-      'timeBankBalance': FieldValue.increment(amount),
-      'coinAward': {
-        'amount': amount,
-        'description': description,
-        'emoji': emoji,
-        'timestamp': FieldValue.serverTimestamp(),
-      }
-    });
-    batch.set(txRef, {
-      'timestamp': FieldValue.serverTimestamp(),
-      'type': 'MANUAL_AWARD',
-      'amount': amount,
-      'description': description,
-      'emoji': emoji,
-      'awardedBy': 'parent',
-      'date': DateTime.now().toIso8601String().split('T')[0],
-    });
-    
-    await batch.commit();
+    _balance += amount;
+    final now = DateTime.now();
+    final tx = TransactionModel(
+      id: const Uuid().v4(),
+      timestamp: now,
+      type: 'MANUAL_AWARD',
+      amount: amount,
+      description: description,
+      emoji: emoji,
+      date: now.toIso8601String().split('T')[0],
+    );
+    _transactions.insert(0, tx);
+    notifyListeners();
   }
 
   Future<void> createTask(String childToken, String title, String emoji, int reward, bool hasDuration, int durationMinutes) async {
-    if (childToken.isEmpty) return;
-    final docRef = FirebaseFirestore.instance.collection('pairings').doc(childToken);
-    final taskRef = docRef.collection('time_bank_tasks').doc();
-
-    final sortOrder = _tasks.length;
-    await taskRef.set({
-      'title': title,
-      'emoji': emoji,
-      'reward': reward,
-      'hasDuration': hasDuration,
-      'durationMinutes': durationMinutes,
-      'sortOrder': sortOrder,
-      'createdBy': 'parent',
-    });
+    final task = TaskModel(
+      id: const Uuid().v4(),
+      title: title,
+      emoji: emoji,
+      reward: reward,
+      hasDuration: hasDuration,
+      durationMinutes: durationMinutes,
+      sortOrder: _tasks.length,
+      createdBy: 'parent',
+    );
+    _tasks.add(task);
+    notifyListeners();
   }
 
   Future<void> deleteTask(String childToken, String taskId) async {
-    if (childToken.isEmpty || taskId.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childToken)
-        .collection('time_bank_tasks')
-        .doc(taskId)
-        .delete();
+    _tasks.removeWhere((t) => t.id == taskId);
+    notifyListeners();
   }
 
   Future<void> createReward(String childToken, String title, String emoji, int cost) async {
-    if (childToken.isEmpty) return;
-    final docRef = FirebaseFirestore.instance.collection('pairings').doc(childToken);
-    final rewardRef = docRef.collection('time_bank_rewards').doc();
-
-    final sortOrder = _rewards.length;
-    await rewardRef.set({
-      'title': title,
-      'emoji': emoji,
-      'cost': cost,
-      'sortOrder': sortOrder,
-      'createdBy': 'parent',
-    });
+    final reward = RewardModel(
+      id: const Uuid().v4(),
+      title: title,
+      emoji: emoji,
+      cost: cost,
+      sortOrder: _rewards.length,
+      createdBy: 'parent',
+    );
+    _rewards.add(reward);
+    notifyListeners();
   }
 
   Future<void> deleteReward(String childToken, String rewardId) async {
-    if (childToken.isEmpty || rewardId.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childToken)
-        .collection('time_bank_rewards')
-        .doc(rewardId)
-        .delete();
+    _rewards.removeWhere((r) => r.id == rewardId);
+    notifyListeners();
   }
 
   Future<void> fulfillClaim(String childToken, String claimId) async {
-    if (childToken.isEmpty || claimId.isEmpty) return;
-    final batch = FirebaseFirestore.instance.batch();
-    final claimDoc = FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childToken)
-        .collection('time_bank_claims')
-        .doc(claimId);
-    final pairingDoc = FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childToken);
-
-    batch.update(claimDoc, {
-      'status': 'FULFILLED',
-      'fulfilledAt': FieldValue.serverTimestamp(),
-    });
-    batch.update(pairingDoc, {
-      'pendingClaimsCount': FieldValue.increment(-1),
-    });
-    
-    await batch.commit();
+    final idx = _claims.indexWhere((c) => c.id == claimId);
+    if (idx >= 0) {
+      final old = _claims[idx];
+      _claims[idx] = ClaimModel(
+        id: old.id,
+        rewardId: old.rewardId,
+        title: old.title,
+        emoji: old.emoji,
+        cost: old.cost,
+        status: 'FULFILLED',
+        claimedAt: old.claimedAt,
+        fulfilledAt: DateTime.now(),
+      );
+      notifyListeners();
+    }
   }
 
   Future<void> setTimeBankEnabled(String childToken, bool enabled) async {
-    if (childToken.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childToken)
-        .update({
-      'timeBankEnabled': enabled,
-    });
+    _isEnabled = enabled;
+    notifyListeners();
   }
 
   Future<void> setChildVisible(String childToken, bool visible) async {
-    if (childToken.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('pairings')
-        .doc(childToken)
-        .update({
-      'timeBankChildVisible': visible,
-    });
+    _isChildVisible = visible;
+    notifyListeners();
   }
 }

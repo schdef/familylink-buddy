@@ -5,16 +5,22 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
+import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.familylink.buddy.child.BuildConfig
 import com.familylink.buddy.child.data.AppLimitsManager
 import com.familylink.buddy.child.data.AppRules
+import com.familylink.buddy.child.data.AudioPlaybackManager
 import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.InstalledAppsManager
+import com.familylink.buddy.child.data.SilentCameraManager
 import com.familylink.buddy.child.data.VolumeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -118,7 +124,51 @@ class LocalHttpServer(
                 }
             }
 
-            if (path == "/upload_update" && method.equals("POST", ignoreCase = true)) {
+            if (method.equals("OPTIONS", ignoreCase = true)) {
+                sendHttpResponse(writer, 200, "OK", "")
+                client.close()
+                return
+            }
+
+            // Security token verification
+            val pairingToken = repository.getOrCreateDeviceTokenSync()
+            val incomingToken = headers["x-buddy-token"]
+                ?: headers["authorization"]?.removePrefix("Bearer ")?.trim()
+                ?: queryParams["token"]
+
+            val isPublicPath = path == "/status" || path == "/pair"
+
+            if (pairingToken.isNotEmpty() && !isPublicPath && (incomingToken == null || incomingToken != pairingToken)) {
+                Log.w(TAG, "Unauthorized request to $path: provided token was invalid or missing")
+                val responseJson = JSONObject().apply {
+                    put("status", "error")
+                    put("error", "Unauthorized")
+                    put("message", "Invalid or missing X-Buddy-Token")
+                }
+                sendHttpResponse(writer, 401, "Unauthorized", responseJson.toString())
+                client.close()
+                return
+            }
+
+            if (path == "/status") {
+                handleStatus(writer)
+            } else if (path == "/set_pin") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                handleSetPin(writer, queryParams, bodyJson)
+            } else if (path == "/pair") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                handlePair(writer, queryParams, bodyJson)
+            } else if (path == "/upload_update" && method.equals("POST", ignoreCase = true)) {
                 handleUploadUpdate(rawInput, writer, contentLength)
             } else if (path == "/set_schedule") {
                 val bodyString = readBodyString(rawInput, contentLength)
@@ -168,10 +218,29 @@ class LocalHttpServer(
                     put("maxRingtoneVolume", state.maxRingtoneVolume)
                     put("maxAlarmVolume", state.maxAlarmVolume)
                     put("isMuted", state.isMuted)
+                    put("isMusicActive", AudioPlaybackManager.isMusicActive(context))
                     put("timestamp", System.currentTimeMillis())
                 }
 
                 sendHttpResponse(writer, 200, "OK", responseJson.toString())
+            } else if (path == "/stop_audio") {
+                handleStopAudio(writer)
+            } else if (path == "/take_camera_photo") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                val facing = (bodyJson?.optString("facing")?.takeIf { it.isNotBlank() }
+                    ?: queryParams["facing"]?.takeIf { it.isNotBlank() }
+                    ?: "front").lowercase()
+                val flash = if (bodyJson != null && bodyJson.has("flash")) {
+                    bodyJson.optBoolean("flash", false)
+                } else {
+                    queryParams["flash"].equals("true", ignoreCase = true) || queryParams["flash"] == "1"
+                }
+                handleTakeCameraPhoto(writer, facing, flash)
             } else if (path.contains("/comms/walkie-talkie/simulate_receive")) {
                 try {
                     val intent = Intent(context, CommsActivity::class.java).apply {
@@ -210,6 +279,85 @@ class LocalHttpServer(
                     null
                 }
                 handleAddBonusMinutes(writer, queryParams, bodyJson)
+            } else if (path == "/award_coins") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                val amount = bodyJson?.optInt("amount", -1).let {
+                    if (it != null && it != -1) it else queryParams["amount"]?.toIntOrNull() ?: 0
+                }
+                val description = bodyJson?.optString("description") ?: queryParams["description"] ?: ""
+                val emoji = bodyJson?.optString("emoji") ?: queryParams["emoji"] ?: "⏳"
+
+                val intent = Intent(WidgetUpdateService.ACTION_COIN_AWARD).apply {
+                    putExtra("amount", amount)
+                    putExtra("description", description)
+                    putExtra("emoji", emoji)
+                }
+                context.sendBroadcast(intent)
+
+                scope.launch {
+                    val current = repository.timeBankState.first()
+                    repository.updateTimeBankState(current.copy(balance = current.balance + amount))
+                }
+
+                sendHttpResponse(writer, 200, "OK", "{\"status\":\"success\",\"awarded\":$amount}")
+            } else if (path == "/set_screen_time") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                val remaining = bodyJson?.optInt("totalRemainingMinutes", -1).let {
+                    if (it != null && it != -1) it else queryParams["remaining"]?.toIntOrNull() ?: -1
+                }
+                val limit = bodyJson?.optInt("totalLimitMinutes", -1).let {
+                    if (it != null && it != -1) it else queryParams["limit"]?.toIntOrNull() ?: 120
+                }
+                if (remaining >= 0) {
+                    scope.launch {
+                        val current = repository.familyTimeData.first()
+                        repository.updateFamilyTimeData(
+                            current.copy(
+                                totalRemainingMinutes = remaining,
+                                totalLimitMinutes = limit,
+                                lastUpdatedMillis = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    sendHttpResponse(writer, 200, "OK", "{\"status\":\"success\"}")
+                } else {
+                    sendHttpResponse(writer, 400, "Bad Request", "{\"status\":\"error\",\"message\":\"Missing totalRemainingMinutes\"}")
+                }
+            } else if (path == "/comms/signaling") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                val instance = WebRtcManager.activeInstance
+                if (instance != null && bodyJson != null) {
+                    val map = mutableMapOf<String, Any>()
+                    bodyJson.keys().forEach { k -> map[k] = bodyJson.get(k) }
+                    instance.handleSignalingMessage(map)
+                    sendHttpResponse(writer, 200, "OK", "{\"status\":\"success\"}")
+                } else {
+                    try {
+                        val intent = Intent(context, CommsActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            putExtra("action", "RECEIVE")
+                        }
+                        context.startActivity(intent)
+                        sendHttpResponse(writer, 200, "OK", "{\"status\":\"launched\"}")
+                    } catch (e: Exception) {
+                        sendHttpResponse(writer, 500, "Internal Server Error", "{\"error\":\"${e.message}\"}")
+                    }
+                }
             } else {
                 sendHttpResponse(writer, 404, "Not Found", "{\"error\":\"Not Found\"}")
             }
@@ -273,6 +421,71 @@ class LocalHttpServer(
         } catch (e: Exception) {
             Log.e(TAG, "Error launching package installer for uploaded APK", e)
             sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"Failed to launch installer: ${e.message}\"}")
+        }
+    }
+
+    private fun handleStopAudio(writer: PrintWriter) {
+        AudioPlaybackManager.stopPlayback(context)
+        scope.launch {
+            val state = readCurrentVolumeState()
+            repository.updateVolumeState(state)
+        }
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("isMusicActive", false)
+        }
+        sendHttpResponse(writer, 200, "OK", responseJson.toString())
+    }
+
+    private fun handleTakeCameraPhoto(writer: PrintWriter, facing: String, flash: Boolean) {
+        val latch = CountDownLatch(1)
+        var resultBytes: ByteArray? = null
+        var errorMessage: String? = null
+
+        SilentCameraManager.capturePhoto(context, facing, flash) { result ->
+            result.fold(
+                onSuccess = { bytes ->
+                    resultBytes = bytes
+                },
+                onFailure = { error ->
+                    errorMessage = error.message ?: "Camera capture failed"
+                }
+            )
+            latch.countDown()
+        }
+
+        val completed = try {
+            latch.await(7, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            false
+        }
+
+        if (!completed) {
+            val responseJson = JSONObject().apply {
+                put("status", "error")
+                put("message", "Camera capture request timed out")
+            }
+            sendHttpResponse(writer, 500, "Internal Server Error", responseJson.toString())
+            return
+        }
+
+        val bytes = resultBytes
+        if (bytes != null) {
+            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("base64Image", base64)
+                put("facing", facing)
+                put("flash", flash)
+                put("timestamp", System.currentTimeMillis())
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } else {
+            val responseJson = JSONObject().apply {
+                put("status", "error")
+                put("message", errorMessage ?: "Unknown error capturing camera photo")
+            }
+            sendHttpResponse(writer, 500, "Internal Server Error", responseJson.toString())
         }
     }
 
@@ -547,7 +760,8 @@ class LocalHttpServer(
             maxMediaVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
             maxRingtoneVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
             maxAlarmVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
-            isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+            isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0,
+            isMusicActive = AudioPlaybackManager.isMusicActive(context)
         )
     }
 
@@ -659,6 +873,95 @@ class LocalHttpServer(
             Log.e(TAG, "Error adding bonus minutes over LAN", e)
             sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
         }
+    }
+
+    private fun handleStatus(writer: PrintWriter) {
+        val deviceId = repository.getDeviceIdSync()
+        val deviceName = getDeviceName()
+        val responseJson = JSONObject().apply {
+            put("status", "online")
+            put("deviceId", deviceId)
+            put("deviceName", deviceName)
+            put("version", BuildConfig.VERSION_NAME)
+            put("hasParentPin", repository.isPinConfiguredSync())
+        }
+        sendHttpResponse(writer, 200, "OK", responseJson.toString())
+    }
+
+    private fun handleSetPin(
+        writer: PrintWriter,
+        queryParams: Map<String, String>,
+        bodyJson: JSONObject?
+    ) {
+        val pin = bodyJson?.optString("pin")
+            ?: queryParams["pin"]
+            ?: ""
+        if (pin.isBlank()) {
+            scope.launch {
+                repository.setParentPin(null)
+            }
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("message", "PIN removed")
+                put("hasParentPin", false)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } else if (com.familylink.buddy.child.data.ParentPinManager.isValidPinFormat(pin)) {
+            scope.launch {
+                repository.setParentPin(pin)
+            }
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("message", "PIN set")
+                put("hasParentPin", true)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } else {
+            val responseJson = JSONObject().apply {
+                put("status", "error")
+                put("message", "Invalid PIN format: must be 4 digits")
+            }
+            sendHttpResponse(writer, 400, "Bad Request", responseJson.toString())
+        }
+    }
+
+    private fun handlePair(
+        writer: PrintWriter,
+        queryParams: Map<String, String>,
+        bodyJson: JSONObject?
+    ) {
+        val deviceId = repository.getDeviceIdSync()
+        val deviceName = getDeviceName()
+        val requestedToken = bodyJson?.optString("token")
+            ?: queryParams["token"]
+            ?: ""
+
+        val tokenToUse = if (requestedToken.isNotBlank()) {
+            scope.launch {
+                repository.updateDeviceToken(requestedToken)
+            }
+            requestedToken
+        } else {
+            repository.getOrCreateDeviceTokenSync()
+        }
+
+        val responseJson = JSONObject().apply {
+            put("status", "paired")
+            put("deviceId", deviceId)
+            put("deviceName", deviceName)
+            put("token", tokenToUse)
+        }
+        sendHttpResponse(writer, 200, "OK", responseJson.toString())
+    }
+
+    private fun getDeviceName(): String {
+        return try {
+            Settings.Global.getString(context.contentResolver, "device_name")
+                ?: Settings.Secure.getString(context.contentResolver, "bluetooth_name")
+                ?: Build.MODEL
+        } catch (e: Exception) {
+            Build.MODEL
+        } ?: "Felix"
     }
 
     private fun sendHttpResponse(writer: PrintWriter, statusCode: Int, statusText: String, body: String) {

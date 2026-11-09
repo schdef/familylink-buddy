@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class ScreenshotItem {
   final String id;
   final DateTime timestamp;
@@ -7,6 +5,9 @@ class ScreenshotItem {
   final String? deviceModel;
   final String? foregroundApp;
   final String? foregroundPackage;
+  final String captureType;
+  final String? facing;
+  final bool flash;
 
   const ScreenshotItem({
     required this.id,
@@ -15,19 +16,17 @@ class ScreenshotItem {
     this.deviceModel,
     this.foregroundApp,
     this.foregroundPackage,
+    this.captureType = 'screenshot',
+    this.facing,
+    this.flash = false,
   });
 
-  factory ScreenshotItem.fromFirestore(DocumentSnapshot doc) {
-    final data = (doc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
-    return ScreenshotItem.fromJson(data, id: doc.id);
-  }
+  bool get isCamera => captureType == 'camera';
 
   factory ScreenshotItem.fromJson(Map<String, dynamic> json, {String? id}) {
     DateTime ts;
     final rawTs = json['timestamp'];
-    if (rawTs is Timestamp) {
-      ts = rawTs.toDate();
-    } else if (rawTs is int) {
+    if (rawTs is int) {
       ts = DateTime.fromMillisecondsSinceEpoch(rawTs);
     } else if (rawTs is String) {
       ts = DateTime.tryParse(rawTs) ?? DateTime.now();
@@ -42,6 +41,9 @@ class ScreenshotItem {
       deviceModel: json['deviceModel'] as String?,
       foregroundApp: json['foregroundApp'] as String?,
       foregroundPackage: json['foregroundPackage'] as String?,
+      captureType: (json['captureType'] as String?) ?? 'screenshot',
+      facing: json['facing'] as String?,
+      flash: json['flash'] as bool? ?? false,
     );
   }
 
@@ -53,17 +55,23 @@ class ScreenshotItem {
       if (deviceModel != null) 'deviceModel': deviceModel,
       if (foregroundApp != null) 'foregroundApp': foregroundApp,
       if (foregroundPackage != null) 'foregroundPackage': foregroundPackage,
+      'captureType': captureType,
+      if (facing != null) 'facing': facing,
+      'flash': flash,
     };
   }
 
   Map<String, dynamic> toFirestoreMap() {
     return {
       'id': id,
-      'timestamp': Timestamp.fromDate(timestamp),
+      'timestamp': timestamp.millisecondsSinceEpoch,
       'base64Image': base64Image,
       if (deviceModel != null) 'deviceModel': deviceModel,
       if (foregroundApp != null) 'foregroundApp': foregroundApp,
       if (foregroundPackage != null) 'foregroundPackage': foregroundPackage,
+      'captureType': captureType,
+      if (facing != null) 'facing': facing,
+      'flash': flash,
     };
   }
 
@@ -74,6 +82,9 @@ class ScreenshotItem {
     String? deviceModel,
     String? foregroundApp,
     String? foregroundPackage,
+    String? captureType,
+    String? facing,
+    bool? flash,
   }) {
     return ScreenshotItem(
       id: id ?? this.id,
@@ -82,6 +93,9 @@ class ScreenshotItem {
       deviceModel: deviceModel ?? this.deviceModel,
       foregroundApp: foregroundApp ?? this.foregroundApp,
       foregroundPackage: foregroundPackage ?? this.foregroundPackage,
+      captureType: captureType ?? this.captureType,
+      facing: facing ?? this.facing,
+      flash: flash ?? this.flash,
     );
   }
 
@@ -107,18 +121,24 @@ class ScreenshotItem {
       other is ScreenshotItem &&
           runtimeType == other.runtimeType &&
           id == other.id &&
-          timestamp.millisecondsSinceEpoch == other.timestamp.millisecondsSinceEpoch &&
+          timestamp == other.timestamp &&
           base64Image == other.base64Image &&
           deviceModel == other.deviceModel &&
           foregroundApp == other.foregroundApp &&
-          foregroundPackage == other.foregroundPackage;
+          foregroundPackage == other.foregroundPackage &&
+          captureType == other.captureType &&
+          facing == other.facing &&
+          flash == other.flash;
 
   @override
   int get hashCode =>
       id.hashCode ^
-      timestamp.millisecondsSinceEpoch.hashCode ^
+      timestamp.hashCode ^
       base64Image.hashCode ^
-      deviceModel.hashCode ^
-      foregroundApp.hashCode ^
-      foregroundPackage.hashCode;
+      (deviceModel?.hashCode ?? 0) ^
+      (foregroundApp?.hashCode ?? 0) ^
+      (foregroundPackage?.hashCode ?? 0) ^
+      captureType.hashCode ^
+      (facing?.hashCode ?? 0) ^
+      flash.hashCode;
 }

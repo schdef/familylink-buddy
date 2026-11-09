@@ -10,8 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Build
 import android.util.Log
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,16 +27,18 @@ class WebRtcManager(
 ) {
     companion object {
         private const val TAG = "WebRtcManager"
-        private const val SIGNALING_COLLECTION = "signaling"
+        @Volatile
+        var activeInstance: WebRtcManager? = null
     }
 
-    private val db = FirebaseFirestore.getInstance()
     private var peerConnectionFactory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
     private var localAudioTrack: org.webrtc.AudioTrack? = null
-    private var sessionListener: ListenerRegistration? = null
     private var activeSessionId: String? = null
     private var deviceToken: String? = null
+
+    // Callbacks
+    var onOutgoingSignalingMessage: ((type: String, payload: Map<String, Any>) -> Unit)? = null
 
     // Emulator simulate variables
     private var isSimulating = false
@@ -50,6 +50,7 @@ class WebRtcManager(
     var onSessionClosed: (() -> Unit)? = null
 
     init {
+        activeInstance = this
         checkEmulatorMode()
         initWebRtc()
     }
@@ -105,35 +106,18 @@ class WebRtcManager(
     }
 
     /**
-     * Listen to WebRTC signaling documents under `/pairings/{token}/comms/signaling/{sessionId}`
+     * Set up local signaling session
      */
     fun startListeningToSignaling(deviceToken: String, sessionId: String) {
         if (deviceToken.isEmpty() || sessionId.isEmpty()) return
         this.deviceToken = deviceToken
         closeActiveSession()
         activeSessionId = sessionId
-
-        Log.d(TAG, "Subscribing to comms signaling doc: listings/sessions/$sessionId")
-        sessionListener = db.collection("pairings")
-            .document(deviceToken)
-            .collection("comms")
-            .document("signaling")
-            .collection("sessions")
-            .document(sessionId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Signaling snapshot listener error", error)
-                    return@addSnapshotListener
-                }
-
-                if (snapshot != null && snapshot.exists()) {
-                    val data = snapshot.data ?: return@addSnapshotListener
-                    handleSignalingMessage(data)
-                }
-            }
+        activeInstance = this
+        Log.d(TAG, "WebRtcManager ready for local signaling session: $sessionId")
     }
 
-    private fun handleSignalingMessage(data: Map<String, Any>) {
+    fun handleSignalingMessage(data: Map<String, Any>) {
         val type = data["type"] as? String ?: return
         Log.d(TAG, "Incoming signaling payload: type=$type")
 
@@ -246,29 +230,28 @@ class WebRtcManager(
 
     private fun sendSdpResponse(type: String, sdp: String) {
         val sessionId = activeSessionId ?: return
-        val token = deviceToken ?: return
         val updates = mapOf(
             "type" to type,
             "sdp" to sdp,
-            "timestamp" to com.google.firebase.Timestamp.now()
+            "sessionId" to sessionId,
+            "timestamp" to System.currentTimeMillis()
         )
-        // Write to Firestore signaling collection so parent receives it
-        db.collection("pairings").document(token).collection("comms").document("signaling")
-            .collection("sessions").document(sessionId).update(updates)
+        onOutgoingSignalingMessage?.invoke(type, updates)
+        Log.d(TAG, "Outgoing SDP response generated: type=$type")
     }
 
     private fun sendIceCandidate(candidate: IceCandidate) {
         val sessionId = activeSessionId ?: return
-        val token = deviceToken ?: return
         val updates = mapOf(
             "type" to "ICE_CANDIDATE",
             "sdpMid" to candidate.sdpMid,
             "sdpMLineIndex" to candidate.sdpMLineIndex,
             "candidate" to candidate.sdp,
-            "timestamp" to com.google.firebase.Timestamp.now()
+            "sessionId" to sessionId,
+            "timestamp" to System.currentTimeMillis()
         )
-        db.collection("pairings").document(token).collection("comms").document("signaling")
-            .collection("sessions").document(sessionId).update(updates)
+        onOutgoingSignalingMessage?.invoke("ICE_CANDIDATE", updates)
+        Log.d(TAG, "Outgoing ICE candidate generated")
     }
 
     // --- Emulator Simulation Engine ---
@@ -338,8 +321,9 @@ class WebRtcManager(
     }
 
     fun closeActiveSession() {
-        sessionListener?.remove()
-        sessionListener = null
+        if (activeInstance == this) {
+            activeInstance = null
+        }
 
         peerConnection?.close()
         peerConnection = null

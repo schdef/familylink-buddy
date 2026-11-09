@@ -1,88 +1,217 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FamilyLink Buddy</string>
-    <string name="widget_description">Zeigt die verbleibende Bildschirmzeit und App-Nutzung in Echtzeit an.</string>
+    <string name="widget_description">Displays remaining screen time and app usages in real-time.</string>
     
     <!-- Widget Strings -->
     <string name="widget_header">FamilyLink Buddy</string>
-    <string name="widget_sync">Synchronisiert: %1$s</string>
-    <string name="widget_min_left">%1$d Min. verbleibend</string>
-    <string name="widget_no_limits">Keine aktiven App-Limits</string>
-    <string name="widget_app_remaining">%1$d Min. übrig</string>
-    <string name="widget_app_unlimited">Unbegrenzt (%1$d Min.)</string>
+    <string name="widget_sync">Sync: %1$s</string>
+    <string name="widget_min_left">%1$d min left</string>
+    <string name="widget_no_limits">No active app limits</string>
+    <string name="widget_app_remaining">%1$dm remaining</string>
+    <string name="widget_app_unlimited">Unlimited (%1$dm)</string>
+    <string name="widget_talk_action">🎙️ Talk</string>
+    <string name="widget_coins_balance">⏳ %1$d Coins</string>
+    <string name="widget_tap_to_open">Tap to open! 🎮</string>
     
     <!-- Overlay Strings -->
-    <string name="overlay_label">Sperrung</string>
-    <string name="overlay_size_btn">GRÖSSE</string>
-    <string name="rocket_preparing">Bereitmachen...</string>
-    <string name="rocket_launching">Abheben!</string>
-    <string name="rocket_orbit">Im Orbit!</string>
-    <string name="lock_reason_device">Gerät</string>
-    <string name="text_locked">GESPERRT</string>
+    <string name="overlay_label">Locking</string>
+    <string name="overlay_size_btn">SIZE</string>
+    <string name="rocket_preparing">Preparing...</string>
+    <string name="rocket_launching">Liftoff!</string>
+    <string name="rocket_orbit">In Orbit!</string>
+    <string name="lock_reason_device">Device</string>
+    <string name="text_locked">LOCKED</string>
     
     <!-- Notification Strings -->
-    <string name="notification_title">FamilyLink Buddy Aktiv</string>
-    <string name="notification_text">Hält das Widget in Echtzeit auf dem neuesten Stand.</string>
-    <string name="notification_channel_name">Gerätestatus (Hintergrund-Keep-Alive)</string>
-    <string name="notification_channel_desc">Führt die Synchronisierung im Hintergrund aus. Ausschalten verbirgt das Symbol, behält aber die Funktion.</string>
+    <string name="notification_title">FamilyLink Buddy Active</string>
+    <string name="notification_text">Keeping widget up-to-date in real-time.</string>
+    <string name="notification_channel_name">Device Status (Background Keep-Alive)</string>
+    <string name="notification_channel_desc">Runs the background sync engine for real-time widgets. Toggling this off hides the icon while retaining functionality.</string>
     
     <!-- Companion Dashboard Strings -->
     <string name="main_title">FamilyLink Buddy</string>
-    <string name="main_subtitle">Kinder-Gerätebegleiter (MVP-Modus)</string>
-    <string name="perm_title">Berechtigung erforderlich: Über anderen Apps einblenden</string>
-    <string name="perm_desc">Dies ermöglicht es der App, einen schwebenden 3-Minuten-Countdown vor der Sperrung anzuzeigen.</string>
-    <string name="perm_btn">Berechtigung erteilen</string>
-    <string name="main_remaining">Verbleibende Gesamtzeit: %1$d Min.</string>
-    <string name="main_limit">Tägliches Limit: %1$d Min.</string>
-    <string name="main_app_status">%1$s übrig (%2$d Min. genutzt von %3$d Min.)</string>
-    <string name="main_control_panel">Mock-Kontrollpanel</string>
+    <string name="main_subtitle">Child Device Companion (MVP Mode)</string>
+    <string name="setup_wizard_btn">🛠️ Setup Wizard (Parent Setup)</string>
+    <string name="perm_title">Permission Required: Draw over other apps</string>
+    <string name="perm_desc">This allows the app to display a floating 3-minute warning countdown before locking.</string>
+    <string name="perm_btn">Grant Permission</string>
+    <string name="perm_usage_title">Usage Access Permission Required</string>
+    <string name="perm_usage_desc">This app requires access to usage statistics to display installed apps and screen time in the widget and enforce time limits.</string>
+    <string name="perm_usage_btn">Grant Access</string>
+    <string name="main_remaining">Total Remaining Time: %1$d min</string>
+    <string name="main_limit">Daily Limit: %1$d min</string>
+    <string name="main_app_status">%1$s left (%2$dm used of %3$dm)</string>
+    <string name="main_control_panel">Mock Control Panel</string>
     
     <!-- Mock Buttons -->
-    <string name="btn_add_time">+15 Min.</string>
-    <string name="btn_sub_time">-15 Min.</string>
-    <string name="btn_mock_alert">Mock 3 Min. Alarm</string>
-    <string name="btn_mock_rocket">Mock Raketenstart</string>
-    <string name="btn_reset_data">Mock-Daten zurücksetzen</string>
-    <string name="main_sync_title">Echtzeit-Widget-Synchronisierung</string>
-    <string name="main_sync_desc">Verwendet den Hintergrund-Foreground-Service</string>
+    <string name="btn_add_time">+15 min</string>
+    <string name="btn_sub_time">-15 min</string>
+    <string name="btn_mock_alert">Mock 3 min Alert</string>
+    <string name="btn_mock_rocket">Mock Rocket Start</string>
+    <string name="btn_mock_comms">Mock Walkie-Talkie Call 🎙️</string>
+    <string name="btn_reset_data">Reset Mock Data</string>
+    <string name="main_sync_title">Real-Time Widget Sync</string>
+    <string name="main_sync_desc">Uses background ForegroundService</string>
 
     <!-- Volume Control Strings -->
-    <string name="volume_changed_title">Lautstärke geändert</string>
-    <string name="volume_changed_body">%1$s auf %2$d gesetzt (von Elternteil)</string>
-    <string name="volume_notif_channel_name">Lautstärke-Fernsteuerung</string>
-    <string name="volume_stream_media">Medien</string>
-    <string name="volume_stream_ringtone">Klingelton</string>
-    <string name="volume_stream_alarm">Wecker</string>
-    <string name="volume_stream_all">Alle</string>
-    <string name="volume_card_title">🔊 Lautstärke</string>
-    <string name="volume_media_label">Medien</string>
-    <string name="volume_ringtone_label">Klingelton</string>
-    <string name="volume_alarm_label">Wecker</string>
-    <string name="volume_device_id_label">Geräte-ID (zum Koppeln)</string>
-    <string name="volume_copy_btn">Geräte-ID kopieren</string>
+    <string name="volume_changed_title">Volume Changed</string>
+    <string name="volume_changed_body">%1$s set to %2$d (by parent)</string>
+    <string name="volume_changed_by_parent">Volume was changed by a parent</string>
+    <string name="volume_notif_channel_name">Remote Volume Control</string>
+    <string name="volume_stream_media">Media</string>
+    <string name="volume_stream_ringtone">Ringtone</string>
+    <string name="volume_stream_alarm">Alarm</string>
+    <string name="volume_stream_all">All</string>
+    <string name="volume_card_title">🔊 Volume</string>
+    <string name="volume_media_label">Media</string>
+    <string name="volume_ringtone_label">Ringtone</string>
+    <string name="volume_alarm_label">Alarm</string>
+    <string name="volume_device_id_label">Device ID (for pairing)</string>
+    <string name="volume_copy_btn">Copy Device ID</string>
+    <string name="volume_loading_token">Loading token...</string>
+    <string name="toast_copied">Copied!</string>
+    <string name="pairing_code_label">6-digit code:</string>
 
     <!-- Time Coins Strings -->
-    <string name="time_bank_card_title">⏳ Mein Zeitkonto</string>
+    <string name="time_bank_card_title">⏳ My Time Account</string>
     <string name="time_bank_balance">%1$d Time Coins</string>
-    <string name="time_bank_tasks_section">🌟 Aufgaben (Verdienen)</string>
-    <string name="time_bank_rewards_section">🎁 Belohnungen (Ausgeben)</string>
-    <string name="time_bank_buy_btn">Kaufen (%1$d Coins)</string>
-    <string name="time_bank_welcome">Willkommen bei deinem Zeitkonto! ⏳</string>
-    <string name="time_bank_zero_coins">Verdiene Coins für tolle Belohnungen! 🎁</string>
-    <string name="time_bank_pending">Warten auf Eltern...</string>
-    <string name="time_bank_completed">Erledigt!</string>
-    <string name="time_bank_claimed">Gekauft! 🎮</string>
+    <string name="time_bank_tasks_section">🌟 Tasks (Earn)</string>
+    <string name="time_bank_rewards_section">🎁 Rewards (Spend)</string>
+    <string name="time_bank_buy_btn">Buy (%1$d Coins)</string>
+    <string name="time_bank_welcome">Welcome to your Time Account! ⏳</string>
+    <string name="time_bank_zero_coins">Earn coins for awesome rewards! 🎁</string>
+    <string name="time_bank_pending">Waiting for parent...</string>
+    <string name="time_bank_completed">Done!</string>
+    <string name="time_bank_claimed">Claimed! 🎮</string>
+    <string name="time_bank_coins_label">Coins ⏳</string>
+    <string name="time_bank_low_coins">%1$d Coins left! ⏳ Recharge now?</string>
+    <string name="time_bank_task_start">%1$d Min Start</string>
+    <string name="time_bank_coins_reward">+%1$d Coins</string>
+    <string name="time_bank_no_rewards">No rewards available.</string>
+    <string name="time_bank_coins_cost">%1$d Coins</string>
 
     <!-- Walkie-Talkie Strings -->
-    <string name="widget_talk_action">🎙️ Sprechen</string>
+    <string name="walkie_talkie_title">📡 Walkie-Talkie</string>
+    <string name="walkie_talkie_desc">Send or receive voice messages with your parents here.</string>
+    <string name="walkie_talkie_btn">Open Walkie-Talkie 🎙️</string>
     <string name="comms_overlay_title">Walkie-Talkie</string>
-    <string name="comms_overlay_connecting">Verbinde...</string>
-    <string name="comms_overlay_listening">Elternteil spricht...</string>
-    <string name="comms_overlay_recording">Du sprichst...</string>
-    <string name="comms_overlay_idle">Bereit</string>
-    <string name="comms_overlay_ok_btn">OK / Verstanden</string>
-    <string name="comms_overlay_hold_talk">Halten zum Sprechen</string>
+    <string name="comms_overlay_connecting">Connecting...</string>
+    <string name="comms_overlay_listening">Parent is talking...</string>
+    <string name="comms_overlay_recording">You are talking...</string>
+    <string name="comms_overlay_idle">Ready</string>
+    <string name="comms_overlay_ok_btn">OK / Got it</string>
+    <string name="comms_overlay_hold_talk">Hold to Talk</string>
 
     <!-- Accessibility Service Strings -->
-    <string name="accessibility_service_desc">Ermöglicht das automatische Umschalten des WLAN-Schalters zur Nachtruhe</string>
+    <string name="accessibility_service_desc">Allows automated toggling of the Wi-Fi switch during bedtime</string>
+    <string name="pin_required_toast">Parent PIN required! 🔒</string>
+    <string name="app_blocked_toast">%1$s is blocked on this tablet</string>
+    <string name="category_limit_toast">Time limit for \'%1$s\' reached for today</string>
+    <string name="toast_app_closed_by_parent">App was closed by parent</string>
+    <string name="toast_screen_locked_by_parent">Screen was locked by parent</string>
+    <string name="label_home_screen">Home Screen</string>
+    <string name="unknown_app">Unknown</string>
+    <string name="err_a11y_not_connected">Accessibility Service is not connected</string>
+
+    <!-- Auto-Updater Strings -->
+    <string name="update_dialog_title">Update Available 🚀</string>
+    <string name="update_dialog_desc">A new version of FamilyLink Buddy Child (%1$s) is available. Please install the update to continue.</string>
+    <string name="update_downloading">Downloading: %1$d%%</string>
+    <string name="btn_download_install">Download &amp; Install</string>
+
+    <!-- Setup Wizard Strings -->
+    <string name="setup_wizard_back">← Back</string>
+    <string name="setup_wizard_parent_mode">Parent Mode 🛡️</string>
+    <string name="setup_wizard_title">🛠️ Setup Wizard</string>
+    <string name="setup_wizard_subtitle">Set up in 4 easy steps for Android 13, 14 &amp; 15</string>
+    <string name="setup_wizard_complete">🎉 Fully configured!</string>
+    <string name="setup_wizard_progress">Progress: %1$d of %2$d completed</string>
+    <string name="setup_wizard_complete_desc">The tablet is optimally configured.</string>
+    <string name="setup_wizard_steps_desc">Follow the 4 steps below.</string>
+    <string name="wizard_step1_title">Unlock Security Settings</string>
+    <string name="wizard_step1_subtitle_a13">Important for Android 13, 14 &amp; 15</string>
+    <string name="wizard_step1_subtitle_legacy">Android &lt; 13: Automatically unlocked</string>
+    <string name="wizard_step1_desc">If Android blocks the accessibility service: Tap the button, then tap the 3 dots in the top right and select \'Allow restricted settings\'.</string>
+    <string name="wizard_step1_btn">Open App Info (3 dots ⋮)</string>
+    <string name="wizard_step1_btn_done">Done ✓</string>
+    <string name="wizard_step1_toast_error">Could not open App Info</string>
+    <string name="wizard_step2_title">Enable Accessibility Service</string>
+    <string name="wizard_step2_subtitle">Automatic Wi-Fi management at bedtime</string>
+    <string name="wizard_step2_desc">Allows the app to automatically toggle Wi-Fi during bedtime without root. Select \'FamilyLink Buddy\' in the list and enable the switch.</string>
+    <string name="wizard_step2_btn_active">✓ Enabled</string>
+    <string name="wizard_step2_btn_enable">Enable Accessibility Service</string>
+    <string name="wizard_step2_toast_error">Could not open accessibility settings</string>
+    <string name="wizard_step3_title">Disable Battery Optimization</string>
+    <string name="wizard_step3_subtitle">Reliable background operation</string>
+    <string name="wizard_step3_desc">Ensures the Android system does not stop the app and the time widget in the background after a few minutes.</string>
+    <string name="wizard_step3_btn_exempt">✓ Exempted</string>
+    <string name="wizard_step3_btn_disable">Disable Battery Optimization</string>
+    <string name="wizard_step3_toast_error">Could not open battery settings</string>
+    <string name="wizard_step4_title">Connect Parent Phone</string>
+    <string name="wizard_step4_card_title">4. Connect Parent Phone</string>
+    <string name="wizard_step4_subtitle">Pairing via QR code or direct IP</string>
+    <string name="wizard_step4_desc">Scan this QR code with the parent app on your smartphone to set up secure control over your home network.</string>
+    <string name="wizard_step4_wifi_connected">Wi-Fi connected: %1$s : %2$d</string>
+    <string name="wizard_step4_no_wifi">No Wi-Fi connected! Please connect to home network.</string>
+    <string name="wizard_step4_code_label">6-digit code:</string>
+    <string name="wizard_step4_port_label">Port: %1$d</string>
+    <string name="wizard_step4_qr_desc">Pairing QR Code</string>
+    <string name="wizard_pin_title">Parent PIN &amp; Anti-Tamper</string>
+    <string name="wizard_pin_card_title">Parent PIN (Anti-Tamper Protection)</string>
+    <string name="wizard_pin_active">4-digit protection is active ✓</string>
+    <string name="wizard_pin_inactive">No PIN set</string>
+    <string name="wizard_pin_desc">Protects the app from tampering by your child. When a PIN is configured, attempting to disable the accessibility service in Android settings or open app settings requires the 4-digit PIN.</string>
+    <string name="wizard_pin_remove_btn">Remove PIN</string>
+    <string name="wizard_pin_setup_btn">Set up PIN (4 digits)</string>
+    <string name="wizard_pin_change_btn">Change PIN</string>
+    <string name="wizard_pin_removed_toast">Parent PIN removed</string>
+    <string name="wizard_pin_saved_toast">Parent PIN saved successfully! 🔒</string>
+    <string name="wizard_finish_done">Complete Setup ✓</string>
+    <string name="wizard_finish_back">Back to Main Screen</string>
+
+    <!-- Parent PIN Dialog Strings -->
+    <string name="pin_dialog_title_enter">Enter Parent PIN</string>
+    <string name="pin_dialog_title_set">Set New Parent PIN</string>
+    <string name="pin_dialog_title_confirm">Confirm PIN</string>
+    <string name="pin_dialog_subtitle_enter">Enter your 4-digit PIN to open settings.</string>
+    <string name="pin_dialog_subtitle_set">Choose a 4-digit PIN to prevent unauthorized changes by your child.</string>
+    <string name="pin_dialog_subtitle_confirm">Re-enter the 4-digit PIN to confirm.</string>
+    <string name="pin_dialog_error_wrong">Incorrect PIN! Please try again.</string>
+    <string name="pin_dialog_error_mismatch">PINs do not match! Please start over.</string>
+    <string name="btn_cancel">Cancel</string>
+
+    <!-- Setup Guide Checklist Strings -->
+    <string name="setup_guide_title">🛠️ Setup Guide</string>
+    <string name="setup_guide_subtitle">Important system permissions for bedtime &amp; background</string>
+    <string name="setup_progress_complete">🎉 Fully configured!</string>
+    <string name="setup_progress_count">Progress: %1$d of %2$d completed</string>
+    <string name="setup_guide_item1_title">Wi-Fi Bedtime Helper</string>
+    <string name="setup_guide_item1_subtitle">Accessibility Service</string>
+    <string name="setup_guide_item1_desc">Allows automatic toggling of the Wi-Fi switch at bedtime in quick settings without root.\n\nIf grayed out: Tap \'App Info\' -&gt; top right 3 dots (⋮) -&gt; \'Allow restricted settings\'. Then choose \'Enable\' here.</string>
+    <string name="setup_guide_item1_active">Enabled</string>
+    <string name="setup_guide_item1_enable">Enable</string>
+    <string name="setup_guide_item1_app_info">App Info (3 dots)</string>
+    <string name="setup_guide_item2_title">Google Family Link: \'Always allow\'</string>
+    <string name="setup_guide_item2_subtitle">Important against bedtime pausing</string>
+    <string name="setup_guide_item2_desc">In the Family Link parent app under \'App limits\' -&gt; \'FamilyLink Buddy\', set to \'Always allow\'. Otherwise Google will pause the app during bedtime and it cannot toggle Wi-Fi.</string>
+    <string name="setup_guide_item2_confirmed">Confirmed ✓</string>
+    <string name="setup_guide_item2_mark">Mark as done</string>
+    <string name="setup_guide_item2_details">App Details</string>
+    <string name="setup_guide_item3_title">Disable Battery Optimization</string>
+    <string name="setup_guide_item3_subtitle">Uninterrupted background execution</string>
+    <string name="setup_guide_item3_desc">Ensures the Android system does not put the app and its time alarms to sleep or terminate them early.</string>
+    <string name="setup_guide_item3_disabled">Disabled</string>
+    <string name="setup_guide_item3_exempt">Exempt</string>
+    <string name="setup_guide_item4_title">Do Not Disturb Access (DND)</string>
+    <string name="setup_guide_item4_subtitle">Notification Policy</string>
+    <string name="setup_guide_item4_desc">Allows the app to mute ringtones and sounds for bedtime or manage DND status.</string>
+    <string name="setup_guide_item4_granted">Granted</string>
+    <string name="setup_guide_item4_grant">Grant</string>
+    <string name="setup_guide_close">Close</string>
+    <string name="setup_guide_later">Continue later</string>
+    <string name="setup_guide_open_full">Open full setup wizard ↗</string>
+    <string name="setup_toast_a11y_err">Could not open accessibility settings.</string>
+    <string name="setup_toast_battery_err">Could not open battery settings.</string>
+    <string name="setup_toast_dnd_err">Could not open Do Not Disturb settings.</string>
 </resources>

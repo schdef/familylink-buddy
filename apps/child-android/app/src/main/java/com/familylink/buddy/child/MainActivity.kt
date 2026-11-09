@@ -27,7 +27,12 @@ import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.service.WidgetUpdateService
 import com.familylink.buddy.child.widget.FamilyBuddyWidget
 import com.familylink.buddy.child.service.CommsActivity
+import androidx.activity.compose.BackHandler
 import com.familylink.buddy.child.ui.SetupGuideCard
+import com.familylink.buddy.child.ui.SetupWizardScreen
+import com.familylink.buddy.child.ui.ParentPinDialog
+import com.familylink.buddy.child.ui.ParentPinDialogMode
+import com.familylink.buddy.child.service.WifiAccessibilityHelperService
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
@@ -41,11 +46,6 @@ import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
 import com.familylink.buddy.child.data.VolumeState
-import com.google.firebase.messaging.FirebaseMessaging
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.functions.ktx.functions
-import com.google.firebase.ktx.Firebase
 import androidx.compose.ui.graphics.asImageBitmap
 import com.familylink.buddy.child.data.QrCodeGenerator
 import android.util.Log
@@ -175,19 +175,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         repository = FamilyTimeRepository(applicationContext)
 
-        // Firebase emulators are initialized globally in FamilyLinkBuddyApplication.java
-
         // Request notification permission if Android 13+
         requestNotificationPermission()
 
-        // Fetch FCM token on launch and update it in database
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val token = task.result
-                lifecycleScopeLaunch {
-                    repository.updateDeviceToken(token)
-                }
-            }
+        // Initialize local pairing token in DataStore
+        lifecycleScopeLaunch {
+            repository.getOrCreateDeviceToken()
         }
 
         // Update local volume state on startup
@@ -228,45 +221,12 @@ class MainActivity : ComponentActivity() {
                     var updateVersionName by remember { mutableStateOf("") }
                     var downloadProgress by remember { mutableStateOf(-1f) }
 
-                    LaunchedEffect(Unit) {
-                        try {
-                            val db = FirebaseFirestore.getInstance()
-                            db.collection("app_metadata").document("releases")
-                                .get()
-                                .addOnSuccessListener { doc ->
-                                    if (doc.exists()) {
-                                        val childData = doc.get("child") as? Map<String, Any>
-                                        if (childData != null) {
-                                            val remoteVersionCode = (childData["versionCode"] as? Number)?.toLong() ?: 0L
-                                            val remoteUrl = childData["downloadUrl"] as? String ?: ""
-                                            val remoteName = childData["versionName"] as? String ?: ""
-                                            
-                                            val pInfo = packageManager.getPackageInfo(packageName, 0)
-                                            val localVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                                pInfo.longVersionCode
-                                            } else {
-                                                pInfo.versionCode.toLong()
-                                            }
-                                            
-                                            if (remoteVersionCode > localVersionCode && remoteUrl.isNotEmpty()) {
-                                                updateDownloadUrl = remoteUrl
-                                                updateVersionName = remoteName
-                                                showUpdateDialog = true
-                                            }
-                                        }
-                                    }
-                                }
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "Update check failed", e)
-                        }
-                    }
-
                     if (showUpdateDialog) {
                         AlertDialog(
                             onDismissRequest = { },
                             title = {
                                 Text(
-                                    text = "Update Verfügbar 🚀",
+                                    text = stringResource(R.string.update_dialog_title),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 20.sp,
                                     color = MaterialTheme.colorScheme.primary
@@ -275,7 +235,7 @@ class MainActivity : ComponentActivity() {
                             text = {
                                 Column {
                                     Text(
-                                        text = "Eine neue Version von FamilyLink Buddy Child ($updateVersionName) ist verfügbar. Bitte installieren Sie das Update, um fortzufahren.",
+                                        text = stringResource(R.string.update_dialog_desc, updateVersionName),
                                         fontSize = 14.sp,
                                         color = Color.White
                                     )
@@ -288,7 +248,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = "Herunterladen: ${(downloadProgress * 100).toInt()}%",
+                                            text = stringResource(R.string.update_downloading, (downloadProgress * 100).toInt()),
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.secondary
                                         )
@@ -347,7 +307,7 @@ class MainActivity : ComponentActivity() {
                                     enabled = downloadProgress < 0f,
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                 ) {
-                                    Text(text = "Download & Installieren", color = Color.Black)
+                                    Text(text = stringResource(R.string.btn_download_install), color = Color.Black)
                                 }
                             },
                             dismissButton = null
@@ -357,8 +317,24 @@ class MainActivity : ComponentActivity() {
                     val familyData by repository.familyTimeData.collectAsState(initial = FamilyTimeData())
                     val volumeState by repository.volumeState.collectAsState(initial = VolumeState())
                     val timeBankState by repository.timeBankState.collectAsState(initial = TimeBankState())
-                    var timeBankTasks by remember { mutableStateOf<List<BonusTask>>(emptyList()) }
-                    var timeBankRewards by remember { mutableStateOf<List<RewardItem>>(emptyList()) }
+                    var timeBankTasks by remember {
+                        mutableStateOf<List<BonusTask>>(
+                            listOf(
+                                BonusTask(id = "task_1", title = "Zimmer aufräumen", emoji = "🧹", reward = 10, durationMinutes = 15),
+                                BonusTask(id = "task_2", title = "Hausaufgaben machen", emoji = "📚", reward = 15, durationMinutes = 30),
+                                BonusTask(id = "task_3", title = "Tisch decken", emoji = "🍽️", reward = 5, durationMinutes = 5)
+                            )
+                        )
+                    }
+                    var timeBankRewards by remember {
+                        mutableStateOf<List<RewardItem>>(
+                            listOf(
+                                RewardItem(id = "reward_1", title = "30 Min Extra-Zeit", emoji = "🎮", cost = 20),
+                                RewardItem(id = "reward_2", title = "Lieblingsfilm schauen", emoji = "🎬", cost = 30),
+                                RewardItem(id = "reward_3", title = "Eis essen", emoji = "🍦", cost = 15)
+                            )
+                        )
+                    }
                     
                     val showConfetti = remember { mutableStateOf(false) }
                     val particles = remember { mutableStateListOf<Particle>() }
@@ -366,80 +342,28 @@ class MainActivity : ComponentActivity() {
                     var serviceRunning by remember { mutableStateOf(isServiceRunning()) }
                     val hasOverlayPermission by canDrawOverlaysState
 
-                    var pairingCode by remember { mutableStateOf("Lade...") }
+                    var showSetupWizard by remember { mutableStateOf(false) }
+                    var showPinDialog by remember { mutableStateOf(false) }
+
+                    var pairingCode by remember { mutableStateOf("------") }
                     var qrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
                     LaunchedEffect(volumeState.deviceToken) {
                         val token = volumeState.deviceToken
                         if (token.isNotEmpty()) {
-                            qrBitmap = QrCodeGenerator.generateQrCode(token)
-                            
-                            val code = Math.floor(100000 + Math.random() * 900000).toInt().toString()
+                            val deviceId = repository.getDeviceIdSync()
+                            val deviceName = QrCodeGenerator.getDeviceName(this@MainActivity)
+                            val localIp = QrCodeGenerator.getLocalIpAddress()
+                            val payload = QrCodeGenerator.createPairingPayload(
+                                deviceId = deviceId,
+                                deviceName = deviceName,
+                                ip = localIp,
+                                port = 8085,
+                                token = token
+                            )
+                            qrBitmap = QrCodeGenerator.generateQrCode(payload)
+                            val code = if (token.length >= 6) token.take(6).uppercase() else "123456"
                             pairingCode = code
-
-                            try {
-                                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                                val volumeReport = hashMapOf(
-                                    "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
-                                    "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
-                                    "alarmVolume" to audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
-                                    "maxMediaVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-                                    "maxRingtoneVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
-                                    "maxAlarmVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-                                )
-
-                                val db = FirebaseFirestore.getInstance()
-                                val docData = hashMapOf(
-                                    "fcmToken" to token,
-                                    "deviceName" to "Felix",
-                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                    "volumeReport" to volumeReport
-                                )
-                                db.collection("pairing_codes").document(code).set(docData)
-                                    .addOnSuccessListener {
-                                        Log.d("MainActivity", "Pairing code registered directly with initial volume: $code")
-                                    }
-                                    .addOnFailureListener { e ->
-                                        pairingCode = "Fehler"
-                                        Log.e("MainActivity", "Pairing registration failed", e)
-                                    }
-
-                                // Add snap listeners for Time Coins features
-                                db.collection("pairings").document(token)
-                                    .addSnapshotListener { snapshot, _ ->
-                                        if (snapshot != null && snapshot.exists()) {
-                                            val balance = (snapshot.getLong("timeBankBalance") ?: 0L).toInt()
-                                            val enabled = snapshot.getBoolean("timeBankEnabled") ?: false
-                                            val visible = snapshot.getBoolean("timeBankChildVisible") ?: false
-                                            lifecycleScopeLaunch {
-                                                repository.updateTimeBankState(TimeBankState(enabled, visible, balance))
-                                            }
-                                        }
-                                    }
-
-                                db.collection("pairings").document(token).collection("time_bank_tasks")
-                                    .orderBy("sortOrder")
-                                    .addSnapshotListener { snapshot, _ ->
-                                        if (snapshot != null) {
-                                            timeBankTasks = snapshot.documents.mapNotNull { doc ->
-                                                doc.toObject(BonusTask::class.java)?.copy(id = doc.id)
-                                            }
-                                        }
-                                    }
-
-                                db.collection("pairings").document(token).collection("time_bank_rewards")
-                                    .orderBy("sortOrder")
-                                    .addSnapshotListener { snapshot, _ ->
-                                        if (snapshot != null) {
-                                            timeBankRewards = snapshot.documents.mapNotNull { doc ->
-                                                doc.toObject(RewardItem::class.java)?.copy(id = doc.id)
-                                            }
-                                        }
-                                    }
-                            } catch (e: Exception) {
-                                pairingCode = "Fehler"
-                                Log.e("MainActivity", "Firestore write error", e)
-                            }
                         }
                     }
 
@@ -498,7 +422,20 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    if (showSetupWizard) {
+                        BackHandler {
+                            showSetupWizard = false
+                            WifiAccessibilityHelperService.lockAntiTamper()
+                        }
+                        SetupWizardScreen(
+                            repository = repository,
+                            onDismiss = {
+                                showSetupWizard = false
+                                WifiAccessibilityHelperService.lockAntiTamper()
+                            }
+                        )
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize()) {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -537,8 +474,32 @@ class MainActivity : ComponentActivity() {
                             text = stringResource(R.string.main_subtitle),
                             fontSize = 14.sp,
                             color = Color(0xFFC5C6C7),
-                            modifier = Modifier.padding(bottom = 24.dp)
+                            modifier = Modifier.padding(bottom = 16.dp)
                         )
+
+                        // Setup Wizard Button for Parents
+                        Button(
+                            onClick = {
+                                val pin = repository.getParentPinSync()
+                                if (!pin.isNullOrBlank()) {
+                                    showPinDialog = true
+                                } else {
+                                    WifiAccessibilityHelperService.unlockAntiTamper()
+                                    showSetupWizard = true
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F2833)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF66FCF1).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.setup_wizard_btn),
+                                color = Color(0xFF66FCF1),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
 
                         // Overlay Permission Warning Card
                         if (!hasOverlayPermission) {
@@ -588,13 +549,13 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = "Nutzungsdaten-Zugriff benötigt",
+                                        text = stringResource(R.string.perm_usage_title),
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFF59E0B)
                                     )
                                     Text(
-                                        text = "Diese App benötigt Zugriff auf die Nutzungsstatistiken, um installierte Apps und deren Nutzungszeiten im Widget anzuzeigen und Zeitlimits durchzusetzen.",
+                                        text = stringResource(R.string.perm_usage_desc),
                                         fontSize = 13.sp,
                                         color = Color(0xFFE2E8F0),
                                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -612,7 +573,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
                                     ) {
-                                        Text("Zugriff erlauben", color = Color.White)
+                                        Text(stringResource(R.string.perm_usage_btn), color = Color.White)
                                     }
                                 }
                             }
@@ -674,26 +635,12 @@ class MainActivity : ComponentActivity() {
                                         // Complete task
                                         val task = timeBankTasks.firstOrNull { it.id == activeTimerTaskId }
                                         if (task != null) {
-                                            val db = FirebaseFirestore.getInstance()
-                                            val token = volumeState.deviceToken
-                                            if (token.isNotEmpty()) {
-                                                val pairingDoc = db.collection("pairings").document(token)
-                                                val txRef = pairingDoc.collection("time_bank_transactions").document()
-                                                val batch = db.batch()
-                                                batch.update(pairingDoc, "timeBankBalance", com.google.firebase.firestore.FieldValue.increment(task.reward.toLong()))
-                                                batch.set(txRef, hashMapOf(
-                                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                                    "type" to "TASK_COMPLETE",
-                                                    "amount" to task.reward,
-                                                    "description" to task.title,
-                                                    "emoji" to task.emoji,
-                                                    "awardedBy" to "timer",
-                                                    "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-                                                ))
-                                                batch.commit()
-                                                playJingleSound()
-                                                showConfetti.value = true
+                                            lifecycleScopeLaunch {
+                                                val current = repository.timeBankState.first()
+                                                repository.updateTimeBankState(current.copy(balance = current.balance + task.reward))
                                             }
+                                            playJingleSound()
+                                            showConfetti.value = true
                                         }
                                         activeTimerTaskId = null
                                     }
@@ -740,7 +687,7 @@ class MainActivity : ComponentActivity() {
                                                 color = Color.White
                                             )
                                             Text(
-                                                text = "Coins ⏳",
+                                                text = stringResource(R.string.time_bank_coins_label),
                                                 fontSize = 12.sp,
                                                 color = Color.White.copy(alpha = 0.8f),
                                                 fontWeight = FontWeight.SemiBold
@@ -752,7 +699,7 @@ class MainActivity : ComponentActivity() {
                                     if (timeBankState.balance in 1..5) {
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = "Noch ${timeBankState.balance} Coins übrig! ⏳ Wieder aufladen?",
+                                            text = stringResource(R.string.time_bank_low_coins, timeBankState.balance),
                                             color = Color(0xFFEF4444),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
@@ -818,7 +765,7 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         } else {
                                                             Text(
-                                                                text = "${task.durationMinutes} Min Start",
+                                                                text = stringResource(R.string.time_bank_task_start, task.durationMinutes),
                                                                 fontSize = 11.sp,
                                                                 color = Color.White
                                                             )
@@ -827,33 +774,19 @@ class MainActivity : ComponentActivity() {
                                                 } else {
                                                     Button(
                                                         onClick = {
-                                                            val db = FirebaseFirestore.getInstance()
-                                                            val token = volumeState.deviceToken
-                                                            if (token.isNotEmpty()) {
-                                                                    val pairingDoc = db.collection("pairings").document(token)
-                                                                    val txRef = pairingDoc.collection("time_bank_transactions").document()
-                                                                    val batch = db.batch()
-                                                                    batch.update(pairingDoc, "timeBankBalance", com.google.firebase.firestore.FieldValue.increment(task.reward.toLong()))
-                                                                    batch.set(txRef, hashMapOf(
-                                                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                                                        "type" to "TASK_COMPLETE",
-                                                                        "amount" to task.reward,
-                                                                        "description" to task.title,
-                                                                        "emoji" to task.emoji,
-                                                                        "awardedBy" to "child",
-                                                                        "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-                                                                    ))
-                                                                    batch.commit()
-                                                                    playJingleSound()
-                                                                    showConfetti.value = true
+                                                            lifecycleScopeLaunch {
+                                                                val current = repository.timeBankState.first()
+                                                                repository.updateTimeBankState(current.copy(balance = current.balance + task.reward))
                                                             }
+                                                            playJingleSound()
+                                                            showConfetti.value = true
                                                         },
                                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E)),
                                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                                                         modifier = Modifier.height(30.dp)
                                                     ) {
                                                         Text(
-                                                            text = "+${task.reward} Coins",
+                                                            text = stringResource(R.string.time_bank_coins_reward, task.reward),
                                                             fontSize = 11.sp,
                                                             color = Color.White
                                                         )
@@ -878,7 +811,7 @@ class MainActivity : ComponentActivity() {
                                     val visibleRewards = timeBankRewards.take(3)
                                     if (visibleRewards.isEmpty()) {
                                         Text(
-                                            text = "Keine Belohnungen vorhanden.",
+                                            text = stringResource(R.string.time_bank_no_rewards),
                                             fontSize = 12.sp,
                                             color = Color(0xFFC5C6C7),
                                             modifier = Modifier.align(Alignment.Start)
@@ -898,34 +831,11 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 Button(
                                                     onClick = {
-                                                        val db = FirebaseFirestore.getInstance()
-                                                        val token = volumeState.deviceToken
-                                                        if (token.isNotEmpty() && canAfford) {
-                                                            val pairingDoc = db.collection("pairings").document(token)
-                                                            val txRef = pairingDoc.collection("time_bank_transactions").document()
-                                                            val claimRef = pairingDoc.collection("time_bank_claims").document()
-                                                            
-                                                            val batch = db.batch()
-                                                            batch.update(pairingDoc, "timeBankBalance", com.google.firebase.firestore.FieldValue.increment(-reward.cost.toLong()))
-                                                            batch.update(pairingDoc, "pendingClaimsCount", com.google.firebase.firestore.FieldValue.increment(1))
-                                                            batch.set(txRef, hashMapOf(
-                                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                                                "type" to "SPEND",
-                                                                "amount" to -reward.cost,
-                                                                "description" to reward.title,
-                                                                "emoji" to reward.emoji,
-                                                                "awardedBy" to "child",
-                                                                "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-                                                            ))
-                                                            batch.set(claimRef, hashMapOf(
-                                                                "rewardId" to reward.id,
-                                                                "title" to reward.title,
-                                                                "emoji" to reward.emoji,
-                                                                "cost" to reward.cost,
-                                                                "status" to "PENDING",
-                                                                "claimedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                                            ))
-                                                            batch.commit()
+                                                        if (canAfford) {
+                                                            lifecycleScopeLaunch {
+                                                                val current = repository.timeBankState.first()
+                                                                repository.updateTimeBankState(current.copy(balance = current.balance - reward.cost))
+                                                            }
                                                             playCoinSound()
                                                             showConfetti.value = true
                                                         }
@@ -936,7 +846,7 @@ class MainActivity : ComponentActivity() {
                                                     modifier = Modifier.height(30.dp)
                                                 ) {
                                                     Text(
-                                                        text = "${reward.cost} Coins",
+                                                        text = stringResource(R.string.time_bank_coins_cost, reward.cost),
                                                         fontSize = 11.sp,
                                                         color = Color.White
                                                     )
@@ -952,7 +862,16 @@ class MainActivity : ComponentActivity() {
 
                         // Setup Guide Card: System Checklist (Accessibility, Family Link, Battery, DND)
                         SetupGuideCard(
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            onOpenFullDialog = {
+                                val pin = repository.getParentPinSync()
+                                if (!pin.isNullOrBlank()) {
+                                    showPinDialog = true
+                                } else {
+                                    WifiAccessibilityHelperService.unlockAntiTamper()
+                                    showSetupWizard = true
+                                }
+                            }
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -1011,10 +930,11 @@ class MainActivity : ComponentActivity() {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 val token = volumeState.deviceToken
+                                val loadingTokenText = stringResource(R.string.volume_loading_token)
                                 val displayToken = if (token.isNotEmpty()) {
                                     if (token.length > 25) token.substring(0, 10) + "..." + token.substring(token.length - 10) else token
                                 } else {
-                                    "Lade Token..."
+                                    loadingTokenText
                                 }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1033,7 +953,7 @@ class MainActivity : ComponentActivity() {
                                                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                                 val clip = ClipData.newPlainText("FCM Device Token", token)
                                                 clipboard.setPrimaryClip(clip)
-                                                Toast.makeText(this@MainActivity, "Kopiert!", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(this@MainActivity, getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E)),
                                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
@@ -1053,12 +973,12 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         androidx.compose.foundation.Image(
                                             bitmap = qrBitmap!!.asImageBitmap(),
-                                            contentDescription = "QR Code Pairing",
+                                            contentDescription = stringResource(R.string.wizard_step4_qr_desc),
                                             modifier = Modifier.size(130.dp).background(Color.White).padding(8.dp)
                                         )
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("6-stelliger Code:", color = Color(0xFFC5C6C7), fontSize = 13.sp)
+                                            Text(stringResource(R.string.pairing_code_label), color = Color(0xFFC5C6C7), fontSize = 13.sp)
                                             Text(
                                                 text = pairingCode,
                                                 color = Color(0xFF66FCF1),
@@ -1082,14 +1002,14 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "📡 Walkie-Talkie",
+                                    text = stringResource(R.string.walkie_talkie_title),
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color.White
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Sende oder empfange hier Sprachnachrichten mit deinen Eltern.",
+                                    text = stringResource(R.string.walkie_talkie_desc),
                                     fontSize = 13.sp,
                                     color = Color(0xFFC5C6C7)
                                 )
@@ -1102,7 +1022,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
                                 ) {
-                                    Text("Walkie-Talkie öffnen 🎙️", color = Color.White)
+                                    Text(stringResource(R.string.walkie_talkie_btn), color = Color.White)
                                 }
                             }
                         }
@@ -1210,7 +1130,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF818CF8))
                             ) {
-                                Text("Mock Walkie-Talkie Anruf 🎙️")
+                                Text(stringResource(R.string.btn_mock_comms))
                             }
                         }
 
@@ -1282,6 +1202,22 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+
+            if (showPinDialog) {
+                ParentPinDialog(
+                    mode = ParentPinDialogMode.ENTER_PIN,
+                    storedPin = repository.getParentPinSync(),
+                    onSuccess = {
+                        showPinDialog = false
+                        WifiAccessibilityHelperService.unlockAntiTamper()
+                        showSetupWizard = true
+                    },
+                    onDismiss = {
+                        showPinDialog = false
+                    }
+                )
+            }
             }
         }
     }

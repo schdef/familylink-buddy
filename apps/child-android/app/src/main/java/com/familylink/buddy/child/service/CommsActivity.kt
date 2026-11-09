@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylink.buddy.child.R
 import com.familylink.buddy.child.data.FamilyTimeRepository
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -110,7 +109,7 @@ class CommsActivity : ComponentActivity() {
                 delay(200)
                 webRtcManager.triggerLocalSpeakSimulation()
             } else if (token.isNotEmpty()) {
-                // Listen to actual signaling channel in Firestore
+                // Initialize WebRTC signaling session locally
                 webRtcManager.startListeningToSignaling(token, "active_session")
             }
         }
@@ -393,20 +392,12 @@ fun CommsScreenContent(
                                         if (isSimulation) {
                                             webRtcManager.triggerLocalSpeakSimulation()
                                         }
-                                        if (deviceToken.isNotEmpty()) {
-                                            FirebaseFirestore.getInstance().collection("pairings")
-                                                .document(deviceToken).update("childIsSpeaking", true)
-                                        }
                                         
                                         tryAwaitRelease()
                                         
                                         sessionState = "idle"
                                         if (isSimulation) {
                                             webRtcManager.stopLocalSpeakSimulation()
-                                        }
-                                        if (deviceToken.isNotEmpty()) {
-                                            FirebaseFirestore.getInstance().collection("pairings")
-                                                .document(deviceToken).update("childIsSpeaking", false)
                                         }
                                     }
                                 )

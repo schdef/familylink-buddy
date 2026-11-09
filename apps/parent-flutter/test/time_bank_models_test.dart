@@ -1,38 +1,23 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:parent_app/time_bank/time_bank_repository.dart';
 
-class FakeDocumentSnapshot implements DocumentSnapshot<Map<String, dynamic>> {
-  @override
+class FakeDocumentSnapshot {
   final String id;
   final Map<String, dynamic>? _data;
 
   FakeDocumentSnapshot(this.id, this._data);
 
-  @override
   Map<String, dynamic>? data() => _data;
-
-  @override
   dynamic get(Object field) => _data?[field];
-
-  @override
   dynamic operator [](Object field) => _data?[field];
-
-  @override
   bool get exists => _data != null;
-
-  @override
-  SnapshotMetadata get metadata => throw UnimplementedError();
-
-  @override
-  DocumentReference<Map<String, dynamic>> get reference => throw UnimplementedError();
 }
 
 void main() {
   group('Time Bank Models Tests', () {
     test('TransactionModel.fromFirestore parses correctly', () {
       final doc = FakeDocumentSnapshot('tx-123', {
-        'timestamp': Timestamp.fromDate(DateTime(2026, 7, 5, 12, 0)),
+        'timestamp': DateTime(2026, 7, 5, 12, 0),
         'type': 'EARN',
         'amount': 15,
         'description': '30 Min lesen',
@@ -97,7 +82,7 @@ void main() {
         'emoji': '🎮',
         'cost': 50,
         'status': 'PENDING',
-        'claimedAt': Timestamp.fromDate(DateTime(2026, 7, 5, 12, 10)),
+        'claimedAt': DateTime(2026, 7, 5, 12, 10),
         'fulfilledAt': null,
       });
 

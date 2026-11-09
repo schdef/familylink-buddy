@@ -28,9 +28,6 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.Timestamp
 import com.familylink.buddy.child.data.AppUsage
 import com.familylink.buddy.child.data.AppRules
 import com.familylink.buddy.child.data.BedtimeSchedule
@@ -67,6 +64,7 @@ class WidgetUpdateService : Service() {
     private var dbObserverJob: Job? = null
     private var isScreenOn = true
     private var localHttpServer: LocalHttpServer? = null
+    private var nsdHelper: NsdHelper? = null
     private var foregroundMonitorJob: Job? = null
     private var foregroundLockedApp: AppUsage? = null
 
@@ -124,7 +122,11 @@ class WidgetUpdateService : Service() {
             start()
         }
 
-        startFirestoreListener()
+        val deviceId = repository.getDeviceIdSync()
+        nsdHelper = NsdHelper(applicationContext, deviceId).apply {
+            registerService()
+        }
+
         registerVolumeObserver()
     }
 
@@ -156,10 +158,10 @@ class WidgetUpdateService : Service() {
         unregisterReceiver(screenReceiver)
         hideOverlay()
         stopForegroundMonitor()
-        firestoreListenerRegistration?.remove()
-        firestoreListenerRegistration = null
         unregisterVolumeObserver()
         serviceScope.cancel()
+        nsdHelper?.unregisterService()
+        nsdHelper = null
         localHttpServer?.stop()
         Log.d(TAG, "Service destroyed")
     }
@@ -249,28 +251,10 @@ class WidgetUpdateService : Service() {
                     FamilyBuddyWidget().updateAll(applicationContext)
                 }
 
-                // Send periodic heartbeat & IP status to Firestore pairings doc to show online status
                 val volumeState = repository.volumeState.first()
                 val token = volumeState.deviceToken
                 if (token.isNotEmpty()) {
                     WifiAccessibilityHelperService.childToken = token
-                    if (lastInstalledAppsScanMs == 0L || System.currentTimeMillis() - lastInstalledAppsScanMs > 3_600_000L) {
-                        reportInstalledApps(token)
-                    }
-                    try {
-                        val db = FirebaseFirestore.getInstance()
-                        val ip = getLocalIpAddress() ?: ""
-                        val updates = hashMapOf<String, Any>(
-                            "lastSeen" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                        )
-                        if (ip.isNotEmpty()) {
-                            updates["localIpAddress"] = ip
-                        }
-                        db.collection("pairings").document(token).update(updates)
-                        Log.d(TAG, "Periodic heartbeat and IP ($ip) updated in Firestore")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to update periodic heartbeat", e)
-                    }
                 }
                 
                 // Use 10s intervals for fast emulator testing; otherwise, use real-time 60s intervals
@@ -813,27 +797,7 @@ class WidgetUpdateService : Service() {
         }
     }
 
-    private var firestoreListenerRegistration: ListenerRegistration? = null
-    private var lastExecutedCommandTimestamp: Long = 0
-    private var lastExecutedCoinAwardTimestamp: Long = 0
-    private var lastExecutedCommsSessionTimestamp: Long = 0
-    private var lastScreenshotRequestId: String? = null
-    private var lastCloseAppTimestamp: Long = 0L
-    private var lastLockScreenTimestamp: Long = 0L
     private var volumeObserver: ContentObserver? = null
-
-    private fun startFirestoreListener() {
-        serviceScope.launch {
-            repository.volumeState.collect { volumeState ->
-                val token = volumeState.deviceToken
-                if (token.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        registerFirestoreListener(token)
-                    }
-                }
-            }
-        }
-    }
 
     private fun registerVolumeObserver() {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
@@ -865,30 +829,6 @@ class WidgetUpdateService : Service() {
                         )
                         // Update local repository so the child UI changes instantly
                         repository.updateVolumeState(localState)
-
-                        // Update Firestore report & lastSeen so parent gets notified
-                        try {
-                            val db = FirebaseFirestore.getInstance()
-                            val ip = getLocalIpAddress() ?: ""
-                            val updates = hashMapOf<String, Any>(
-                                "volumeReport" to hashMapOf(
-                                    "mediaVolume" to mediaVol,
-                                    "ringtoneVolume" to ringtoneVol,
-                                    "alarmVolume" to alarmVol,
-                                    "maxMediaVolume" to maxMedia,
-                                    "maxRingtoneVolume" to maxRingtone,
-                                    "maxAlarmVolume" to maxAlarm
-                                ),
-                                "lastSeen" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                            )
-                            if (ip.isNotEmpty()) {
-                                updates["localIpAddress"] = ip
-                            }
-                            db.collection("pairings").document(token).update(updates)
-                            Log.d(TAG, "Local physical volume change detected and reported to Firestore")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to update Firestore volume report on local change", e)
-                        }
                     }
                 }
             }
@@ -907,288 +847,6 @@ class WidgetUpdateService : Service() {
             contentResolver.unregisterContentObserver(it)
             volumeObserver = null
             Log.d(TAG, "Unregistered system volume ContentObserver")
-        }
-    }
-
-    private fun registerFirestoreListener(token: String) {
-        WifiAccessibilityHelperService.childToken = token
-        if (lastInstalledAppsScanMs == 0L || System.currentTimeMillis() - lastInstalledAppsScanMs > 3_600_000L) {
-            reportInstalledApps(token)
-        }
-        firestoreListenerRegistration?.remove()
-        try {
-            val db = FirebaseFirestore.getInstance()
-            firestoreListenerRegistration = db.collection("pairings").document(token)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.e(TAG, "Firestore listener error", error)
-                        return@addSnapshotListener
-                    }
-                    if (snapshot != null && snapshot.exists()) {
-                        handleFirestoreUpdate(snapshot.data ?: emptyMap(), token)
-                    }
-                }
-            Log.d(TAG, "Registered Firestore listener for token: $token")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error registering Firestore listener", e)
-        }
-    }
-
-    private fun handleFirestoreUpdate(data: Map<String, Any>, token: String) {
-        // 1. Process Volume Command
-        val commandMap = data["volumeCommand"] as? Map<*, *>
-        if (commandMap != null) {
-            val stream = commandMap["stream"] as? String ?: "MEDIA"
-            val level = (commandMap["level"] as? Number)?.toInt() ?: 0
-            val timestampObj = commandMap["timestamp"] as? Timestamp
-            val timestamp = timestampObj?.seconds ?: 0L
-
-            if (timestamp > lastExecutedCommandTimestamp) {
-                lastExecutedCommandTimestamp = timestamp
-                executeVolumeCommand(stream, level, token)
-            }
-        }
-
-        // 2. Process Screen Time Update
-        val screenTimeMap = data["screenTime"] as? Map<*, *>
-        if (screenTimeMap != null) {
-            val remaining = (screenTimeMap["totalRemainingMinutes"] as? Number)?.toInt() ?: -1
-            val limit = (screenTimeMap["totalLimitMinutes"] as? Number)?.toInt() ?: 120
-            val appUsagesJsonStr = screenTimeMap["appUsages"] as? String ?: "[]"
-
-            if (remaining >= 0) {
-                updateScreenTimeData(remaining, limit, appUsagesJsonStr)
-            }
-        }
-
-        // 3. Process Time Coins State
-        val timeBankEnabled = data["timeBankEnabled"] as? Boolean ?: false
-        val timeBankChildVisible = data["timeBankChildVisible"] as? Boolean ?: false
-        val timeBankBalance = (data["timeBankBalance"] as? Number)?.toInt() ?: 0
-
-        serviceScope.launch {
-            val repoState = com.familylink.buddy.child.data.TimeBankState(
-                isEnabled = timeBankEnabled,
-                isChildVisible = timeBankChildVisible,
-                balance = timeBankBalance
-            )
-            repository.updateTimeBankState(repoState)
-            FamilyBuddyWidget().updateAll(applicationContext)
-        }
-
-        // 4. Process Coin Award
-        val coinAwardMap = data["coinAward"] as? Map<*, *>
-        if (coinAwardMap != null) {
-            val amount = (coinAwardMap["amount"] as? Number)?.toInt() ?: 0
-            val description = coinAwardMap["description"] as? String ?: ""
-            val emoji = coinAwardMap["emoji"] as? String ?: "⏳"
-            val timestampObj = coinAwardMap["timestamp"] as? Timestamp
-            val timestamp = timestampObj?.seconds ?: 0L
-
-            if (timestamp > lastExecutedCoinAwardTimestamp) {
-                lastExecutedCoinAwardTimestamp = timestamp
-                triggerCoinAwardFeedback(amount, description, emoji)
-            }
-        }
-
-        // 5. Process Walkie-Talkie Signaling Session Launch
-        val commsSessionId = data["activeCommsSessionId"] as? String
-        val commsTimestampObj = data["activeCommsSessionTimestamp"] as? Timestamp
-        val commsTimestamp = commsTimestampObj?.seconds ?: 0L
-
-        if (commsSessionId != null && commsTimestamp > lastExecutedCommsSessionTimestamp) {
-            lastExecutedCommsSessionTimestamp = commsTimestamp
-            try {
-                val intent = Intent(this, CommsActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    putExtra("action", "RECEIVE")
-                    putExtra("sessionId", commsSessionId)
-                }
-                
-                val pendingIntent = PendingIntent.getActivity(
-                    this,
-                    0,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-
-                val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                    .setContentTitle("Walkie-Talkie Anruf")
-                    .setContentText("Eingehender Sprachchat von Elternteil")
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setFullScreenIntent(pendingIntent, true)
-                    .setAutoCancel(true)
-
-                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                manager.notify(9005, builder.build())
-
-                try {
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Direct background startActivity failed, relying on fullScreenIntent notification: ${e.message}")
-                }
-                Log.d(TAG, "Launched CommsActivity overlay signaling session $commsSessionId via fullScreenIntent")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to launch CommsActivity from background service", e)
-            }
-        }
-
-        // 6. Process Bedtime Schedule
-        val bedtimeScheduleMap = data["bedtimeSchedule"] as? Map<*, *>
-        if (bedtimeScheduleMap != null) {
-            try {
-                @Suppress("UNCHECKED_CAST")
-                val schedule = BedtimeSchedule.fromMap(bedtimeScheduleMap as Map<String, Any?>)
-                if (schedule != lastBedtimeSchedule) {
-                    lastBedtimeSchedule = schedule
-                    serviceScope.launch {
-                        repository.updateBedtimeSchedule(schedule)
-                        BedtimeScheduleReceiver.scheduleNextAlarms(applicationContext, schedule)
-                        Log.d(TAG, "Bedtime schedule updated from Firestore: $schedule")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error handling bedtimeSchedule from Firestore", e)
-            }
-        }
-
-        // 7. Process Manual Wi-Fi Block
-        val manualWifiBlock = data["manualWifiBlock"] as? Boolean
-        if (manualWifiBlock != null && manualWifiBlock != lastManualWifiBlock) {
-            lastManualWifiBlock = manualWifiBlock
-            Log.i(TAG, "Manual Wi-Fi toggle from Firestore: block=$manualWifiBlock, turnOn=${!manualWifiBlock}")
-            WifiAccessibilityHelperService.requestToggle(applicationContext, turnOn = !manualWifiBlock)
-        }
-
-        // 8. Process Remote Screenshot Request
-        val screenshotRequest = data["screenshotRequest"] as? Map<*, *>
-        if (screenshotRequest != null) {
-            val requestId = (screenshotRequest["requestId"] ?: screenshotRequest["id"])?.toString()
-            if (!requestId.isNullOrEmpty() && requestId != lastScreenshotRequestId) {
-                lastScreenshotRequestId = requestId
-                Log.i(TAG, "New screenshot request received: $requestId")
-                WifiAccessibilityHelperService.captureScreenshot { base64, foregroundApp, foregroundPackage, error ->
-                    if (base64 != null) {
-                        try {
-                            val db = FirebaseFirestore.getInstance()
-                            val isoDate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                java.time.Instant.now().toString()
-                            } else {
-                                java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                                    timeZone = java.util.TimeZone.getTimeZone("UTC")
-                                }.format(java.util.Date())
-                            }
-
-                            val screenshotDoc = hashMapOf<String, Any>(
-                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                "base64Image" to base64,
-                                "foregroundApp" to foregroundApp,
-                                "foregroundPackage" to foregroundPackage,
-                                "capturedAt" to isoDate,
-                                "device" to Build.MODEL
-                            )
-
-                            db.collection("pairings").document(token)
-                                .collection("screenshots").document(requestId)
-                                .set(screenshotDoc)
-                                .addOnSuccessListener {
-                                    Log.i(TAG, "Screenshot uploaded successfully for request: $requestId")
-                                }
-                                .addOnFailureListener { e ->
-                                    Log.e(TAG, "Failed to upload screenshot for request: $requestId", e)
-                                }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error handling captured screenshot upload", e)
-                        }
-                    } else {
-                        Log.e(TAG, "Failed to capture screenshot for request $requestId: $error")
-                    }
-                }
-            }
-        }
-
-        // 9. Process Close Current App Command
-        val closeAppCommand = data["closeAppCommand"] as? Map<*, *>
-        if (closeAppCommand != null) {
-            val timestamp = when (val ts = closeAppCommand["timestamp"]) {
-                is Timestamp -> ts.toDate().time
-                is Number -> ts.toLong()
-                is String -> ts.toLongOrNull() ?: 0L
-                else -> 0L
-            }
-            if (timestamp > lastCloseAppTimestamp) {
-                lastCloseAppTimestamp = timestamp
-                Log.i(TAG, "Executing closeAppCommand from Firestore (timestamp=$timestamp)")
-                WifiAccessibilityHelperService.closeCurrentApp(applicationContext)
-            }
-        }
-
-        // 10. Process Lock Screen Command
-        val lockScreenCommand = data["lockScreenCommand"] as? Map<*, *>
-        if (lockScreenCommand != null) {
-            val timestamp = when (val ts = lockScreenCommand["timestamp"]) {
-                is Timestamp -> ts.toDate().time
-                is Number -> ts.toLong()
-                is String -> ts.toLongOrNull() ?: 0L
-                else -> 0L
-            }
-            if (timestamp > lastLockScreenTimestamp) {
-                lastLockScreenTimestamp = timestamp
-                Log.i(TAG, "Executing lockScreenCommand from Firestore (timestamp=$timestamp)")
-                WifiAccessibilityHelperService.lockScreen(applicationContext)
-            }
-        }
-
-        // 11. Process App Rules (Blacklist & Categories)
-        val appRulesMap = data["appRules"] as? Map<*, *>
-        if (appRulesMap != null) {
-            try {
-                @Suppress("UNCHECKED_CAST")
-                val rules = AppRules.fromMap(appRulesMap as Map<String, Any?>)
-                WifiAccessibilityHelperService.updateAppRules(applicationContext, rules)
-                Log.d(TAG, "App rules updated from Firestore: blacklist=${rules.blacklistedPackages.size}, categories=${rules.categories.size}, bonus=${rules.bonusMinutes}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error handling appRules from Firestore", e)
-            }
-        }
-
-        // 12. Process Bonus Minutes (if updated separately at root level)
-        val bonusMinutesMap = data["bonusMinutes"] as? Map<*, *>
-        if (bonusMinutesMap != null) {
-            try {
-                bonusMinutesMap.forEach { (catIdObj, minutesObj) ->
-                    val catId = catIdObj?.toString() ?: return@forEach
-                    val minutes = (minutesObj as? Number)?.toInt() ?: minutesObj?.toString()?.toIntOrNull() ?: 0
-                    WifiAccessibilityHelperService.addBonusMinutes(applicationContext, catId, minutes)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error handling bonusMinutes from Firestore", e)
-            }
-        }
-
-        // 13. Process Installed Apps Scan Request
-        if (data["scanInstalledApps"] as? Boolean == true || data["refreshInstalledApps"] as? Boolean == true) {
-            reportInstalledApps(token)
-        }
-    }
-
-    private fun reportInstalledApps(token: String) {
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                val appsList = InstalledAppsManager.scanInstalledLauncherApps(applicationContext)
-                val db = FirebaseFirestore.getInstance()
-                val updates = hashMapOf<String, Any>(
-                    "installedApps" to appsList,
-                    "installedAppsUpdatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                )
-                db.collection("pairings").document(token).update(updates)
-                lastInstalledAppsScanMs = System.currentTimeMillis()
-                Log.i(TAG, "Reported ${appsList.size} installed apps to Firestore pairings/$token")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed reporting installed apps to Firestore", e)
-            }
         }
     }
 
@@ -1234,36 +892,12 @@ class WidgetUpdateService : Service() {
             // Send transparency system notification inside the child service
             val notifyManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val notif = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Lautstärke geändert")
-                .setContentText("Lautstärke wurde von einem Elternteil geändert")
+                .setContentTitle(getString(R.string.volume_changed_title))
+                .setContentText(getString(R.string.volume_changed_by_parent))
                 .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .build()
             notifyManager.notify(9002, notif)
-        }
-
-        // Write back volume report & lastSeen
-        val report = hashMapOf(
-            "mediaVolume" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
-            "ringtoneVolume" to audioManager.getStreamVolume(AudioManager.STREAM_RING),
-            "alarmVolume" to audioManager.getStreamVolume(AudioManager.STREAM_ALARM),
-            "maxMediaVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-            "maxRingtoneVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
-            "maxAlarmVolume" to audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-        )
-        try {
-            val db = FirebaseFirestore.getInstance()
-            val ip = getLocalIpAddress() ?: ""
-            val updates = hashMapOf<String, Any>(
-                "volumeReport" to report,
-                "lastSeen" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-            )
-            if (ip.isNotEmpty()) {
-                updates["localIpAddress"] = ip
-            }
-            db.collection("pairings").document(token).update(updates)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update volume report in Firestore", e)
         }
 
         // Also update local DataStore state to refresh Child App UI
@@ -1286,7 +920,7 @@ class WidgetUpdateService : Service() {
         )
         serviceScope.launch {
             repository.updateVolumeState(localState)
-            Log.d(TAG, "Updated local repository volumeState from Firestore command: $currentMedia/$maxMedia")
+            Log.d(TAG, "Updated local repository volumeState from volume command: $currentMedia/$maxMedia")
         }
     }
 

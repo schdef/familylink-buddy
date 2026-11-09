@@ -1,49 +1,171 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pairing_screen.dart';
 import 'pairing_repository.dart';
 import '../volume/volume_control_screen.dart';
-import '../auth/google_sign_in_service.dart';
-import '../auth/sign_in_screen.dart';
 import '../time_bank/time_bank_screen.dart';
 import '../comms/comms_screen.dart';
 import '../updater/updater_service.dart';
+import '../l10n/app_strings.dart';
 
 class DeviceListScreen extends StatefulWidget {
-  final ParentAccount? account;
-
-  const DeviceListScreen({super.key, this.account});
+  const DeviceListScreen({super.key});
 
   @override
   State<DeviceListScreen> createState() => _DeviceListScreenState();
 }
 
 class _DeviceListScreenState extends State<DeviceListScreen> {
+  final PairingRepository _repository = PairingRepository();
+  List<PairedDevice> _devices = [];
+  bool _isLoading = true;
+
   @override
   void initState() {
     super.initState();
+    _loadDevices();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UpdaterService.checkForUpdates(context);
     });
   }
 
-  Future<void> _handleSignOut() async {
-    await GoogleSignInService.signOut();
+  Future<void> _loadDevices() async {
+    setState(() => _isLoading = true);
+    final devices = await _repository.loadPairedDevices();
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const SignInScreen()),
-      );
+      setState(() {
+        _devices = devices;
+        _isLoading = false;
+      });
     }
+  }
+
+  Future<void> _unpairDevice(PairedDevice device) async {
+    final strings = context.strings;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(strings.unpairDeviceTitle, style: const TextStyle(color: Colors.white)),
+        content: Text(
+          strings.unpairDeviceConfirm(device.name),
+          style: const TextStyle(color: Color(0xFF94A3B8)),
+        ),
+        actions: [
+          TextButton(
+            child: Text(strings.cancel, style: const TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.of(ctx).pop(false),
+          ),
+          TextButton(
+            child: Text(strings.unpair, style: const TextStyle(color: Color(0xFFEF4444))),
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _repository.clearPairedDevice();
+      await _loadDevices();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(strings.deviceUnpaired(device.name))),
+        );
+      }
+    }
+  }
+
+  void _showAppSettings() {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          final strings = AppStrings.of(dialogCtx);
+          final currentCode = AppStrings.manualLocale?.languageCode;
+
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            title: Row(
+              children: [
+                const Icon(Icons.settings, color: Color(0xFF6366F1)),
+                const SizedBox(width: 8),
+                Text(strings.appSettingsTitle, style: const TextStyle(color: Colors.white)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    strings.appEdition,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(strings.appVersion('1.1.2'), style: const TextStyle(color: Color(0xFF94A3B8))),
+                  const SizedBox(height: 4),
+                  Text(strings.appArchitecture, style: const TextStyle(color: Color(0xFF10B981))),
+                  const SizedBox(height: 4),
+                  Text(strings.appCloudNotice, style: const TextStyle(color: Color(0xFF94A3B8))),
+                  const SizedBox(height: 16),
+                  const Divider(color: Color(0xFF334155)),
+                  const SizedBox(height: 8),
+                  Text(
+                    strings.language,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF334155)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: currentCode,
+                        dropdownColor: const Color(0xFF1E293B),
+                        isExpanded: true,
+                        items: [
+                          DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text(strings.systemDefault, style: const TextStyle(color: Colors.white)),
+                          ),
+                          DropdownMenuItem<String?>(
+                            value: 'en',
+                            child: Text(strings.english, style: const TextStyle(color: Colors.white)),
+                          ),
+                          DropdownMenuItem<String?>(
+                            value: 'de',
+                            child: Text(strings.german, style: const TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                        onChanged: (newCode) async {
+                          await AppStrings.setSavedLocale(newCode);
+                          setDialogState(() {});
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                child: Text(strings.close, style: const TextStyle(color: Color(0xFF6366F1))),
+                onPressed: () => Navigator.of(ctx).pop(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final parentId = widget.account?.id ?? 'mock-parent-uid';
-    final parentEmail = widget.account?.email;
-    final parentIds = <String>{parentId};
-    if (parentEmail != null && parentEmail.isNotEmpty) {
-      parentIds.add(parentEmail);
-    }
+    final strings = context.strings;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -51,21 +173,21 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Meine Kinder'),
+            Text(strings.myChildren),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withOpacity(0.2),
+                color: const Color(0xFF10B981).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.5)),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
               ),
-              child: const Text(
-                'v1.1.2',
-                style: TextStyle(
+              child: Text(
+                strings.lanLocal,
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF818CF8),
+                  color: Color(0xFF34D399),
                 ),
               ),
             ),
@@ -75,386 +197,227 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFF94A3B8)),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: const Color(0xFF1E293B),
-                  title: const Text('Abmelden?', style: TextStyle(color: Colors.white)),
-                  content: const Text(
-                    'Möchten Sie sich abmelden?',
-                    style: TextStyle(color: Color(0xFF94A3B8)),
-                  ),
-                  actions: [
-                    TextButton(
-                      child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                    TextButton(
-                      child: const Text('Abmelden', style: TextStyle(color: Color(0xFFEF4444))),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _handleSignOut();
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
+            icon: const Icon(Icons.refresh, color: Color(0xFF94A3B8)),
+            onPressed: _loadDevices,
+            tooltip: strings.refreshTooltip,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings, color: Color(0xFF94A3B8)),
+            onPressed: _showAppSettings,
+            tooltip: strings.settingsTooltip,
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('pairings')
-            .where('parentId', whereIn: parentIds.toList())
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)));
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Fehler beim Laden der Geräte: ${snapshot.error}',
-                style: const TextStyle(color: Color(0xFFEF4444)),
-              ),
-            );
-          }
-
-          final docs = snapshot.data?.docs ?? [];
-
-          if (docs.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.people_outline, color: Color(0xFF475569), size: 80),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Noch keine Kinder gekoppelt',
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Koppeln Sie das Gerät Ihres Kindes, um dessen Lautstärke aus der Ferne zu steuern.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PairingScreen(account: widget.account),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Gerät koppeln'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
+          : _devices.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.people_outline, color: Color(0xFF475569), size: 80),
+                        const SizedBox(height: 24),
+                        Text(
+                          strings.noChildrenPaired,
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        Text(
+                          strings.noChildrenPairedDesc,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
+                        ),
+                        const SizedBox(height: 32),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const PairingScreen(),
+                              ),
+                            );
+                            _loadDevices();
+                          },
+                          icon: const Icon(Icons.add),
+                          label: Text(strings.pairDevice),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              final data = doc.data() as Map<String, dynamic>;
-              final childToken = doc.id;
-              final name = data['deviceName'] as String? ?? 'Kind';
-              final lastSeenStamp = data['lastSeen'] as Timestamp?;
-              final lastSeen = lastSeenStamp?.toDate() ?? DateTime.now();
-
-              // Calculate active status (online if seen in the last 60 seconds)
-              final isOnline = DateTime.now().difference(lastSeen).inSeconds < 60;
-              final pendingClaimsCount = data['pendingClaimsCount'] as int? ?? 0;
-
-              // Parse volume levels summary
-              final report = data['volumeReport'] as Map<dynamic, dynamic>?;
-              final mediaVol = (report?['mediaVolume'] as num?)?.toInt() ?? -1;
-              final maxMedia = (report?['maxMediaVolume'] as num?)?.toInt() ?? 15;
-
-              return Card(
-                color: const Color(0xFF1E293B),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: const Color(0xFF334155).withOpacity(0.5)),
-                ),
-                margin: const EdgeInsets.only(bottom: 16),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () {
-                    // Navigate to VolumeControlScreen for this child device
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => VolumeControlScreen(
-                          account: widget.account,
-                          device: PairedDevice(
-                            name: name,
-                            fcmToken: childToken,
-                            lastSeen: lastSeen,
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _devices.length,
+                  itemBuilder: (context, index) {
+                    final device = _devices[index];
+                    return Card(
+                      color: const Color(0xFF1E293B),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: const Color(0xFF334155).withValues(alpha: 0.5)),
+                      ),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => VolumeControlScreen(
+                                device: device,
+                              ),
+                            ),
+                          ).then((_) => _loadDevices());
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.child_care,
+                                  color: Color(0xFF6366F1),
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      device.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF10B981),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          device.ipAddress != null && device.ipAddress!.isNotEmpty
+                                              ? 'LAN (${device.ipAddress})'
+                                              : (device.fcmToken == 'emulator' ? 'Emulator (10.0.2.2)' : strings.localLan),
+                                          style: const TextStyle(
+                                            color: Color(0xFF10B981),
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF6366F1),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          icon: const Icon(Icons.timer, size: 14),
+                                          label: Text(strings.timeBankButton, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                          onPressed: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => TimeBankScreen(
+                                                  device: device,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF818CF8),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          icon: const Icon(Icons.mic, size: 14),
+                                          label: Text(strings.commsButton, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                          onPressed: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => CommsScreen(
+                                                  device: device,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
+                                tooltip: strings.unpairTooltip,
+                                onPressed: () => _unpairDevice(device),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.arrow_forward_ios,
+                                color: Color(0xFF475569),
+                                size: 14,
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     );
                   },
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        // Supervised Child Avatar
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1).withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.child_care,
-                            color: Color(0xFF6366F1),
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        // Kid Information
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                name,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: isOnline ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    isOnline ? 'Online' : 'Standby / Offline',
-                                    style: TextStyle(
-                                      color: isOnline ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF6366F1),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.timer, size: 14),
-                                    label: const Text('Zeitkonto ⏳', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => TimeBankScreen(
-                                            account: widget.account,
-                                            device: PairedDevice(
-                                              name: name,
-                                              fcmToken: childToken,
-                                              lastSeen: lastSeen,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF818CF8),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.mic, size: 14),
-                                    label: const Text('Comms 🎙️', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => CommsScreen(
-                                            account: widget.account,
-                                            device: PairedDevice(
-                                              name: name,
-                                              fcmToken: childToken,
-                                              lastSeen: lastSeen,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  if (pendingClaimsCount > 0) ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEF4444),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        '$pendingClaimsCount Belohnung!',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Volume Summary Indicator
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            if (mediaVol >= 0) ...[
-                              Row(
-                                children: [
-                                  const Icon(Icons.volume_up, color: Color(0xFF94A3B8), size: 16),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '$mediaVol/$maxMedia',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else ...[
-                              const Text(
-                                'Kein Bericht',
-                                style: TextStyle(color: Color(0xFF475569), fontSize: 13),
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  constraints: const BoxConstraints(),
-                                  padding: EdgeInsets.zero,
-                                  icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 18),
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        backgroundColor: const Color(0xFF1E293B),
-                                        title: const Text('Gerät entkoppeln?', style: TextStyle(color: Colors.white)),
-                                        content: Text(
-                                          'Möchten Sie das Gerät von $name wirklich entkoppeln?',
-                                          style: const TextStyle(color: Color(0xFF94A3B8)),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
-                                            onPressed: () => Navigator.of(ctx).pop(),
-                                          ),
-                                          TextButton(
-                                            child: const Text('Entkoppeln', style: TextStyle(color: Color(0xFFEF4444))),
-                                            onPressed: () async {
-                                              Navigator.of(ctx).pop();
-                                              await FirebaseFirestore.instance.collection('pairings').doc(childToken).delete();
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(content: Text('$name wurde entkoppelt.')),
-                                                );
-                                              }
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.arrow_forward_ios,
-                                  color: Color(0xFF475569),
-                                  size: 14,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                ),
+      floatingActionButton: _devices.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PairingScreen(),
                   ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('pairings')
-            .where('parentId', whereIn: parentIds.toList())
-            .snapshots(),
-        builder: (context, snapshot) {
-          final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) return const SizedBox.shrink(); // Don't duplicate the button
-
-          return FloatingActionButton.extended(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PairingScreen(account: widget.account),
-                ),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Kind hinzufügen'),
-            backgroundColor: const Color(0xFF6366F1),
-            foregroundColor: Colors.white,
-          );
-        },
-      ),
+                );
+                _loadDevices();
+              },
+              icon: const Icon(Icons.add),
+              label: Text(strings.addChild),
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+            ),
     );
   }
 }

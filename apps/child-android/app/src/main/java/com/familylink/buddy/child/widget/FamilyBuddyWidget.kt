@@ -183,7 +183,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "⏳ ${timeBankState.balance} Coins",
+                        text = context.getString(R.string.widget_coins_balance, timeBankState.balance),
                         style = TextStyle(
                             color = ColorProvider(Color(0xFFFFD700)),
                             fontSize = 13.sp,
@@ -192,7 +192,7 @@ class FamilyBuddyWidget : GlanceAppWidget() {
                     )
                     Spacer(modifier = GlanceModifier.defaultWeight())
                     Text(
-                        text = "Tippen zum Öffnen! 🎮",
+                        text = context.getString(R.string.widget_tap_to_open),
                         style = TextStyle(
                             color = ColorProvider(Color(0xFF64748B)),
                             fontSize = 9.sp

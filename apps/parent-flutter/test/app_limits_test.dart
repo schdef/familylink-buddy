@@ -11,8 +11,17 @@ import 'package:parent_app/app_limits/app_limits_screen.dart';
 import 'package:parent_app/pairing/pairing_repository.dart';
 import 'package:parent_app/volume/volume_control_screen.dart';
 import 'package:parent_app/volume/volume_repository.dart';
+import 'package:parent_app/l10n/app_strings.dart';
 
 void main() {
+  setUp(() {
+    AppStrings.manualLocale = const Locale('de');
+  });
+
+  tearDown(() {
+    AppStrings.manualLocale = null;
+  });
+
   final testDevice = PairedDevice(
     name: 'Kind-Tablet',
     fcmToken: 'test-token-123',

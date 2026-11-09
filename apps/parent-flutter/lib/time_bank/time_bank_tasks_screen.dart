@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'time_bank_repository.dart';
+import '../l10n/app_strings.dart';
 import '../pairing/pairing_repository.dart';
 
 class TimeBankTasksScreen extends StatefulWidget {
@@ -50,7 +51,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Neue Aufgabe erstellen', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: Text(context.strings.createTaskTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -61,7 +62,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
                       TextFormField(
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Titel (z.B. Zimmer aufräumen)',
+                          labelText: context.strings.taskTitleLabel,
                           labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
                           enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF334155)), borderRadius: BorderRadius.circular(12)),
                           focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF6366F1)), borderRadius: BorderRadius.circular(12)),
@@ -79,7 +80,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Belohnung (Coins)',
+                          labelText: context.strings.rewardCoinsLabel,
                           labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
                           enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF334155)), borderRadius: BorderRadius.circular(12)),
                           focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF6366F1)), borderRadius: BorderRadius.circular(12)),
@@ -117,7 +118,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
                           keyboardType: TextInputType.number,
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            labelText: 'Dauer in Minuten',
+                            labelText: context.strings.durationMinutesLabel,
                             labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
                             enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF334155)), borderRadius: BorderRadius.circular(12)),
                             focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF6366F1)), borderRadius: BorderRadius.circular(12)),
@@ -164,7 +165,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
               ),
               actions: [
                 TextButton(
-                  child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
+                  child: Text(context.strings.cancel, style: const TextStyle(color: Colors.white)),
                   onPressed: () => Navigator.of(ctx).pop(),
                 ),
                 ElevatedButton(
@@ -173,7 +174,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Hinzufügen'),
+                  child: Text(context.strings.addButton),
                   onPressed: () async {
                     if (formKey.currentState!.validate()) {
                       Navigator.of(ctx).pop();
@@ -205,7 +206,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Neue Belohnung erstellen', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: Text(context.strings.createRewardTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -234,7 +235,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Kosten (Coins)',
+                          labelText: context.strings.costCoinsLabel,
                           labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
                           enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF334155)), borderRadius: BorderRadius.circular(12)),
                           focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFF6366F1)), borderRadius: BorderRadius.circular(12)),
@@ -280,7 +281,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
               ),
               actions: [
                 TextButton(
-                  child: const Text('Abbrechen', style: TextStyle(color: Colors.white)),
+                  child: Text(context.strings.cancel, style: const TextStyle(color: Colors.white)),
                   onPressed: () => Navigator.of(ctx).pop(),
                 ),
                 ElevatedButton(
@@ -289,7 +290,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Hinzufügen'),
+                  child: Text(context.strings.addButton),
                   onPressed: () async {
                     if (formKey.currentState!.validate()) {
                       Navigator.of(ctx).pop();
@@ -310,7 +311,7 @@ class _TimeBankTasksScreenState extends State<TimeBankTasksScreen> with SingleTi
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Aufgaben & Belohnungen'),
+        title: Text(context.strings.tasksAndRewardsTitle),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         bottom: TabBar(

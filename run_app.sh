@@ -1,9 +1,27 @@
 #!/bin/bash
 
-# Define paths
-SDK_DIR="/Users/stefanheintz/Library/Android/sdk"
-ADB="$SDK_DIR/platform-tools/adb"
-EMULATOR="$SDK_DIR/emulator/emulator"
+# Detect Android SDK and platform tools
+if [ -n "$ANDROID_HOME" ]; then
+    SDK_DIR="$ANDROID_HOME"
+elif [ -n "$ANDROID_SDK_ROOT" ]; then
+    SDK_DIR="$ANDROID_SDK_ROOT"
+elif [ -d "$HOME/Android/Sdk" ]; then
+    SDK_DIR="$HOME/Android/Sdk"
+elif [ -d "$HOME/Library/Android/sdk" ]; then
+    SDK_DIR="$HOME/Library/Android/sdk"
+elif [ -d "/usr/lib/android-sdk" ]; then
+    SDK_DIR="/usr/lib/android-sdk"
+else
+    SDK_DIR=""
+fi
+
+if [ -n "$SDK_DIR" ] && [ -f "$SDK_DIR/platform-tools/adb" ]; then
+    ADB="$SDK_DIR/platform-tools/adb"
+    EMULATOR="$SDK_DIR/emulator/emulator"
+else
+    ADB="$(which adb 2>/dev/null || echo "adb")"
+    EMULATOR="$(which emulator 2>/dev/null || echo "emulator")"
+fi
 APP_DIR="$(dirname "$0")/apps/child-android"
 
 echo "=== Checking Android Environment ==="

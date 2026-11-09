@@ -18,9 +18,18 @@ fi
 
 echo ""
 
+# Detect Flutter binary
+if command -v flutter &> /dev/null; then
+    FLUTTER_BIN="flutter"
+elif [ -f "$HOME/flutter/bin/flutter" ]; then
+    FLUTTER_BIN="$HOME/flutter/bin/flutter"
+else
+    FLUTTER_BIN="flutter"
+fi
+
 # 2. Run Parent Flutter Tests
 echo "--- Running Parent Flutter Unit Tests ---"
-(cd apps/parent-flutter && flutter test)
+(cd apps/parent-flutter && $FLUTTER_BIN test)
 FLUTTER_EXIT=$?
 
 if [ $FLUTTER_EXIT -eq 0 ]; then

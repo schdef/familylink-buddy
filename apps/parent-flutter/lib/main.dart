@@ -1,41 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'auth/google_sign_in_service.dart';
-import 'auth/sign_in_screen.dart';
 import 'pairing/device_list_screen.dart';
+import 'pairing/pairing_repository.dart';
+import 'volume/volume_control_screen.dart';
 import 'volume/volume_repository.dart';
 import 'time_bank/time_bank_repository.dart';
 import 'bedtime/bedtime_repository.dart';
 import 'screenshot/screenshot_repository.dart';
 import 'app_limits/app_limits_repository.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
+import 'l10n/app_strings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  const useEmulator = String.fromEnvironment('USE_EMULATOR') == 'true';
-  if (useEmulator) {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: 'AIzaSyDZsqoZitT74-scNBcxkGBIc60pLmkWaZo',
-        appId: '1:260707499739:android:8e68a6feffbfa2700c56fe',
-        messagingSenderId: '260707499739',
-        projectId: 'dev~familylink-buddy',
-      ),
-    );
-    try {
-      final host = defaultTargetPlatform == TargetPlatform.android ? '10.0.2.2' : 'localhost';
-      FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
-      debugPrint('Redirected Firebase clients to local emulator suite ($host)');
-    } catch (e) {
-      debugPrint('Firestore emulator redirection failed: $e');
-    }
-  } else {
-    await Firebase.initializeApp();
-  }
+  await AppStrings.loadSavedLocale();
 
   runApp(
     MultiProvider(
@@ -51,14 +28,36 @@ void main() async {
   );
 }
 
-class FamilyLinkBuddyParentApp extends StatelessWidget {
+class FamilyLinkBuddyParentApp extends StatefulWidget {
   const FamilyLinkBuddyParentApp({super.key});
+
+  @override
+  State<FamilyLinkBuddyParentApp> createState() => _FamilyLinkBuddyParentAppState();
+}
+
+class _FamilyLinkBuddyParentAppState extends State<FamilyLinkBuddyParentApp> {
+  @override
+  void initState() {
+    super.initState();
+    AppStrings.addListener(_onLocaleChanged);
+  }
+
+  @override
+  void dispose() {
+    AppStrings.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FamilyLink Buddy Parent',
       debugShowCheckedModeBanner: false,
+      locale: AppStrings.currentLocale,
       theme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF6366F1),
@@ -67,7 +66,6 @@ class FamilyLinkBuddyParentApp extends StatelessWidget {
           primary: Color(0xFF6366F1),
           secondary: Color(0xFF8B5CF6),
           surface: Color(0xFF1E293B),
-          background: Color(0xFF0F172A),
         ),
         useMaterial3: true,
       ),
@@ -85,7 +83,7 @@ class InitialRouter extends StatefulWidget {
 
 class _InitialRouterState extends State<InitialRouter> {
   bool _isLoading = true;
-  Widget _targetScreen = const SignInScreen();
+  Widget _targetScreen = const DeviceListScreen();
 
   @override
   void initState() {
@@ -94,19 +92,25 @@ class _InitialRouterState extends State<InitialRouter> {
   }
 
   Future<void> _routeInitialScreen() async {
-    // Check silent login first
-    final account = await GoogleSignInService.signInSilently();
-    
-    if (account != null) {
-      _targetScreen = DeviceListScreen(account: account);
-    } else {
-      _targetScreen = const SignInScreen();
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+    try {
+      final pairedDevice = await PairingRepository().loadPairedDevice();
+      if (mounted) {
+        setState(() {
+          if (pairedDevice != null) {
+            _targetScreen = VolumeControlScreen(device: pairedDevice);
+          } else {
+            _targetScreen = const DeviceListScreen();
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _targetScreen = const DeviceListScreen();
+          _isLoading = false;
+        });
+      }
     }
   }
 

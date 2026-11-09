@@ -11,46 +11,32 @@ elif [ -d "/Applications/Android Studio.app/Contents/jbr/Contents/Home" ]; then
     export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 fi
 
-echo "=== FamilyLink Buddy Release Compiler ==="
-
-# Default: Cloud mode
-USE_EMULATOR="false"
-
-# Parse arguments
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        -l|--local) USE_EMULATOR="true" ;;
-        -c|--cloud) USE_EMULATOR="false" ;;
-        *) echo "Unknown parameter: $1. Use --local (-l) or --cloud (-c)."; exit 1 ;;
-    esac
-    shift
-done
-
-echo "Configured Connection Target: $([ "$USE_EMULATOR" = "true" ] && echo "LOCAL EMULATOR" || echo "PRODUCTION CLOUD")"
+echo "=== FamilyLink Buddy Local-First Release Compiler ==="
+echo "Building 100% Local-First standalone APKs for Child and Parent apps..."
 echo ""
 
 # 1. Compile Child App
 echo "Cleaning and compiling Child App (com.familylink.buddy.child)..."
-(cd "$CHILD_DIR" && ./gradlew clean assembleRelease -PuseEmulator=$USE_EMULATOR)
+(cd "$CHILD_DIR" && ./gradlew clean assembleRelease)
 if [ $? -ne 0 ]; then
     echo "❌ Child app build failed!"
     exit 1
 fi
 if [ -f "$CHILD_DIR/app/build/outputs/apk/release/app-release.apk" ]; then
-    mv "$CHILD_DIR/app/build/outputs/apk/release/app-release.apk" "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk"
+    cp "$CHILD_DIR/app/build/outputs/apk/release/app-release.apk" "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk"
 fi
 echo "✅ Child app build successful!"
 echo ""
 
 # 2. Compile Parent App
 echo "Cleaning and compiling Parent App (com.familylink.buddy.parent)..."
-(cd "$PARENT_DIR" && flutter clean && flutter build apk --release --target-platform android-arm64,android-x64 --dart-define=USE_EMULATOR=$USE_EMULATOR)
+(cd "$PARENT_DIR" && flutter clean && flutter build apk --release --target-platform android-arm64,android-x64)
 if [ $? -ne 0 ]; then
     echo "❌ Parent app build failed!"
     exit 1
 fi
 if [ -f "$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk" ]; then
-    mv "$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk" "$PARENT_DIR/build/app/outputs/flutter-apk/parent-release.apk"
+    cp "$PARENT_DIR/build/app/outputs/flutter-apk/app-release.apk" "$PARENT_DIR/build/app/outputs/flutter-apk/parent-release.apk"
 fi
 echo "✅ Parent app build successful!"
 echo ""

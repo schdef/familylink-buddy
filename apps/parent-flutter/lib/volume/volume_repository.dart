@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
+import '../pairing/lan_discovery_service.dart';
+import '../pairing/pairing_repository.dart';
 
 class VolumeState {
   final int mediaVolume;
@@ -14,6 +13,7 @@ class VolumeState {
   final int maxRingtoneVolume;
   final int maxAlarmVolume;
   final bool isMuted;
+  final bool isMusicActive;
   final DateTime? timestamp;
 
   const VolumeState({
@@ -24,6 +24,7 @@ class VolumeState {
     this.maxRingtoneVolume = 15,
     this.maxAlarmVolume = 15,
     this.isMuted = false,
+    this.isMusicActive = false,
     this.timestamp,
   });
 
@@ -36,9 +37,34 @@ class VolumeState {
       maxRingtoneVolume: json['maxRingtoneVolume'] as int? ?? 15,
       maxAlarmVolume: json['maxAlarmVolume'] as int? ?? 15,
       isMuted: json['isMuted'] as bool? ?? false,
+      isMusicActive: json['isMusicActive'] as bool? ?? false,
       timestamp: json['timestamp'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int)
           : null,
+    );
+  }
+
+  VolumeState copyWith({
+    int? mediaVolume,
+    int? ringtoneVolume,
+    int? alarmVolume,
+    int? maxMediaVolume,
+    int? maxRingtoneVolume,
+    int? maxAlarmVolume,
+    bool? isMuted,
+    bool? isMusicActive,
+    DateTime? timestamp,
+  }) {
+    return VolumeState(
+      mediaVolume: mediaVolume ?? this.mediaVolume,
+      ringtoneVolume: ringtoneVolume ?? this.ringtoneVolume,
+      alarmVolume: alarmVolume ?? this.alarmVolume,
+      maxMediaVolume: maxMediaVolume ?? this.maxMediaVolume,
+      maxRingtoneVolume: maxRingtoneVolume ?? this.maxRingtoneVolume,
+      maxAlarmVolume: maxAlarmVolume ?? this.maxAlarmVolume,
+      isMuted: isMuted ?? this.isMuted,
+      isMusicActive: isMusicActive ?? this.isMusicActive,
+      timestamp: timestamp ?? this.timestamp,
     );
   }
 
@@ -46,115 +72,103 @@ class VolumeState {
 }
 
 class VolumeRepository extends ChangeNotifier {
+  final http.Client? _httpClient;
   VolumeState _volumeState = const VolumeState();
   bool _isConnected = false;
   DateTime? _lastSeen;
-  String? _parentFcmToken;
   String? _localIpAddress;
+  Timer? _pollingTimer;
+  String? _activeChildToken;
+  LanDiscoveryService? _lanDiscoveryService;
+  PairingRepository? _pairingRepository;
+  String? _deviceId;
+  bool _isRediscovering = false;
+
+  VolumeRepository({http.Client? httpClient}) : _httpClient = httpClient;
 
   VolumeState get volumeState => _volumeState;
   bool get isConnected => _isConnected;
   DateTime? get lastSeen => _lastSeen;
   String? get localIpAddress => _localIpAddress;
 
-  @visibleForTesting
-  set localIpAddress(String? ip) => _localIpAddress = ip;
-
-  StreamSubscription<DocumentSnapshot>? _subscription;
-
-  void subscribeToDevice(String childFcmToken) {
-    _subscription?.cancel();
-    if (childFcmToken.isEmpty || childFcmToken == 'emulator') return;
-
-    try {
-      _subscription = FirebaseFirestore.instance
-          .collection('pairings')
-          .doc(childFcmToken)
-          .snapshots()
-          .listen((snapshot) {
-        if (snapshot.exists) {
-          final data = snapshot.data();
-          if (data != null) {
-            _localIpAddress = data['localIpAddress'] as String?;
-
-            final dbLastSeen = data['lastSeen'] as Timestamp?;
-            if (dbLastSeen != null) {
-              _lastSeen = dbLastSeen.toDate();
-              _isConnected = true;
-            }
-
-            final report = data['volumeReport'] as Map<dynamic, dynamic>?;
-            if (report != null) {
-              final int mediaVol = (report['mediaVolume'] as num?)?.toInt() ?? -1;
-              final int ringtoneVol = (report['ringtoneVolume'] as num?)?.toInt() ?? -1;
-              final int alarmVol = (report['alarmVolume'] as num?)?.toInt() ?? -1;
-              _volumeState = VolumeState(
-                mediaVolume: mediaVol,
-                ringtoneVolume: ringtoneVol,
-                alarmVolume: alarmVol,
-                maxMediaVolume: (report['maxMediaVolume'] as num?)?.toInt() ?? 15,
-                maxRingtoneVolume: (report['maxRingtoneVolume'] as num?)?.toInt() ?? 15,
-                maxAlarmVolume: (report['maxAlarmVolume'] as num?)?.toInt() ?? 15,
-                isMuted: mediaVol == 0 && ringtoneVol == 0,
-                timestamp: DateTime.now(),
-              );
-              _isConnected = true;
-              if (dbLastSeen == null) {
-                _lastSeen = DateTime.now();
-              }
-            }
-            notifyListeners();
-          }
-        }
-      });
-    } catch (e) {
-      debugPrint('VolumeRepository subscribe error: $e');
-    }
+  set localIpAddress(String? ip) {
+    _localIpAddress = ip;
+    notifyListeners();
   }
 
-  @override
-  void dispose() {
-    _subscription?.cancel();
-    super.dispose();
+  void setDiscoveryDependencies({
+    LanDiscoveryService? lanDiscoveryService,
+    PairingRepository? pairingRepository,
+    String? deviceId,
+  }) {
+    _lanDiscoveryService = lanDiscoveryService;
+    _pairingRepository = pairingRepository;
+    _deviceId = deviceId;
   }
 
-  // FCM server key (from Firebase Console → Project Settings → Cloud Messaging)
-  // In production this should be fetched securely from a backend, not hardcoded.
-  static const _fcmServerKey = 'YOUR_FCM_SERVER_KEY';
-
+  /// Initialize the repository (no cloud/Firebase required)
   Future<void> initialize() async {
-    try {
-      final messaging = FirebaseMessaging.instance;
-
-      // Request permission for notifications
-      await messaging.requestPermission();
-
-      // Store our own FCM token (parent token for child to reply to)
-      _parentFcmToken = await messaging.getToken();
-      debugPrint('Parent FCM token: $_parentFcmToken');
-
-      // Listen for incoming volume reports from child
-      FirebaseMessaging.onMessage.listen(_handleIncomingMessage);
-      FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
-    } catch (e) {
-      debugPrint('FCM initialization failed (falling back to Firestore direct sync): $e');
-    }
+    // Local-First LAN initialization
   }
 
-  void _handleIncomingMessage(RemoteMessage message) {
-    final data = message.data;
-    if (data['type'] == 'VOLUME_REPORT') {
-      _volumeState = VolumeState.fromJson(data.map(
-        (k, v) => MapEntry(k, int.tryParse(v.toString()) ?? v),
-      ));
-      _isConnected = true;
-      _lastSeen = DateTime.now();
-      notifyListeners();
+  /// Starts monitoring and polling the child device over LAN
+  void subscribeToDevice(
+    String childFcmToken, {
+    String? ipAddress,
+    String? deviceId,
+    PairingRepository? pairingRepo,
+    LanDiscoveryService? discoveryService,
+  }) {
+    _activeChildToken = childFcmToken;
+    if (deviceId != null) _deviceId = deviceId;
+    if (pairingRepo != null) _pairingRepository = pairingRepo;
+    if (discoveryService != null) _lanDiscoveryService = discoveryService;
+    if (ipAddress != null && ipAddress.isNotEmpty) {
+      _localIpAddress = ipAddress;
+    } else if ((_localIpAddress == null || _localIpAddress!.isEmpty) && childFcmToken.contains('.')) {
+      _localIpAddress = childFcmToken;
     }
+
+    _pollingTimer?.cancel();
+
+    // Initial fetch
+    _pollVolumeReport(childFcmToken);
+
+    // Periodic polling every 5 seconds over LAN when active
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_activeChildToken != null && _activeChildToken!.isNotEmpty) {
+        _pollVolumeReport(_activeChildToken!);
+      }
+    });
+  }
+
+  /// Stop background polling
+  void stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  String _resolveHost(String childToken) {
+    if (_localIpAddress != null && _localIpAddress!.isNotEmpty) {
+      return _localIpAddress!;
+    }
+    if (childToken == 'emulator') {
+      return '10.0.2.2';
+    }
+    if (childToken.contains('.')) {
+      return childToken;
+    }
+    return '10.0.2.2';
+  }
+
+  @visibleForTesting
+  set volumeStateForTesting(VolumeState state) {
+    _volumeState = state;
+    notifyListeners();
   }
 
   void _updateVolumeStateLocally(String stream, int level) {
-    _volumeState = VolumeState(
+    _volumeState = _volumeState.copyWith(
       mediaVolume: stream == 'MEDIA' || stream == 'ALL' ? level : _volumeState.mediaVolume,
       ringtoneVolume: stream == 'RINGTONE' || stream == 'ALL' ? level : _volumeState.ringtoneVolume,
       alarmVolume: stream == 'ALARM' || stream == 'ALL' ? level : _volumeState.alarmVolume,
@@ -169,112 +183,149 @@ class VolumeRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Send a SET_VOLUME command to the child device via FCM (or local HTTP in dev mode)
+  /// Send a SET_VOLUME command to the child device via pure LAN HTTP
   Future<bool> setVolume({
     required String childFcmToken,
     required String stream, // MEDIA | RINGTONE | ALARM | ALL
     required int level,
   }) async {
-    if (childFcmToken == 'emulator') {
-      try {
-        final url = Uri.parse('http://10.0.2.2:8085/set_volume?stream=$stream&level=$level');
-        final response = await http.post(url);
-        if (response.statusCode == 200) {
-          _updateVolumeStateLocally(stream, level);
-          return true;
-        }
-      } catch (e) {
-        debugPrint('Local HTTP volume change failed: $e');
-      }
-      return false;
-    }
-
-    // Try Direct local network REST API first
-    if (_localIpAddress != null && _localIpAddress!.isNotEmpty) {
-      try {
-        final url = Uri.parse('http://$_localIpAddress:8085/set_volume?stream=$stream&level=$level');
-        debugPrint('Attempting direct local network volume change to: $url');
-        final response = await http.post(url).timeout(const Duration(seconds: 2));
-        if (response.statusCode == 200) {
-          debugPrint('Direct local network volume change succeeded!');
-          _updateVolumeStateLocally(stream, level);
-          return true;
-        }
-      } catch (e) {
-        debugPrint('Direct local network volume change failed: $e. Falling back to Firestore.');
-      }
-    }
-
-    // Fallback: Firestore write
+    final host = _resolveHost(childFcmToken);
     try {
-      await FirebaseFirestore.instance.collection('pairings').doc(childFcmToken).update({
-        'volumeCommand': {
-          'stream': stream,
-          'level': level,
-          'timestamp': FieldValue.serverTimestamp()
-        }
-      });
-      return true;
+      final url = Uri.parse('http://$host:8085/set_volume?stream=$stream&level=$level');
+      debugPrint('VolumeRepository: Sending LAN set_volume to $url');
+      final client = _httpClient;
+      final response = client != null
+          ? await client.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3))
+          : await http.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _updateVolumeStateLocally(stream, level);
+        return true;
+      } else {
+        debugPrint('VolumeRepository: LAN set_volume failed with HTTP ${response.statusCode}');
+        _handleUnreachable(childFcmToken);
+        return false;
+      }
     } catch (e) {
-      debugPrint('Firestore direct setVolume failed: $e');
+      debugPrint('VolumeRepository: LAN set_volume error: $e');
+      _handleUnreachable(childFcmToken);
       return false;
     }
   }
 
-  /// Request a volume report from the child device (or local HTTP in dev mode)
+  /// Request a volume report from the child device via pure LAN HTTP
   Future<void> requestVolumeReport(String childFcmToken) async {
-    if (childFcmToken == 'emulator') {
-      try {
-        final url = Uri.parse('http://10.0.2.2:8085/volume_report');
-        final response = await http.get(url);
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body) as Map<String, dynamic>;
-          _volumeState = VolumeState.fromJson(data);
-          _isConnected = true;
-          _lastSeen = DateTime.now();
-          notifyListeners();
-        }
-      } catch (e) {
-        debugPrint('Local HTTP volume report failed: $e');
-      }
-      return;
-    }
-
-    // Try Direct local network REST API first
-    if (_localIpAddress != null && _localIpAddress!.isNotEmpty) {
-      try {
-        final url = Uri.parse('http://$_localIpAddress:8085/volume_report');
-        debugPrint('Attempting direct local network volume report request to: $url');
-        final response = await http.get(url).timeout(const Duration(seconds: 2));
-        if (response.statusCode == 200) {
-          debugPrint('Direct local network volume report succeeded!');
-          final data = jsonDecode(response.body) as Map<String, dynamic>;
-          _volumeState = VolumeState.fromJson(data);
-          _isConnected = true;
-          _lastSeen = DateTime.now();
-          notifyListeners();
-          return;
-        }
-      } catch (e) {
-        debugPrint('Direct local network volume report failed: $e. Falling back to Firestore.');
-      }
-    }
-
-    // Fallback: Firestore write
+    final host = _resolveHost(childFcmToken);
     try {
-      await FirebaseFirestore.instance.collection('pairings').doc(childFcmToken).update({
-        'volumeCommand': {
-          'stream': 'GET_VOLUME',
-          'level': 0,
-          'timestamp': FieldValue.serverTimestamp()
-        }
-      });
+      final url = Uri.parse('http://$host:8085/volume_report');
+      final client = _httpClient;
+      final response = client != null
+          ? await client.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3))
+          : await http.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        _volumeState = VolumeState.fromJson(data);
+        _isConnected = true;
+        _lastSeen = DateTime.now();
+        notifyListeners();
+      } else {
+        debugPrint('VolumeRepository: LAN volume_report failed with HTTP ${response.statusCode}');
+        _handleUnreachable(childFcmToken);
+      }
     } catch (e) {
-      debugPrint('Firestore direct requestVolumeReport failed: $e');
+      debugPrint('VolumeRepository: LAN volume_report error: $e');
+      _handleUnreachable(childFcmToken);
     }
   }
 
-  static String getLastSeenText(DateTime? lastSeen, {DateTime? now}) {
+  /// Polls the volume and music status from the child device (alias for requestVolumeReport)
+  Future<void> _pollVolumeReport(String childFcmToken) => requestVolumeReport(childFcmToken);
+
+  /// Stop active media/audio playback (e.g. Spotify) on child device via LAN HTTP
+  Future<bool> stopAudioPlayback({String? childToken}) async {
+    final token = (childToken != null && childToken.isNotEmpty)
+        ? childToken
+        : (_activeChildToken ?? '');
+    final host = _resolveHost(token);
+    try {
+      final url = Uri.parse('http://$host:8085/stop_audio');
+      debugPrint('VolumeRepository: Sending LAN stop_audio to $url');
+      final client = _httpClient;
+      final response = client != null
+          ? await client.post(url, headers: {'X-Buddy-Token': token}).timeout(const Duration(seconds: 3))
+          : await http.post(url, headers: {'X-Buddy-Token': token}).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _volumeState = _volumeState.copyWith(
+          isMusicActive: false,
+          timestamp: DateTime.now(),
+        );
+        _isConnected = true;
+        _lastSeen = DateTime.now();
+        notifyListeners();
+        return true;
+      } else {
+        debugPrint('VolumeRepository: LAN stop_audio failed with HTTP ${response.statusCode}');
+        _handleUnreachable(token);
+        return false;
+      }
+    } catch (e) {
+      debugPrint('VolumeRepository: LAN stop_audio error: $e');
+      _handleUnreachable(token);
+      return false;
+    }
+  }
+
+  Future<void> _handleUnreachable(String childToken) async {
+    _isConnected = false;
+    notifyListeners();
+
+    if (_isRediscovering) return;
+    final devId = _deviceId;
+    final repo = _pairingRepository;
+    if (devId == null || devId.isEmpty || repo == null) return;
+
+    _isRediscovering = true;
+    try {
+      final service = _lanDiscoveryService ?? LanDiscoveryService();
+      final newIp = await service.rediscoverDevice(
+        deviceId: devId,
+        token: childToken,
+        pairingRepository: repo,
+        volumeRepository: this,
+      );
+      if (newIp != null) {
+        debugPrint('VolumeRepository: Re-discovered device at $newIp');
+      }
+    } catch (e) {
+      debugPrint('VolumeRepository: Error during re-discovery: $e');
+    } finally {
+      _isRediscovering = false;
+    }
+  }
+
+  static String getLastSeenText(DateTime? lastSeen, {DateTime? now, dynamic strings}) {
+    if (strings != null) {
+      if (lastSeen == null) return strings.lastSeenNever as String;
+      final referenceTime = now ?? DateTime.now();
+      final diff = referenceTime.difference(lastSeen);
+      if (diff.inSeconds < 10) {
+        return strings.lastSeenJustNow as String;
+      } else if (diff.inSeconds < 60) {
+        return strings.lastSeenSecondsAgo(diff.inSeconds) as String;
+      } else if (diff.inMinutes < 60) {
+        return strings.lastSeenMinutesAgo(diff.inMinutes) as String;
+      } else {
+        final hours = diff.inHours;
+        if (hours < 24) {
+          return strings.lastSeenHoursAgo(hours) as String;
+        } else {
+          return strings.lastSeenDaysAgo(diff.inDays) as String;
+        }
+      }
+    }
+
     if (lastSeen == null) return 'Keine Verbindungshistorie';
     final referenceTime = now ?? DateTime.now();
     final diff = referenceTime.difference(lastSeen);
@@ -293,10 +344,10 @@ class VolumeRepository extends ChangeNotifier {
       }
     }
   }
-}
 
-@pragma('vm:entry-point')
-Future<void> _handleBackgroundMessage(RemoteMessage message) async {
-  // Background FCM handler — must be a top-level function
-  debugPrint('Background FCM message: ${message.data}');
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
 }

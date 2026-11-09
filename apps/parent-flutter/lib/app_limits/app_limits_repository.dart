@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'app_limits_model.dart';
 
 class AppLimitsRepository extends ChangeNotifier {
-  final FirebaseFirestore? _firestore;
   final http.Client? _httpClient;
-  StreamSubscription<DocumentSnapshot>? _subscription;
 
   AppLimitsState _state = const AppLimitsState(
     installedApps: defaultInstalledApps,
@@ -16,10 +13,9 @@ class AppLimitsRepository extends ChangeNotifier {
   );
 
   AppLimitsRepository({
-    FirebaseFirestore? firestore,
     http.Client? httpClient,
-  })  : _firestore = firestore,
-        _httpClient = httpClient;
+    dynamic firestore,
+  }) : _httpClient = httpClient;
 
   AppLimitsState get state => _state;
 
@@ -27,15 +23,6 @@ class AppLimitsRepository extends ChangeNotifier {
   set state(AppLimitsState value) {
     _state = value;
     notifyListeners();
-  }
-
-  FirebaseFirestore? get firestore {
-    if (_firestore != null) return _firestore;
-    try {
-      return FirebaseFirestore.instance;
-    } catch (_) {
-      return null;
-    }
   }
 
   static const List<InstalledAppInfo> defaultInstalledApps = [
@@ -106,37 +93,125 @@ class AppLimitsRepository extends ChangeNotifier {
       usedMinutes: 0,
       bonusMinutes: 0,
     ),
+    AppCategoryRule(
+      id: 'cat-learning',
+      name: 'Lernen & Wissen',
+      packageNames: [
+        'com.google.android.apps.chromecast.app',
+        'com.android.chrome',
+      ],
+      dailyLimitMinutes: 120,
+      usedMinutes: 0,
+      bonusMinutes: 0,
+    ),
   ];
 
-  /// Subscribes to real-time updates for app limits, blacklist, and installed apps
-  void subscribeToDevice(String childFcmToken) {
-    _subscription?.cancel();
-    if (childFcmToken.isEmpty || childFcmToken == 'emulator') return;
-
-    final fs = firestore;
-    if (fs == null) return;
-
-    try {
-      _subscription = fs
-          .collection('pairings')
-          .doc(childFcmToken)
-          .snapshots()
-          .listen((snapshot) {
-        if (snapshot.exists) {
-          final data = snapshot.data();
-          if (data != null) {
-            handleSnapshotData(data);
-          }
-        }
-      }, onError: (e) {
-        debugPrint('AppLimitsRepository subscription error: $e');
-      });
-    } catch (e) {
-      debugPrint('AppLimitsRepository subscribe error: $e');
+  String _resolveHost(String? localIpAddress, String childToken) {
+    if (localIpAddress != null && localIpAddress.isNotEmpty) {
+      return localIpAddress;
     }
+    if (childToken == 'emulator') {
+      return '10.0.2.2';
+    }
+    if (childToken.contains('.')) {
+      return childToken;
+    }
+    return '10.0.2.2';
   }
 
-  /// Parses Firestore snapshot data and updates state
+  /// Starts listening to device rules over LAN
+  void subscribeToDevice(String childFcmToken, {String? localIpAddress}) {
+    fetchRules(childFcmToken, localIpAddress: localIpAddress);
+    fetchInstalledApps(childFcmToken, localIpAddress: localIpAddress);
+  }
+
+  /// Fetches app rules from child device via GET /get_app_rules over LAN
+  Future<bool> fetchRules(
+    String childFcmToken, {
+    String? localIpAddress,
+  }) async {
+    try {
+      final host = _resolveHost(localIpAddress, childFcmToken);
+      final url = Uri.parse('http://$host:8085/get_app_rules');
+      final client = _httpClient;
+      final response = client != null
+          ? await client.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3))
+          : await http.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final rules = data['rules'] as Map<String, dynamic>? ?? {};
+        final blacklist = (rules['blacklistedPackages'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            _state.blacklistedPackages;
+
+        final rawCats = rules['categories'] as List<dynamic>?;
+        final bonusMap = data['bonusMinutes'] as Map<String, dynamic>? ?? {};
+        final usageMap = data['categoryUsageSeconds'] as Map<String, dynamic>? ?? {};
+
+        List<AppCategoryRule> categories;
+        if (rawCats != null) {
+          categories = rawCats.map((c) {
+            final cat = AppCategoryRule.fromJson(Map<String, dynamic>.from(c as Map));
+            final bonus = (bonusMap[cat.id] as num?)?.toInt() ?? cat.bonusMinutes;
+            final usedSec = (usageMap[cat.id] as num?)?.toInt() ?? (cat.usedMinutes * 60);
+            return cat.copyWith(bonusMinutes: bonus, usedMinutes: (usedSec / 60).round());
+          }).toList();
+        } else {
+          categories = _state.categories;
+        }
+
+        _state = _state.copyWith(
+          blacklistedPackages: blacklist,
+          categories: categories,
+          lastUpdated: DateTime.now(),
+        );
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('AppLimitsRepository: fetchRules error: $e');
+    }
+    return false;
+  }
+
+  /// Fetches installed apps from child device via GET /installed_apps over LAN
+  Future<bool> fetchInstalledApps(
+    String childFcmToken, {
+    String? localIpAddress,
+  }) async {
+    try {
+      final host = _resolveHost(localIpAddress, childFcmToken);
+      final url = Uri.parse('http://$host:8085/installed_apps');
+      final client = _httpClient;
+      final response = client != null
+          ? await client.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3))
+          : await http.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final rawApps = data['installedApps'] as List<dynamic>?;
+        if (rawApps != null) {
+          final apps = rawApps.map((a) {
+            final map = Map<String, dynamic>.from(a as Map);
+            return InstalledAppInfo(
+              packageName: map['packageName'] as String? ?? '',
+              appName: map['label'] as String? ?? map['appName'] as String? ?? '',
+            );
+          }).toList();
+          _state = _state.copyWith(installedApps: apps);
+          notifyListeners();
+          return true;
+        }
+      }
+    } catch (e) {
+      debugPrint('AppLimitsRepository: fetchInstalledApps error: $e');
+    }
+    return false;
+  }
+
+  /// Parses snapshot data for backward compatibility in unit tests
   void handleSnapshotData(Map<String, dynamic> data) {
     // 1. Blacklist
     List<String> blacklist = _state.blacklistedPackages;
@@ -178,7 +253,6 @@ class AppLimitsRepository extends ChangeNotifier {
             final used = (item['usedMinutes'] ?? item['used'] ?? 0) as num;
             if (pkg.isNotEmpty) {
               usages[pkg] = used.toInt();
-              // If not already in installed apps, add it
               if (!apps.any((a) => a.packageName == pkg)) {
                 apps.add(InstalledAppInfo(
                   packageName: pkg,
@@ -195,7 +269,6 @@ class AppLimitsRepository extends ChangeNotifier {
       }
     }
 
-    // Ensure we keep default apps if none were discovered
     if (apps.isEmpty) {
       apps = List.from(defaultInstalledApps);
     }
@@ -237,75 +310,50 @@ class AppLimitsRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Saves the complete app limit configuration:
-  /// 1. Direct HTTP POST to child tablet LAN server http://$localIpAddress:8085/set_app_rules
-  /// 2. Firestore document update to pairings/$childFcmToken
+  /// Saves the complete app limit configuration via POST /set_app_rules over LAN
   Future<bool> saveRules(
     String childFcmToken, {
     String? localIpAddress,
   }) async {
-    bool directSuccess = false;
+    final host = _resolveHost(localIpAddress, childFcmToken);
+    try {
+      final url = Uri.parse('http://$host:8085/set_app_rules');
+      final payload = jsonEncode({
+        'blacklistedPackages': _state.blacklistedPackages,
+        'categories': _state.categories.map((c) => c.toJson()).toList(),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
 
-    // Direct HTTP push
-    if (localIpAddress != null && localIpAddress.isNotEmpty) {
-      try {
-        final url = Uri.parse('http://$localIpAddress:8085/set_app_rules');
-        final payload = jsonEncode({
-          'blacklistedPackages': _state.blacklistedPackages,
-          'categories': _state.categories.map((c) => c.toJson()).toList(),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        });
+      final client = _httpClient;
+      final response = client != null
+          ? await client.post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Buddy-Token': childFcmToken,
+              },
+              body: payload,
+            ).timeout(const Duration(seconds: 3))
+          : await http.post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Buddy-Token': childFcmToken,
+              },
+              body: payload,
+            ).timeout(const Duration(seconds: 3));
 
-        final response = _httpClient != null
-            ? await _httpClient
-                .post(
-                  url,
-                  headers: {'Content-Type': 'application/json'},
-                  body: payload,
-                )
-                .timeout(const Duration(seconds: 2))
-            : await http
-                .post(
-                  url,
-                  headers: {'Content-Type': 'application/json'},
-                  body: payload,
-                )
-                .timeout(const Duration(seconds: 2));
-
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          directSuccess = true;
-          debugPrint('Direct HTTP set_app_rules succeeded ($localIpAddress)');
-        } else {
-          debugPrint('Direct HTTP set_app_rules returned status: ${response.statusCode}');
-        }
-      } catch (e) {
-        debugPrint('Direct HTTP set_app_rules error: $e');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('Direct HTTP set_app_rules succeeded ($host)');
+        return true;
+      } else {
+        debugPrint('Direct HTTP set_app_rules returned status: ${response.statusCode}');
+        return false;
       }
+    } catch (e) {
+      debugPrint('Direct HTTP set_app_rules error: $e');
+      return false;
     }
-
-    // Firestore dual-write / sync
-    bool firestoreSuccess = false;
-    final fs = firestore;
-    if (fs != null && childFcmToken.isNotEmpty) {
-      try {
-        final categoriesJson =
-            _state.categories.map((c) => c.toJson()).toList();
-        await fs.collection('pairings').doc(childFcmToken).set({
-          'appLimits': {
-            'blacklistedPackages': _state.blacklistedPackages,
-            'categories': categoriesJson,
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          'blacklistedPackages': _state.blacklistedPackages,
-          'appCategories': categoriesJson,
-        }, SetOptions(merge: true));
-        firestoreSuccess = true;
-      } catch (e) {
-        debugPrint('Firestore saveRules error: $e');
-      }
-    }
-
-    return directSuccess || firestoreSuccess;
   }
 
   /// Toggles an app's blocked status (Tab 1: Sofort-Sperre)
@@ -347,6 +395,40 @@ class AppLimitsRepository extends ChangeNotifier {
     _state = _state.copyWith(categories: updatedCategories);
     notifyListeners();
 
+    final host = _resolveHost(localIpAddress, childFcmToken);
+    try {
+      final url = Uri.parse('http://$host:8085/add_bonus_minutes');
+      final payload = jsonEncode({
+        'categoryId': categoryId,
+        'minutes': bonusMinutesToAdd,
+      });
+
+      final client = _httpClient;
+      final response = client != null
+          ? await client.post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Buddy-Token': childFcmToken,
+              },
+              body: payload,
+            ).timeout(const Duration(seconds: 3))
+          : await http.post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Buddy-Token': childFcmToken,
+              },
+              body: payload,
+            ).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('add_bonus_minutes error: $e');
+    }
+
     return saveRules(childFcmToken, localIpAddress: localIpAddress);
   }
 
@@ -387,11 +469,5 @@ class AppLimitsRepository extends ChangeNotifier {
   void setInstalledApps(List<InstalledAppInfo> apps) {
     _state = _state.copyWith(installedApps: apps);
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _subscription?.cancel();
-    super.dispose();
   }
 }

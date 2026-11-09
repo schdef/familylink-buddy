@@ -6,6 +6,7 @@ import '../pairing/pairing_repository.dart';
 import '../volume/volume_repository.dart';
 import 'screenshot_model.dart';
 import 'screenshot_repository.dart';
+import '../l10n/app_strings.dart';
 
 class ScreenshotScreen extends StatefulWidget {
   final PairedDevice device;
@@ -26,6 +27,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
   bool _isLockingScreen = false;
   bool _isDeletingAll = false;
   String? _deletingScreenshotId;
+  String _cameraFacing = 'front';
+  bool _isCapturingCamera = false;
+  bool _isCapturingScreenshot = false;
 
   @override
   void initState() {
@@ -33,7 +37,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final repo = Provider.of<ScreenshotRepository>(context, listen: false);
-        repo.subscribeToHistory(widget.device.fcmToken);
+        repo.subscribeToHistory(widget.device.fcmToken, localIpAddress: widget.localIpAddress);
       }
     });
   }
@@ -52,14 +56,17 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
   }
 
   void _openFullscreenViewer(BuildContext context, ScreenshotItem item) {
+    final strings = context.strings;
     final bytes = _safeDecodeBase64(item.base64Image);
     showDialog(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.92),
       builder: (ctx) {
-        final subtitle = item.foregroundApp != null
-            ? '${item.deviceModel ?? widget.device.name} • ${item.foregroundApp}'
-            : (item.deviceModel ?? widget.device.name);
+        final subtitle = item.isCamera
+            ? '${item.facing == 'back' ? strings.cameraBackLabel : strings.cameraFrontLabel} • ${item.deviceModel ?? widget.device.name}'
+            : (item.foregroundApp != null
+                ? '${item.deviceModel ?? widget.device.name} • ${item.foregroundApp}'
+                : (item.deviceModel ?? widget.device.name));
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -95,7 +102,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               IconButton(
                 key: const ValueKey('fullscreen_delete_button'),
                 icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 24),
-                tooltip: 'Screenshot löschen',
+                tooltip: strings.deleteScreenshotTitle,
                 onPressed: () async {
                   final confirmed = await showDialog<bool>(
                     context: ctx,
@@ -120,10 +127,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              'Screenshot löschen?',
-                              style: TextStyle(
+                              strings.deleteScreenshotTitle,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -133,7 +140,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                         ],
                       ),
                       content: Text(
-                        'Möchtest du diese Aufnahme (${item.formattedDateTime}) wirklich löschen?',
+                        strings.deleteScreenshotConfirm(item.formattedDateTime),
                         style: const TextStyle(
                           color: Color(0xFFCBD5E1),
                           fontSize: 14,
@@ -143,9 +150,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.of(confirmCtx).pop(false),
-                          child: const Text(
-                            'Abbrechen',
-                            style: TextStyle(color: Color(0xFF94A3B8)),
+                          child: Text(
+                            strings.cancel,
+                            style: const TextStyle(color: Color(0xFF94A3B8)),
                           ),
                         ),
                         ElevatedButton(
@@ -159,7 +166,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                             ),
                             elevation: 0,
                           ),
-                          child: const Text('Löschen'),
+                          child: Text(strings.delete),
                         ),
                       ],
                     ),
@@ -172,10 +179,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                     if (!context.mounted) return;
                     if (success) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Screenshot gelöscht.'),
-                          backgroundColor: Color(0xFF10B981),
-                          duration: Duration(seconds: 2),
+                        SnackBar(
+                          content: Text(strings.screenshotDeleted),
+                          backgroundColor: const Color(0xFF10B981),
+                          duration: const Duration(seconds: 2),
                         ),
                       );
                     } else {
@@ -183,8 +190,8 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                         SnackBar(
                           content: Text(
                             repo.lastError != null && repo.lastError!.isNotEmpty
-                                ? 'Fehler beim Löschen: ${repo.lastError}'
-                                : 'Screenshot konnte nicht gelöscht werden.',
+                                ? strings.errorDeletingScreenshot(repo.lastError)
+                                : strings.screenshotNotDeleted,
                           ),
                           backgroundColor: const Color(0xFFEF4444),
                           duration: const Duration(seconds: 4),
@@ -205,18 +212,18 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                     child: Image.memory(
                       bytes,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const Center(
+                      errorBuilder: (context, error, stackTrace) => Center(
                         child: Text(
-                          'Bildformat ungültig',
-                          style: TextStyle(color: Color(0xFFEF4444)),
+                          strings.invalidImageFormat,
+                          style: const TextStyle(color: Color(0xFFEF4444)),
                         ),
                       ),
                     ),
                   )
-                : const Center(
+                : Center(
                     child: Text(
-                      'Bilddaten konnten nicht geladen werden',
-                      style: TextStyle(color: Color(0xFF94A3B8)),
+                      strings.imageLoadError,
+                      style: const TextStyle(color: Color(0xFF94A3B8)),
                     ),
                   ),
           ),
@@ -231,7 +238,8 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     ScreenshotItem item,
     String? effectiveIp,
   ) async {
-    final appName = item.foregroundApp ?? 'Unbekannt';
+    final strings = context.strings;
+    final appName = item.foregroundApp ?? strings.unknown;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -255,10 +263,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'App beenden?',
-                style: TextStyle(
+                strings.closeAppTitle,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -268,7 +276,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
           ],
         ),
         content: Text(
-          "App '$appName' beenden? Das Gerät des Kindes kehrt sofort zum Startbildschirm zurück.",
+          strings.closeAppConfirm(appName),
           style: const TextStyle(
             color: Color(0xFFCBD5E1),
             fontSize: 14,
@@ -278,9 +286,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
-              'Abbrechen',
-              style: TextStyle(color: Color(0xFF94A3B8)),
+            child: Text(
+              strings.cancel,
+              style: const TextStyle(color: Color(0xFF94A3B8)),
             ),
           ),
           ElevatedButton(
@@ -293,7 +301,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
               elevation: 0,
             ),
-            child: const Text('App beenden'),
+            child: Text(strings.closeAppButton),
           ),
         ],
       ),
@@ -316,7 +324,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("App '$appName' wurde beendet."),
+            content: Text(strings.appClosed(appName)),
             backgroundColor: const Color(0xFF10B981),
             duration: const Duration(seconds: 3),
           ),
@@ -332,10 +340,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('App konnte nicht beendet werden. Ist das Gerät erreichbar?'),
-            backgroundColor: Color(0xFFEF4444),
-            duration: Duration(seconds: 4),
+          SnackBar(
+            content: Text(strings.appCloseFailed),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -353,6 +361,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     ScreenshotRepository repo,
     String? effectiveIp,
   ) async {
+    final strings = context.strings;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -376,10 +385,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Tablet-Bildschirm sperren?',
-                style: TextStyle(
+                strings.lockTabletTitle,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -388,9 +397,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
             ),
           ],
         ),
-        content: const Text(
-          'Möchtest du den Bildschirm des Tablets jetzt sofort ausschalten und sperren?',
-          style: TextStyle(
+        content: Text(
+          strings.lockTabletConfirm,
+          style: const TextStyle(
             color: Color(0xFFCBD5E1),
             fontSize: 14,
             height: 1.4,
@@ -399,9 +408,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
-              'Abbrechen',
-              style: TextStyle(color: Color(0xFF94A3B8)),
+            child: Text(
+              strings.cancel,
+              style: const TextStyle(color: Color(0xFF94A3B8)),
             ),
           ),
           ElevatedButton(
@@ -414,7 +423,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
               elevation: 0,
             ),
-            child: const Text('Jetzt sperren'),
+            child: Text(strings.lockNow),
           ),
         ],
       ),
@@ -436,18 +445,18 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Tablet-Bildschirm wurde gesperrt.'),
-            backgroundColor: Color(0xFF10B981),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(strings.tabletLocked),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 3),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bildschirm konnte nicht gesperrt werden. Ist das Gerät online?'),
-            backgroundColor: Color(0xFFEF4444),
-            duration: Duration(seconds: 4),
+          SnackBar(
+            content: Text(strings.tabletLockFailed),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -465,6 +474,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     ScreenshotRepository repo,
     ScreenshotItem item,
   ) async {
+    final strings = context.strings;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -488,10 +498,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Screenshot löschen?',
-                style: TextStyle(
+                strings.deleteScreenshotTitle,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -501,7 +511,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
           ],
         ),
         content: Text(
-          'Möchtest du diese Aufnahme (${item.formattedDateTime}) wirklich löschen?',
+          strings.deleteScreenshotConfirm(item.formattedDateTime),
           style: const TextStyle(
             color: Color(0xFFCBD5E1),
             fontSize: 14,
@@ -511,9 +521,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
-              'Abbrechen',
-              style: TextStyle(color: Color(0xFF94A3B8)),
+            child: Text(
+              strings.cancel,
+              style: const TextStyle(color: Color(0xFF94A3B8)),
             ),
           ),
           ElevatedButton(
@@ -527,7 +537,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
               elevation: 0,
             ),
-            child: const Text('Löschen'),
+            child: Text(strings.delete),
           ),
         ],
       ),
@@ -549,10 +559,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Screenshot gelöscht.'),
-            backgroundColor: Color(0xFF10B981),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(strings.screenshotDeleted),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 2),
           ),
         );
       } else {
@@ -560,8 +570,8 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
           SnackBar(
             content: Text(
               repo.lastError != null && repo.lastError!.isNotEmpty
-                  ? 'Fehler beim Löschen: ${repo.lastError}'
-                  : 'Screenshot konnte nicht gelöscht werden.',
+                  ? strings.errorDeletingScreenshot(repo.lastError)
+                  : strings.screenshotNotDeleted,
             ),
             backgroundColor: const Color(0xFFEF4444),
             duration: const Duration(seconds: 4),
@@ -581,6 +591,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     BuildContext context,
     ScreenshotRepository repo,
   ) async {
+    final strings = context.strings;
     final count = repo.history.length;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -605,10 +616,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Alle Screenshots löschen?',
-                style: TextStyle(
+                strings.deleteAllScreenshotsTitle,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -618,7 +629,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
           ],
         ),
         content: Text(
-          'Möchtest du alle $count Aufnahmen wirklich unwiderruflich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
+          strings.deleteAllScreenshotsConfirm(count),
           style: const TextStyle(
             color: Color(0xFFCBD5E1),
             fontSize: 14,
@@ -628,9 +639,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
-              'Abbrechen',
-              style: TextStyle(color: Color(0xFF94A3B8)),
+            child: Text(
+              strings.cancel,
+              style: const TextStyle(color: Color(0xFF94A3B8)),
             ),
           ),
           ElevatedButton(
@@ -644,7 +655,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
               ),
               elevation: 0,
             ),
-            child: const Text('Alle löschen'),
+            child: Text(strings.deleteAll),
           ),
         ],
       ),
@@ -663,10 +674,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Alle Screenshots wurden gelöscht.'),
-            backgroundColor: Color(0xFF10B981),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(strings.allScreenshotsDeleted),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 3),
           ),
         );
       } else {
@@ -674,8 +685,8 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
           SnackBar(
             content: Text(
               repo.lastError != null && repo.lastError!.isNotEmpty
-                  ? 'Fehler beim Löschen aller Screenshots: ${repo.lastError}'
-                  : 'Screenshots konnten nicht gelöscht werden.',
+                  ? strings.errorDeletingAllScreenshots(repo.lastError)
+                  : strings.screenshotNotDeleted,
             ),
             backgroundColor: const Color(0xFFEF4444),
             duration: const Duration(seconds: 4),
@@ -693,6 +704,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.strings;
     // Dynamically resolve effective IP from widget or VolumeRepository
     String? dynamicVolumeIp;
     try {
@@ -715,9 +727,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Live-Bildschirm',
-              style: TextStyle(
+            Text(
+              strings.liveScreenTitle,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -757,7 +769,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  isLanActive ? 'LAN Direct' : 'Cloud Sync',
+                  isLanActive ? strings.lanDirect : strings.cloudSync,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -781,109 +793,320 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Action Button: "Screenshot jetzt aufnehmen"
+                // Camera Facing & Flash Info Bar
                 Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isCapturing
-                          ? [const Color(0xFF475569), const Color(0xFF334155)]
-                          : [const Color(0xFF6366F1), const Color(0xFF4F46E5)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: isCapturing
-                        ? []
-                        : [
-                            BoxShadow(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.35),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF334155)),
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: isCapturing
-                          ? null
-                          : () async {
-                              final item = await repo.captureScreenshot(
-                                widget.device.fcmToken,
-                                localIpAddress: effectiveIp,
-                              );
-                              if (!context.mounted) return;
-                              if (item != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Screenshot erfolgreich empfangen!'),
-                                    backgroundColor: Color(0xFF10B981),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              } else {
-                                final err = (repo.lastError ?? '').toLowerCase();
-                                final isPermission = repo.hasPermissionError ||
-                                    ScreenshotRepository.isPermissionDenied(repo.lastError);
-                                final isAccessibilityOrTimeout = err.contains('accessibility') ||
-                                    err.contains('is not connected') ||
-                                    err.contains('timeout');
-                                final errorMsg = isPermission
-                                    ? 'Firestore-Berechtigung verweigert: Regeln für Screenshots in Firebase Console aktualisieren.'
-                                    : isAccessibilityOrTimeout
-                                        ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
-                                        : 'Screenshot konnte nicht empfangen werden. Ist das Gerät online?';
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(errorMsg),
-                                    backgroundColor: const Color(0xFFEF4444),
-                                    duration: const Duration(seconds: 5),
-                                  ),
-                                );
-                              }
-                            },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.flip_camera_ios_outlined, size: 18, color: Color(0xFF818CF8)),
+                      const SizedBox(width: 8),
+                      Text(
+                        strings.cameraLabel,
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF475569)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              key: const ValueKey('camera_facing_selector'),
+                              value: _cameraFacing,
+                              isExpanded: true,
+                              dropdownColor: const Color(0xFF1E293B),
+                              isDense: true,
+                              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF94A3B8)),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: 'front',
+                                  child: Text(strings.frontCamera),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'back',
+                                  child: Text(strings.backCamera),
+                                ),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _cameraFacing = val);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF334155)),
+                        ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (isCapturing) ...[
-                              const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
-                                ),
+                            const Icon(Icons.flash_off_rounded, size: 13, color: Color(0xFF94A3B8)),
+                            const SizedBox(width: 4),
+                            Text(
+                              strings.flashOff,
+                              style: const TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
                               ),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'Aufnahme läuft...',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ] else ...[
-                              const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 22),
-                              const SizedBox(width: 10),
-                              const Text(
-                                'Screenshot jetzt aufnehmen',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
+                ),
+
+                // 1. Action Buttons Row: "Screenshot jetzt aufnehmen" & "Kamera-Foto aufnehmen"
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isCapturing
+                                ? [const Color(0xFF475569), const Color(0xFF334155)]
+                                : [const Color(0xFF6366F1), const Color(0xFF4F46E5)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: isCapturing
+                              ? []
+                              : [
+                                  BoxShadow(
+                                    color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            key: const ValueKey('capture_screenshot_button'),
+                            onTap: isCapturing
+                                ? null
+                                : () async {
+                                    setState(() => _isCapturingScreenshot = true);
+                                    try {
+                                      final item = await repo.captureScreenshot(
+                                        widget.device.fcmToken,
+                                        localIpAddress: effectiveIp,
+                                      );
+                                      if (!context.mounted) return;
+                                      if (item != null) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(strings.screenshotSuccess),
+                                            backgroundColor: const Color(0xFF10B981),
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      } else {
+                                        final err = (repo.lastError ?? '').toLowerCase();
+                                        final isPermission = repo.hasPermissionError ||
+                                            ScreenshotRepository.isPermissionDenied(repo.lastError);
+                                        final isAccessibilityOrTimeout = err.contains('accessibility') ||
+                                            err.contains('is not connected') ||
+                                            err.contains('timeout');
+                                        final errorMsg = isPermission
+                                            ? '${strings.firestorePermissionDenied}: ${strings.securityRulesUpdateRequired}.'
+                                            : isAccessibilityOrTimeout
+                                                ? strings.accessibilityServiceRequired
+                                                : strings.screenshotNotDeleted;
+
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(errorMsg),
+                                            backgroundColor: const Color(0xFFEF4444),
+                                            duration: const Duration(seconds: 5),
+                                          ),
+                                        );
+                                      }
+                                    } finally {
+                                      if (mounted) setState(() => _isCapturingScreenshot = false);
+                                    }
+                                  },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_isCapturingScreenshot) ...[
+                                    const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      strings.running,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const Icon(Icons.screenshot_monitor_rounded, color: Colors.white, size: 20),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        strings.captureScreenshot,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isCapturing
+                                ? [const Color(0xFF475569), const Color(0xFF334155)]
+                                : [const Color(0xFF0EA5E9), const Color(0xFF0284C7)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: isCapturing
+                              ? []
+                              : [
+                                  BoxShadow(
+                                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.35),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            key: const ValueKey('take_camera_photo_button'),
+                            onTap: isCapturing
+                                ? null
+                                : () async {
+                                    setState(() => _isCapturingCamera = true);
+                                    try {
+                                      final item = await repo.takeCameraPhoto(
+                                        childFcmToken: widget.device.fcmToken,
+                                        localIpAddress: effectiveIp,
+                                        facing: _cameraFacing,
+                                        flash: false,
+                                      );
+                                      if (!context.mounted) return;
+                                      if (item != null) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(strings.cameraSuccess),
+                                            backgroundColor: const Color(0xFF10B981),
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      } else {
+                                        final errorMsg = repo.lastError ?? strings.tabletLockFailed;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(errorMsg),
+                                            backgroundColor: const Color(0xFFEF4444),
+                                            duration: const Duration(seconds: 5),
+                                          ),
+                                        );
+                                      }
+                                    } finally {
+                                      if (mounted) setState(() => _isCapturingCamera = false);
+                                    }
+                                  },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_isCapturingCamera) ...[
+                                    const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      strings.running,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 20),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        strings.takeCameraPhoto,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 10),
@@ -921,9 +1144,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              const Text(
-                                'Wird gesperrt...',
-                                style: TextStyle(
+                              Text(
+                                strings.locking,
+                                style: const TextStyle(
                                   color: Color(0xFFF59E0B),
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,
@@ -936,9 +1159,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 size: 22,
                               ),
                               const SizedBox(width: 10),
-                              const Text(
-                                'Bildschirm sperren',
-                                style: TextStyle(
+                              Text(
+                                strings.lockScreen,
+                                style: const TextStyle(
                                   color: Color(0xFFFBBF24),
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,
@@ -996,21 +1219,21 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 12),
-                                  const Expanded(
+                                  Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Firestore-Berechtigung verweigert',
-                                          style: TextStyle(
+                                          strings.firestorePermissionDenied,
+                                          style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 15,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                         Text(
-                                          'Sicherheitsregeln müssen in der Firebase Console aktualisiert werden',
-                                          style: TextStyle(
+                                          strings.securityRulesUpdateRequired,
+                                          style: const TextStyle(
                                             color: Color(0xFFFCD34D),
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
@@ -1022,9 +1245,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              const Text(
-                                'Für die Live-Screenshot-Funktion benötigt die Screenshots-Sammlung Schreib- und Leserechte in den Firestore Security Rules.',
-                                style: TextStyle(
+                              Text(
+                                strings.firestorePermissionHelp,
+                                style: const TextStyle(
                                   color: Color(0xFFFEF3C7),
                                   fontSize: 13,
                                   height: 1.4,
@@ -1083,8 +1306,8 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                             Expanded(
                               child: Text(
                                 isAccessibilityOrTimeout
-                                    ? 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.'
-                                    : 'Screenshot konnte nicht empfangen werden: $errorStr',
+                                    ? strings.accessibilityServiceRequired
+                                    : strings.screenshotNotReceived(errorStr),
                                 style: const TextStyle(
                                   color: Color(0xFFFCA5A5),
                                   fontSize: 13,
@@ -1123,19 +1346,19 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Noch kein Screenshot vorhanden',
-                          style: TextStyle(
+                        Text(
+                          strings.noScreenshotYet,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Tippe auf den Button oben, um den aktuellen Bildschirm des Kindes in Echtzeit abzurufen.',
+                        Text(
+                          strings.noScreenshotDesc,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Color(0xFF94A3B8),
                             fontSize: 13,
                             height: 1.4,
@@ -1165,15 +1388,17 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 Container(
                                   width: 8,
                                   height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF10B981),
+                                  decoration: BoxDecoration(
+                                    color: latestScreenshot.isCamera ? const Color(0xFF0284C7) : const Color(0xFF10B981),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  'Aktueller Bildschirm',
-                                  style: TextStyle(
+                                Text(
+                                  latestScreenshot.isCamera
+                                      ? (latestScreenshot.facing == 'back' ? strings.cameraBackLabel : strings.cameraFrontLabel)
+                                      : strings.screenLabel,
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
@@ -1216,7 +1441,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                       color: Color(0xFFEF4444),
                                       size: 20,
                                     ),
-                                    tooltip: 'Screenshot löschen',
+                                    tooltip: strings.deleteScreenshotTitle,
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                                     onPressed: _isDeletingAll || _deletingScreenshotId != null
@@ -1298,14 +1523,14 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(color: Colors.white24),
                                       ),
-                                      child: const Row(
+                                      child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.zoom_in_rounded, size: 16, color: Colors.white),
-                                          SizedBox(width: 6),
+                                          const Icon(Icons.zoom_in_rounded, size: 16, color: Colors.white),
+                                          const SizedBox(width: 6),
                                           Text(
-                                            'Vergrößern',
-                                            style: TextStyle(
+                                            strings.zoom,
+                                            style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 11,
                                               fontWeight: FontWeight.w600,
@@ -1354,7 +1579,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Aktive App: ${latestScreenshot.foregroundApp ?? 'Unbekannt'}',
+                                          strings.activeApp(latestScreenshot.foregroundApp ?? strings.unknown),
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 13,
@@ -1401,7 +1626,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                             )
                                           : const Icon(Icons.stop_circle_outlined, size: 18),
                                       label: Text(
-                                        _isClosingApp ? 'Wird beendet...' : 'App sofort beenden',
+                                        _isClosingApp ? strings.closingApp : strings.closeAppImmediate,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -1436,7 +1661,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                             )
                                           : const Icon(Icons.screen_lock_portrait_rounded, size: 18),
                                       label: Text(
-                                        _isLockingScreen ? 'Wird gesperrt...' : 'Tablet sperren',
+                                        _isLockingScreen ? strings.lockingTablet : strings.lockTablet,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -1469,7 +1694,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Verlauf (${history.length})',
+                          strings.historyCount(history.length),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1492,7 +1717,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                 )
                               : const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 18),
                           label: Text(
-                            _isDeletingAll ? 'Wird gelöscht...' : 'Alle löschen',
+                            _isDeletingAll ? strings.deletingAll : strings.deleteAll,
                             style: const TextStyle(
                               color: Color(0xFFEF4444),
                               fontSize: 13,
@@ -1570,6 +1795,34 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                                 size: 28,
                                               ),
                                             ),
+                                          // Badge: "📷 Front-Kamera" vs "📱 Bildschirm"
+                                          Positioned(
+                                            top: 6,
+                                            left: 6,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: item.isCamera
+                                                    ? const Color(0xFF0284C7).withValues(alpha: 0.9)
+                                                    : const Color(0xFF1E293B).withValues(alpha: 0.85),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: item.isCamera ? const Color(0xFF38BDF8) : const Color(0xFF475569),
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                item.isCamera
+                                                    ? (item.facing == 'back' ? strings.cameraBackLabel : strings.cameraFrontLabel)
+                                                    : strings.screenLabel,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                           if (isLatest)
                                             Positioned(
                                               top: 6,
@@ -1580,9 +1833,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                                   color: const Color(0xFF6366F1),
                                                   borderRadius: BorderRadius.circular(6),
                                                 ),
-                                                child: const Text(
-                                                  'NEU',
-                                                  style: TextStyle(
+                                                child: Text(
+                                                  strings.newBadge,
+                                                  style: const TextStyle(
                                                     color: Colors.white,
                                                     fontSize: 9,
                                                     fontWeight: FontWeight.bold,
@@ -1611,6 +1864,18 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                                   item.foregroundApp!,
                                                   style: const TextStyle(
                                                     color: Color(0xFF818CF8),
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 2),
+                                              ] else if (item.isCamera) ...[
+                                                Text(
+                                                  item.facing == 'back' ? strings.backCameraShort : strings.frontCameraShort,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF38BDF8),
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w600,
                                                   ),
@@ -1655,7 +1920,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                               color: Color(0xFFEF4444),
                                               size: 18,
                                             ),
-                                            tooltip: 'Screenshot löschen',
+                                            tooltip: strings.deleteScreenshotTitle,
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                                             onPressed: _isDeletingAll || _deletingScreenshotId != null

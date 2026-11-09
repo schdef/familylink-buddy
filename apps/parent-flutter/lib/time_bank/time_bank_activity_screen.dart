@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'time_bank_repository.dart';
+import '../l10n/app_strings.dart';
 import '../pairing/pairing_repository.dart';
 
 class TimeBankActivityScreen extends StatefulWidget {
@@ -45,7 +46,7 @@ class _TimeBankActivityScreenState extends State<TimeBankActivityScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Aktivitätsverlauf'),
+        title: Text(context.strings.activityHistoryTitle),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
       ),

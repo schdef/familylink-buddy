@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../volume/volume_control_screen.dart';
+import '../l10n/app_strings.dart';
 import 'pairing_repository.dart';
-import '../auth/google_family_link_service.dart';
-import '../auth/google_sign_in_service.dart';
 
 class PairingScreen extends StatefulWidget {
-  final ParentAccount? account;
+  final http.Client? httpClient;
+  final PairingRepository? repository;
 
-  const PairingScreen({super.key, this.account});
+  const PairingScreen({
+    super.key,
+    this.httpClient,
+    this.repository,
+  });
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -18,152 +23,242 @@ class _PairingScreenState extends State<PairingScreen> {
   final _deviceNameController = TextEditingController(text: 'Felix');
   final _deviceTokenController = TextEditingController();
   final _pairingCodeController = TextEditingController();
-  final _repository = PairingRepository();
+  late final PairingRepository _repository;
   bool _isLoading = false;
   bool _isScanning = false;
   String? _error;
 
-  List<FamilyMember> _familyChildren = [];
-  FamilyMember? _selectedChild;
-  bool _isLoadingFamily = false;
-
   @override
   void initState() {
     super.initState();
-    _fetchFamilyChildren();
+    _repository = widget.repository ?? PairingRepository();
   }
 
-  Future<void> _fetchFamilyChildren() async {
-    setState(() { _isLoadingFamily = true; });
-    try {
-      final email = widget.account?.email ?? 'stefanheintz@gmail.com';
-      final kids = await GoogleFamilyLinkService.fetchChildren(email);
+  // Handle scanned QR code payload
+  Future<void> _handleScannedQr(String raw) async {
+    final strings = context.strings;
+    setState(() {
+      _isScanning = false;
+      _isLoading = true;
+      _error = null;
+    });
+
+    final payload = PairingQrPayload.tryParse(raw);
+    if (payload == null) {
       setState(() {
-        _familyChildren = kids;
-        if (kids.isNotEmpty) {
-          _selectedChild = kids.first;
-        }
-        _isLoadingFamily = false;
+        _isLoading = false;
+        _error = strings.invalidQrCode;
       });
-    } catch (e) {
-      setState(() { _isLoadingFamily = false; });
+      return;
     }
+
+    final ip = payload.ip.isNotEmpty
+        ? payload.ip
+        : (payload.token.contains('.') ? payload.token : '10.0.2.2');
+    final port = payload.port;
+    final token = payload.token;
+
+    final isReachable = await _repository.verifyDeviceConnectivity(
+      ip,
+      port,
+      token,
+      client: widget.httpClient,
+    );
+
+    if (!isReachable) {
+      setState(() {
+        _isLoading = false;
+        _error = strings.connectionFailed(ip, port);
+      });
+      return;
+    }
+
+    final childName = payload.deviceName.isNotEmpty
+        ? payload.deviceName
+        : (_deviceNameController.text.trim().isNotEmpty
+            ? _deviceNameController.text.trim()
+            : strings.defaultChildName);
+
+    final device = PairedDevice(
+      id: payload.deviceId.isNotEmpty ? payload.deviceId : payload.token,
+      name: childName,
+      token: payload.token,
+      localIpAddress: ip,
+      port: port,
+      lastSeen: DateTime.now(),
+    );
+
+    await _repository.savePairedDevice(device);
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(strings.successfullyPaired),
+        backgroundColor: const Color(0xFF10B981),
+      ),
+    );
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => VolumeControlScreen(device: device),
+      ),
+    );
   }
 
-  // 1. Direct Pairing using FCM Token
+  // 1. Direct Pairing using Device IP or Token
   Future<void> _handleDirectPairing() async {
-    final name = _selectedChild?.name ?? _deviceNameController.text.trim();
+    final strings = context.strings;
+    final name = _deviceNameController.text.trim();
     final token = _deviceTokenController.text.trim();
 
     if (name.isEmpty || token.isEmpty) {
-      setState(() { _error = 'Bitte füllen Sie alle Felder aus.'; });
+      setState(() {
+        _error = strings.fillAllFields;
+      });
       return;
     }
 
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
     try {
-      final parentId = widget.account?.id ?? 'mock-parent-uid';
-      await FirebaseFirestore.instance.collection('pairings').doc(token).set({
-        'parentId': parentId,
-        'deviceName': name,
-        'lastSeen': FieldValue.serverTimestamp()
-      });
+      final payload = PairingQrPayload.tryParse(token);
+      final ip = payload?.ip.isNotEmpty == true
+          ? payload!.ip
+          : (token.contains('.') ? token : (token == 'emulator' ? '10.0.2.2' : null));
+      final port = payload?.port ?? 8085;
+      final finalToken = payload?.token.isNotEmpty == true ? payload!.token : token;
+      final deviceId = payload?.deviceId.isNotEmpty == true ? payload!.deviceId : finalToken;
 
       final device = PairedDevice(
+        id: deviceId,
         name: name,
-        fcmToken: token,
+        token: finalToken,
         lastSeen: DateTime.now(),
+        localIpAddress: ip,
+        port: port,
       );
 
       await _repository.savePairedDevice(device);
-      setState(() { _isLoading = false; });
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
 
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(strings.successfullyPaired),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => VolumeControlScreen(device: device),
+        ),
+      );
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = 'Direkte Kopplung fehlgeschlagen: $e';
+        _error = strings.pairingFailed(e);
       });
     }
   }
 
-  // 2. Resolve Pairing using 6-Digit Code via Direct Firestore
+  // 2. Resolve Pairing using 6-Digit Code or IP
   Future<void> _handlePairingWithCode() async {
+    final strings = context.strings;
     final code = _pairingCodeController.text.trim();
-    final childName = _selectedChild?.name ?? 'Kind';
+    final childName = _deviceNameController.text.trim().isNotEmpty
+        ? _deviceNameController.text.trim()
+        : strings.defaultChildName;
 
     if (code.isEmpty) {
-      setState(() { _error = 'Bitte geben Sie den 6-stelligen Code ein.'; });
+      setState(() {
+        _error = strings.enterCodeOrIp;
+      });
       return;
     }
 
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
     try {
-      final codeDoc = await FirebaseFirestore.instance
-          .collection('pairing_codes')
-          .doc(code)
-          .get();
+      final payload = PairingQrPayload.tryParse(code);
+      final ip = payload?.ip.isNotEmpty == true
+          ? payload!.ip
+          : (code.contains('.') ? code : null);
+      final port = payload?.port ?? 8085;
+      final token = payload?.token.isNotEmpty == true ? payload!.token : code;
+      final deviceId = payload?.deviceId.isNotEmpty == true ? payload!.deviceId : token;
 
-      if (!codeDoc.exists) {
-        throw 'Der eingegebene Code ist ungültig oder abgelaufen.';
-      }
-
-      final codeData = codeDoc.data();
-      if (codeData == null) {
-        throw 'Dokumentdaten sind leer.';
-      }
-
-      final childToken = codeData['fcmToken'] as String;
-      final parentId = widget.account?.id ?? 'mock-parent-uid';
-      final volumeReport = codeData['volumeReport'] as Map<dynamic, dynamic>?;
-
-      // 1. Create pairings document directly with the child's Family Link API name
-      await FirebaseFirestore.instance
-          .collection('pairings')
-          .doc(childToken)
-          .set({
-            'parentId': parentId,
-            'deviceName': childName,
-            'lastSeen': FieldValue.serverTimestamp(),
-            'volumeReport': volumeReport
+      if (ip != null) {
+        final ok = await _repository.verifyDeviceConnectivity(
+          ip,
+          port,
+          token,
+          client: widget.httpClient,
+        );
+        if (!ok) {
+          setState(() {
+            _isLoading = false;
+            _error = strings.connectionFailed(ip, port);
           });
-
-      // 2. Delete temporary pairing code
-      await FirebaseFirestore.instance
-          .collection('pairing_codes')
-          .doc(code)
-          .delete();
+          return;
+        }
+      }
 
       final device = PairedDevice(
+        id: deviceId,
         name: childName,
-        fcmToken: childToken,
+        token: token,
         lastSeen: DateTime.now(),
+        localIpAddress: ip,
+        port: port,
       );
 
       await _repository.savePairedDevice(device);
-      setState(() { _isLoading = false; });
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
 
-      if (mounted) {
-        Navigator.of(context).pop(); // Go back to DeviceListScreen dashboard
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(strings.successfullyPaired),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => VolumeControlScreen(device: device),
+        ),
+      );
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = 'Kopplung fehlgeschlagen: $e';
+        _error = strings.pairingFailed(e);
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.strings;
+
     if (_isScanning) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('QR Code scannen'),
+          title: Text(strings.scanQrCodeTitle),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => setState(() => _isScanning = false),
@@ -175,11 +270,7 @@ class _PairingScreenState extends State<PairingScreen> {
             for (final barcode in barcodes) {
               final raw = barcode.rawValue;
               if (raw != null && raw.isNotEmpty) {
-                setState(() {
-                  _deviceTokenController.text = raw;
-                  _isScanning = false;
-                });
-                _handleDirectPairing();
+                _handleScannedQr(raw);
                 break;
               }
             }
@@ -191,7 +282,7 @@ class _PairingScreenState extends State<PairingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Gerät koppeln'),
+        title: Text(strings.pairDeviceTitle),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
       ),
@@ -203,18 +294,18 @@ class _PairingScreenState extends State<PairingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Kinder-Gerät koppeln',
-                      style: TextStyle(
+                    Text(
+                      strings.pairChildLocally,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Koppeln Sie das Gerät Ihres Kindes per 6-stelligem Code oder QR-Code.',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                    Text(
+                      strings.pairChildLocallyDesc,
+                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
                     ),
                     const SizedBox(height: 24),
 
@@ -222,7 +313,7 @@ class _PairingScreenState extends State<PairingScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.15),
+                          color: const Color(0x26EF4444),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(_error!, style: const TextStyle(color: Color(0xFFEF4444))),
@@ -230,69 +321,27 @@ class _PairingScreenState extends State<PairingScreen> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Family Link Supervised Kid Dropdown Selector
-                    if (_isLoadingFamily) ...[
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8.0),
-                          child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+                    TextField(
+                      controller: _deviceNameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: strings.deviceNameLabel,
+                        labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Color(0xFF334155)),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                    ] else if (_familyChildren.isNotEmpty) ...[
-                      DropdownButtonFormField<FamilyMember>(
-                        value: _selectedChild,
-                        dropdownColor: const Color(0xFF1E293B),
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'Kind aus Family Link auswählen',
-                          labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Color(0xFF334155)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Color(0xFF6366F1)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF1E293B),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Color(0xFF6366F1)),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        items: _familyChildren.map((child) => DropdownMenuItem(
-                          value: child,
-                          child: Text('${child.name} (${child.email})'),
-                        )).toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedChild = val;
-                          });
-                        },
+                        filled: true,
+                        fillColor: const Color(0xFF1E293B),
                       ),
-                      const SizedBox(height: 24),
-                    ] else ...[
-                      // Fallback input if Family Link API fails/empty
-                      TextField(
-                        controller: _deviceNameController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'Geräte-Name (z.B. Felix)',
-                          labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Color(0xFF334155)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Color(0xFF6366F1)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF1E293B),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
+                    ),
+                    const SizedBox(height: 24),
 
-                    // SECTION 1: 6-Digit Code Pairing
+                    // SECTION 1: Code / IP Entry
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -303,18 +352,17 @@ class _PairingScreenState extends State<PairingScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Text(
-                            'Methode A: 6-stelliger Code',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          Text(
+                            strings.methodA,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _pairingCodeController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
                             textAlign: TextAlign.center,
                             decoration: InputDecoration(
-                              hintText: '123 456',
+                              hintText: strings.codeOrIpHint,
                               hintStyle: const TextStyle(color: Color(0xFF475569)),
                               enabledBorder: OutlineInputBorder(
                                 borderSide: const BorderSide(color: Color(0xFF334155)),
@@ -331,8 +379,8 @@ class _PairingScreenState extends State<PairingScreen> {
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             onPressed: _handlePairingWithCode,
-                            icon: const Icon(Icons.pin),
-                            label: const Text('Per PIN-Code verbinden'),
+                            icon: const Icon(Icons.lan),
+                            label: Text(strings.connect),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF6366F1),
                               foregroundColor: Colors.white,
@@ -351,7 +399,7 @@ class _PairingScreenState extends State<PairingScreen> {
                     ElevatedButton.icon(
                       onPressed: () => setState(() => _isScanning = true),
                       icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Methode B: QR-Code scannen'),
+                      label: Text(strings.methodB),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF10B981),
                         foregroundColor: Colors.white,
@@ -371,7 +419,7 @@ class _PairingScreenState extends State<PairingScreen> {
                         _handleDirectPairing();
                       },
                       icon: const Icon(Icons.developer_board),
-                      label: const Text('Lokale Emulator-Kopplung (Auto-Pair)'),
+                      label: Text(strings.localEmulatorPairing),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF6366F1),
                         side: const BorderSide(color: Color(0xFF6366F1)),

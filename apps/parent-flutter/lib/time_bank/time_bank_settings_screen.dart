@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'time_bank_repository.dart';
+import '../l10n/app_strings.dart';
 import '../pairing/pairing_repository.dart';
 
 class TimeBankSettingsScreen extends StatefulWidget {
@@ -16,20 +17,12 @@ class TimeBankSettingsScreen extends StatefulWidget {
 }
 
 class _TimeBankSettingsScreenState extends State<TimeBankSettingsScreen> {
-  late TimeBankRepository _repository;
-
-  @override
-  void initState() {
-    super.initState();
-    _repository = Provider.of<TimeBankRepository>(context, listen: false);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Einstellungen'),
+        title: Text(context.strings.timeBankSettingsTitle),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
       ),
