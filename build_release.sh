@@ -11,6 +11,11 @@ elif [ -d "/Applications/Android Studio.app/Contents/jbr/Contents/Home" ]; then
     export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 fi
 
+# Detect Flutter
+if ! command -v flutter &> /dev/null && [ -d "$HOME/flutter/bin" ]; then
+    export PATH="$HOME/flutter/bin:$PATH"
+fi
+
 echo "=== FamilyLink Buddy Local-First Release Compiler ==="
 echo "Building 100% Local-First standalone APKs for Child and Parent apps..."
 echo ""

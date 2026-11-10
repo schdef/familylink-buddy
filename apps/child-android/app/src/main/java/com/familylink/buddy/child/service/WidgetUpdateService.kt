@@ -33,6 +33,7 @@ import com.familylink.buddy.child.data.AppRules
 import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.data.InstalledAppsManager
 import com.familylink.buddy.child.data.VolumeState
+import com.familylink.buddy.child.data.QrCodeGenerator
 import android.media.AudioManager
 import android.provider.Settings
 import android.database.ContentObserver
@@ -977,24 +978,7 @@ class WidgetUpdateService : Service() {
     }
 
     private fun getLocalIpAddress(): String? {
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
-                        val ip = address.hostAddress
-                        if (ip != null && (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172."))) {
-                            return ip
-                        }
-                    }
-                }
-            }
-        } catch (ex: Exception) {
-            Log.e(TAG, "Error getting IP Address", ex)
-        }
-        return null
+        val ip = QrCodeGenerator.getLocalIpAddress(this)
+        return if (ip != "127.0.0.1") ip else null
     }
 }

@@ -361,10 +361,10 @@ class LocalHttpServer(
             } else {
                 sendHttpResponse(writer, 404, "Not Found", "{\"error\":\"Not Found\"}")
             }
-
-            client.close()
         } catch (e: Exception) {
             Log.e(TAG, "Error handling client request", e)
+        } finally {
+            try { client.close() } catch (_: Exception) {}
         }
     }
 
@@ -505,7 +505,7 @@ class LocalHttpServer(
         }
 
         val completed = try {
-            latch.await(5, TimeUnit.SECONDS)
+            latch.await(10, TimeUnit.SECONDS)
         } catch (e: InterruptedException) {
             false
         }

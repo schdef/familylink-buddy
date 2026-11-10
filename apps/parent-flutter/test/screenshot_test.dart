@@ -350,6 +350,32 @@ void main() {
       expect(repo.latestScreenshot, equals(result));
     });
 
+    test('Host resolution uses token instead of 10.0.2.2 when token has no dots and is not emulator', () async {
+      String? requestedHost;
+      final mockClient = MockClient((request) async {
+        requestedHost = request.url.host;
+        return http.Response(jsonEncode({'id': 'host-test', 'base64Image': 'abc'}), 200);
+      });
+
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      await repo.captureScreenshot('tablet-alpha-token');
+
+      expect(requestedHost, 'tablet-alpha-token');
+    });
+
+    test('Host resolution uses 10.0.2.2 when child token is emulator', () async {
+      String? requestedHost;
+      final mockClient = MockClient((request) async {
+        requestedHost = request.url.host;
+        return http.Response(jsonEncode({'id': 'emu-test', 'base64Image': 'abc'}), 200);
+      });
+
+      final repo = ScreenshotRepository(httpClient: mockClient);
+      await repo.captureScreenshot('emulator');
+
+      expect(requestedHost, '10.0.2.2');
+    });
+
     test('captureScreenshot handles raw base64 string response from LAN HTTP', () async {
       const rawBase64 = 'iVBORw0KGgoAAAANSUhEUg==';
       final mockClient = MockClient((request) async {
@@ -742,7 +768,7 @@ void main() {
       expect(find.text('Cloud Sync'), findsNothing);
     });
 
-    testWidgets('permission error renders dedicated informative banner with rules hint', (tester) async {
+    testWidgets('permission error renders dedicated informative banner with local-first diagnosis', (tester) async {
       final screenshotRepo = ScreenshotRepository();
       final volumeRepo = VolumeRepository();
 
@@ -758,8 +784,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('screenshot_permission_error_banner')), findsOneWidget);
-      expect(find.text('Firestore-Berechtigung verweigert'), findsOneWidget);
-      expect(find.textContaining('pairings/{childToken}/screenshots'), findsOneWidget);
+      expect(find.text('Verbindungs- / Berechtigungs-Hinweis'), findsOneWidget);
+      expect(find.textContaining('Bedienungshilfen-Dienst'), findsOneWidget);
     });
 
     testWidgets('general error renders standard error banner without permission card', (tester) async {

@@ -353,7 +353,7 @@ class MainActivity : ComponentActivity() {
                         if (token.isNotEmpty()) {
                             val deviceId = repository.getDeviceIdSync()
                             val deviceName = QrCodeGenerator.getDeviceName(this@MainActivity)
-                            val localIp = QrCodeGenerator.getLocalIpAddress()
+                            val localIp = QrCodeGenerator.getLocalIpAddress(this@MainActivity)
                             val payload = QrCodeGenerator.createPairingPayload(
                                 deviceId = deviceId,
                                 deviceName = deviceName,

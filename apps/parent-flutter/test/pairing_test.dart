@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:parent_app/pairing/pairing_repository.dart';
 import 'package:parent_app/pairing/pairing_screen.dart';
 import 'package:parent_app/volume/volume_control_screen.dart';
@@ -307,6 +308,35 @@ void main() {
 
       expect(find.textContaining('Verbindung zum Gerät unter 192.168.1.99:8085 fehlgeschlagen'), findsOneWidget);
       expect(find.byType(VolumeControlScreen), findsNothing);
+    });
+
+    testWidgets('Tapping QR scan opens scanner and back button returns without hanging', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: PairingScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final qrButton = find.byIcon(Icons.qr_code_scanner);
+      expect(qrButton, findsOneWidget);
+
+      await tester.tap(qrButton);
+      await tester.pump();
+
+      // Scanner screen should be visible
+      expect(find.byType(MobileScanner), findsOneWidget);
+      expect(find.text('QR Code scannen'), findsOneWidget);
+
+      // Tap back button
+      final backButton = find.byIcon(Icons.arrow_back);
+      expect(backButton, findsOneWidget);
+      await tester.tap(backButton);
+      await tester.pump();
+
+      // Should return to pairing screen
+      expect(find.text('Kinder-Gerät lokal koppeln'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     });
   });
 }

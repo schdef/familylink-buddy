@@ -26,4 +26,11 @@ class QrCodeGeneratorTest {
         assertEquals(8085, json.getInt("port"))
         assertEquals("secret-token-xyz", json.getString("token"))
     }
+
+    @Test
+    fun testGetLocalIpAddressWithoutContext() {
+        val ip = QrCodeGenerator.getLocalIpAddress(null)
+        assertNotNull(ip)
+        assert(ip.isNotEmpty())
+    }
 }

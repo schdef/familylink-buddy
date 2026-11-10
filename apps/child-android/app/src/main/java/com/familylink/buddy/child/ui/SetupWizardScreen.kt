@@ -102,7 +102,7 @@ fun SetupWizardScreen(
         deviceToken = token
         deviceId = repository.getDeviceIdSync()
         deviceName = QrCodeGenerator.getDeviceName(context)
-        localIp = QrCodeGenerator.getLocalIpAddress()
+        localIp = QrCodeGenerator.getLocalIpAddress(context)
         pairingCode = if (token.length >= 6) token.take(6).uppercase() else "123456"
 
         val payload = QrCodeGenerator.createPairingPayload(

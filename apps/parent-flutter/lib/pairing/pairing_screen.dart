@@ -20,12 +20,14 @@ class PairingScreen extends StatefulWidget {
 }
 
 class _PairingScreenState extends State<PairingScreen> {
+  final MobileScannerController _scannerController = MobileScannerController();
   final _deviceNameController = TextEditingController(text: 'Felix');
   final _deviceTokenController = TextEditingController();
   final _pairingCodeController = TextEditingController();
   late final PairingRepository _repository;
   bool _isLoading = false;
   bool _isScanning = false;
+  bool _isProcessingScan = false;
   String? _error;
 
   @override
@@ -37,76 +39,103 @@ class _PairingScreenState extends State<PairingScreen> {
   // Handle scanned QR code payload
   Future<void> _handleScannedQr(String raw) async {
     final strings = context.strings;
+    String ip = '10.0.2.2';
+    int port = 8085;
+
     setState(() {
       _isScanning = false;
       _isLoading = true;
       _error = null;
     });
 
-    final payload = PairingQrPayload.tryParse(raw);
-    if (payload == null) {
+    try {
+      final payload = PairingQrPayload.tryParse(raw);
+      if (payload == null) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _error = strings.invalidQrCode;
+            _isProcessingScan = false;
+          });
+        }
+        return;
+      }
+
+      ip = payload.ip.isNotEmpty
+          ? payload.ip
+          : (payload.token.contains('.') ? payload.token : '10.0.2.2');
+      port = payload.port;
+      final token = payload.token;
+
+      final isReachable = await _repository.verifyDeviceConnectivity(
+        ip,
+        port,
+        token,
+        client: widget.httpClient,
+      );
+
+      if (!isReachable) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _error = strings.connectionFailed(ip, port);
+            _isProcessingScan = false;
+          });
+        }
+        return;
+      }
+
+      final childName = payload.deviceName.isNotEmpty
+          ? payload.deviceName
+          : (_deviceNameController.text.trim().isNotEmpty
+              ? _deviceNameController.text.trim()
+              : strings.defaultChildName);
+
+      final device = PairedDevice(
+        id: payload.deviceId.isNotEmpty ? payload.deviceId : payload.token,
+        name: childName,
+        token: payload.token,
+        localIpAddress: ip,
+        port: port,
+        lastSeen: DateTime.now(),
+      );
+
+      await _repository.savePairedDevice(device);
+
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = strings.invalidQrCode;
+        _isProcessingScan = false;
       });
-      return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(strings.successfullyPaired),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => VolumeControlScreen(device: device),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = strings.connectionFailed(ip, port);
+          _isProcessingScan = false;
+        });
+      }
+    } finally {
+      if (mounted && _isLoading) {
+        setState(() {
+          _isLoading = false;
+          _isProcessingScan = false;
+        });
+      }
     }
-
-    final ip = payload.ip.isNotEmpty
-        ? payload.ip
-        : (payload.token.contains('.') ? payload.token : '10.0.2.2');
-    final port = payload.port;
-    final token = payload.token;
-
-    final isReachable = await _repository.verifyDeviceConnectivity(
-      ip,
-      port,
-      token,
-      client: widget.httpClient,
-    );
-
-    if (!isReachable) {
-      setState(() {
-        _isLoading = false;
-        _error = strings.connectionFailed(ip, port);
-      });
-      return;
-    }
-
-    final childName = payload.deviceName.isNotEmpty
-        ? payload.deviceName
-        : (_deviceNameController.text.trim().isNotEmpty
-            ? _deviceNameController.text.trim()
-            : strings.defaultChildName);
-
-    final device = PairedDevice(
-      id: payload.deviceId.isNotEmpty ? payload.deviceId : payload.token,
-      name: childName,
-      token: payload.token,
-      localIpAddress: ip,
-      port: port,
-      lastSeen: DateTime.now(),
-    );
-
-    await _repository.savePairedDevice(device);
-
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(strings.successfullyPaired),
-        backgroundColor: const Color(0xFF10B981),
-      ),
-    );
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => VolumeControlScreen(device: device),
-      ),
-    );
   }
 
   // 1. Direct Pairing using Device IP or Token
@@ -261,15 +290,25 @@ class _PairingScreenState extends State<PairingScreen> {
           title: Text(strings.scanQrCodeTitle),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => setState(() => _isScanning = false),
+            onPressed: () {
+              _scannerController.stop();
+              setState(() {
+                _isScanning = false;
+                _isProcessingScan = false;
+              });
+            },
           ),
         ),
         body: MobileScanner(
+          controller: _scannerController,
           onDetect: (capture) {
+            if (_isLoading || _isProcessingScan || !_isScanning) return;
             final List<Barcode> barcodes = capture.barcodes;
             for (final barcode in barcodes) {
               final raw = barcode.rawValue;
               if (raw != null && raw.isNotEmpty) {
+                _isProcessingScan = true;
+                _scannerController.stop();
                 _handleScannedQr(raw);
                 break;
               }
@@ -397,7 +436,13 @@ class _PairingScreenState extends State<PairingScreen> {
 
                     // SECTION 2: QR Code Scan
                     ElevatedButton.icon(
-                      onPressed: () => setState(() => _isScanning = true),
+                      onPressed: () {
+                        setState(() {
+                          _isScanning = true;
+                          _isProcessingScan = false;
+                        });
+                        _scannerController.start();
+                      },
                       icon: const Icon(Icons.qr_code_scanner),
                       label: Text(strings.methodB),
                       style: ElevatedButton.styleFrom(
@@ -438,6 +483,7 @@ class _PairingScreenState extends State<PairingScreen> {
 
   @override
   void dispose() {
+    _scannerController.dispose();
     _deviceNameController.dispose();
     _deviceTokenController.dispose();
     _pairingCodeController.dispose();

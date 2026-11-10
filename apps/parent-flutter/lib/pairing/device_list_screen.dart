@@ -8,20 +8,24 @@ import '../updater/updater_service.dart';
 import '../l10n/app_strings.dart';
 
 class DeviceListScreen extends StatefulWidget {
-  const DeviceListScreen({super.key});
+  final PairingRepository? repository;
+
+  const DeviceListScreen({super.key, this.repository});
 
   @override
   State<DeviceListScreen> createState() => _DeviceListScreenState();
 }
 
 class _DeviceListScreenState extends State<DeviceListScreen> {
-  final PairingRepository _repository = PairingRepository();
+  late final PairingRepository _repository;
   List<PairedDevice> _devices = [];
   bool _isLoading = true;
+  final Map<String, bool?> _deviceOnlineState = {};
 
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? PairingRepository();
     _loadDevices();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UpdaterService.checkForUpdates(context);
@@ -36,6 +40,27 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
         _devices = devices;
         _isLoading = false;
       });
+
+      for (final device in devices) {
+        final ip = (device.localIpAddress != null && device.localIpAddress!.isNotEmpty)
+            ? device.localIpAddress
+            : (device.fcmToken == 'emulator' ? '10.0.2.2' : null);
+        if (ip != null && ip.isNotEmpty) {
+          _deviceOnlineState[device.id] = null; // checking
+          _repository
+              .verifyDeviceConnectivity(ip, device.port, device.token,
+                  timeout: const Duration(seconds: 2))
+              .then((isOnline) {
+            if (mounted) {
+              setState(() {
+                _deviceOnlineState[device.id] = isOnline;
+              });
+            }
+          });
+        } else {
+          _deviceOnlineState[device.id] = false;
+        }
+      }
     }
   }
 
@@ -308,28 +333,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFF10B981),
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          device.ipAddress != null && device.ipAddress!.isNotEmpty
-                                              ? 'LAN (${device.ipAddress})'
-                                              : (device.fcmToken == 'emulator' ? 'Emulator (10.0.2.2)' : strings.localLan),
-                                          style: const TextStyle(
-                                            color: Color(0xFF10B981),
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    _buildDeviceStatus(device, strings),
                                     const SizedBox(height: 8),
                                     Wrap(
                                       spacing: 8,
@@ -418,6 +422,76 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
               backgroundColor: const Color(0xFF6366F1),
               foregroundColor: Colors.white,
             ),
+    );
+  }
+
+  Widget _buildDeviceStatus(PairedDevice device, AppStrings strings) {
+    final ip = (device.localIpAddress != null && device.localIpAddress!.isNotEmpty)
+        ? device.localIpAddress
+        : (device.fcmToken == 'emulator' ? '10.0.2.2' : null);
+    final isOnline = _deviceOnlineState[device.id];
+
+    final String ipLabel;
+    if (ip != null && ip.isNotEmpty) {
+      ipLabel = (device.fcmToken == 'emulator' && (device.localIpAddress == null || device.localIpAddress!.isEmpty))
+          ? 'Emulator (10.0.2.2)'
+          : 'LAN ($ip)';
+    } else {
+      ipLabel = strings.localLan;
+    }
+
+    final Color statusColor;
+    final String statusText;
+    final Widget dotWidget;
+
+    if (isOnline == true) {
+      statusColor = const Color(0xFF10B981);
+      statusText = '${strings.online} • $ipLabel';
+      dotWidget = Container(
+        width: 8,
+        height: 8,
+        decoration: const BoxDecoration(
+          color: Color(0xFF10B981),
+          shape: BoxShape.circle,
+        ),
+      );
+    } else if (isOnline == false) {
+      statusColor = const Color(0xFFEF4444);
+      statusText = '${strings.offline} • $ipLabel';
+      dotWidget = Container(
+        width: 8,
+        height: 8,
+        decoration: const BoxDecoration(
+          color: Color(0xFFEF4444),
+          shape: BoxShape.circle,
+        ),
+      );
+    } else {
+      // isOnline == null (Checking)
+      statusColor = const Color(0xFFF59E0B);
+      statusText = '${strings.checking} • $ipLabel';
+      dotWidget = const SizedBox(
+        width: 8,
+        height: 8,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          color: Color(0xFFF59E0B),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        dotWidget,
+        const SizedBox(width: 6),
+        Text(
+          statusText,
+          style: TextStyle(
+            color: statusColor,
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 }

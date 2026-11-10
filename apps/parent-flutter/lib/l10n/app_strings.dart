@@ -120,7 +120,9 @@ abstract class AppStrings {
   String get lanDirect;
   String get cloudSync;
   String get connected;
+  String get online;
   String get offline;
+  String get checking;
   String get errorPrefix;
   String get unknown;
 
@@ -256,6 +258,9 @@ abstract class AppStrings {
   String get firestorePermissionDenied;
   String get securityRulesUpdateRequired;
   String get firestorePermissionHelp;
+  String get localFirstDiagnosisTitle;
+  String get localFirstDiagnosisHelp;
+  String get localFirstDiagnosisSteps;
   String get accessibilityServiceRequired;
   String get noScreenshotYet;
   String get noScreenshotDesc;
@@ -483,7 +488,11 @@ class AppStringsEn extends AppStrings {
   @override
   String get connected => 'Connected';
   @override
+  String get online => 'Online';
+  @override
   String get offline => 'Offline';
+  @override
+  String get checking => 'Checking';
   @override
   String get errorPrefix => 'Error: ';
   @override
@@ -725,11 +734,17 @@ class AppStringsEn extends AppStrings {
   @override
   String get lockScreen => 'Lock Screen';
   @override
-  String get firestorePermissionDenied => 'Firestore permission denied';
+  String get firestorePermissionDenied => 'Connection / Permission Warning';
   @override
-  String get securityRulesUpdateRequired => 'Security rules need to be updated in Firebase Console';
+  String get securityRulesUpdateRequired => 'Check Local Network & Accessibility Service';
   @override
-  String get firestorePermissionHelp => 'For the live screenshot feature, the screenshots collection requires read and write access in Firestore Security Rules.';
+  String get firestorePermissionHelp => 'Could not connect to child tablet over LAN. Please ensure:';
+  @override
+  String get localFirstDiagnosisTitle => 'Connection / Permission Warning';
+  @override
+  String get localFirstDiagnosisHelp => 'Could not connect to child tablet over LAN. Please verify:';
+  @override
+  String get localFirstDiagnosisSteps => '1. Both devices are connected to the same Wi-Fi.\n2. Tablet screen is awake and unlocked.\n3. Accessibility Service is granted in Tablet Settings.';
   @override
   String get accessibilityServiceRequired => 'Screenshot failed: Accessibility service must be enabled on the child device.';
   @override
@@ -1109,7 +1124,11 @@ class AppStringsDe extends AppStrings {
   @override
   String get connected => 'Verbunden';
   @override
+  String get online => 'Online';
+  @override
   String get offline => 'Offline';
+  @override
+  String get checking => 'Prüfe...';
   @override
   String get errorPrefix => 'Fehler: ';
   @override
@@ -1351,11 +1370,17 @@ class AppStringsDe extends AppStrings {
   @override
   String get lockScreen => 'Bildschirm sperren';
   @override
-  String get firestorePermissionDenied => 'Firestore-Berechtigung verweigert';
+  String get firestorePermissionDenied => 'Verbindungs- / Berechtigungs-Hinweis';
   @override
-  String get securityRulesUpdateRequired => 'Sicherheitsregeln müssen in der Firebase Console aktualisiert werden';
+  String get securityRulesUpdateRequired => 'Lokales Netzwerk & Bedienungshilfen prüfen';
   @override
-  String get firestorePermissionHelp => 'Für die Live-Screenshot-Funktion benötigt die Screenshots-Sammlung Schreib- und Leserechte in den Firestore Security Rules.';
+  String get firestorePermissionHelp => 'Keine Verbindung zum Kinder-Tablet über LAN. Bitte prüfe:';
+  @override
+  String get localFirstDiagnosisTitle => 'Verbindungs- / Berechtigungs-Hinweis';
+  @override
+  String get localFirstDiagnosisHelp => 'Keine Verbindung zum Kinder-Tablet über LAN. Bitte prüfe:';
+  @override
+  String get localFirstDiagnosisSteps => '1. Beide Geräte sind im selben WLAN verbunden.\n2. Tablet-Bildschirm ist an und entsperrt.\n3. Bedienungshilfen-Dienst ist in den Tablet-Einstellungen aktiviert.';
   @override
   String get accessibilityServiceRequired => 'Screenshot fehlgeschlagen: Auf dem Kinder-Gerät muss der Bedienungshilfen-Dienst (Accessibility) aktiviert sein.';
   @override

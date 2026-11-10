@@ -712,7 +712,11 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
     } catch (_) {
       dynamicVolumeIp = null;
     }
-    final effectiveIp = widget.localIpAddress ?? dynamicVolumeIp;
+    final effectiveIp = (widget.localIpAddress != null && widget.localIpAddress!.isNotEmpty)
+        ? widget.localIpAddress
+        : ((widget.device.localIpAddress != null && widget.device.localIpAddress!.isNotEmpty)
+            ? widget.device.localIpAddress
+            : dynamicVolumeIp);
     final isLanActive = effectiveIp != null && effectiveIp.isNotEmpty;
 
     return Scaffold(
@@ -940,7 +944,7 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                             ? '${strings.firestorePermissionDenied}: ${strings.securityRulesUpdateRequired}.'
                                             : isAccessibilityOrTimeout
                                                 ? strings.accessibilityServiceRequired
-                                                : strings.screenshotNotDeleted;
+                                                : strings.screenshotNotReceived(repo.lastError ?? strings.unknown);
 
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
@@ -1264,9 +1268,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                                     color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
                                   ),
                                 ),
-                                child: const SelectableText(
-                                  '// Firebase Console -> Firestore Database -> Rules:\nmatch /pairings/{childToken}/screenshots/{id} {\n  allow read, write: if true;\n}',
-                                  style: TextStyle(
+                                child: SelectableText(
+                                  strings.localFirstDiagnosisSteps,
+                                  style: const TextStyle(
                                     fontFamily: 'monospace',
                                     color: Color(0xFFFDE68A),
                                     fontSize: 12,

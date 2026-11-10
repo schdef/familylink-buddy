@@ -88,7 +88,7 @@ class ScreenshotRepository extends ChangeNotifier {
     if (childToken.contains('.')) {
       return childToken;
     }
-    return '10.0.2.2';
+    return childToken;
   }
 
   /// Captures a screenshot from the child device purely via LAN HTTP http://$localIpAddress:8085/take_screenshot
@@ -109,8 +109,8 @@ class ScreenshotRepository extends ChangeNotifier {
 
       final client = _httpClient;
       final http.Response response = client != null
-          ? await client.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 5))
-          : await http.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 5));
+          ? await client.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 12))
+          : await http.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 12));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final dynamic decoded = jsonDecode(response.body);
@@ -203,8 +203,8 @@ class ScreenshotRepository extends ChangeNotifier {
 
       final client = _httpClient;
       final http.Response response = client != null
-          ? await client.post(url, headers: {'X-Buddy-Token': token}).timeout(const Duration(seconds: 8))
-          : await http.post(url, headers: {'X-Buddy-Token': token}).timeout(const Duration(seconds: 8));
+          ? await client.post(url, headers: {'X-Buddy-Token': token}).timeout(const Duration(seconds: 12))
+          : await http.post(url, headers: {'X-Buddy-Token': token}).timeout(const Duration(seconds: 12));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final dynamic decoded = jsonDecode(response.body);

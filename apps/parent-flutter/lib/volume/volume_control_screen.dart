@@ -389,11 +389,14 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 label: strings.quickActionAppLimits,
                 accentColor: const Color(0xFFEC4899),
                 onTap: () {
+                  final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
+                      ? repo.localIpAddress
+                      : widget.device.localIpAddress;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => AppLimitsScreen(
                         device: widget.device,
-                        localIpAddress: repo.localIpAddress,
+                        localIpAddress: effectiveIp,
                       ),
                     ),
                   );
@@ -409,11 +412,14 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 label: strings.quickActionBedtime,
                 accentColor: const Color(0xFF8B5CF6),
                 onTap: () {
+                  final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
+                      ? repo.localIpAddress
+                      : widget.device.localIpAddress;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => BedtimeScheduleScreen(
                         device: widget.device,
-                        localIpAddress: repo.localIpAddress,
+                        localIpAddress: effectiveIp,
                       ),
                     ),
                   );
@@ -432,11 +438,14 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 label: strings.quickActionScreenshot,
                 accentColor: const Color(0xFF06B6D4),
                 onTap: () {
+                  final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
+                      ? repo.localIpAddress
+                      : widget.device.localIpAddress;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => ScreenshotScreen(
                         device: widget.device,
-                        localIpAddress: repo.localIpAddress,
+                        localIpAddress: effectiveIp,
                       ),
                     ),
                   );
@@ -452,7 +461,10 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 label: strings.quickActionUpdate,
                 accentColor: const Color(0xFF10B981),
                 onTap: () {
-                  _showP2PUpdateDialog(context, repo.localIpAddress);
+                  final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
+                      ? repo.localIpAddress
+                      : widget.device.localIpAddress;
+                  _showP2PUpdateDialog(context, effectiveIp);
                 },
               ),
             ),
