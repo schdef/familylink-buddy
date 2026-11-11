@@ -4,6 +4,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Base64
@@ -41,19 +42,54 @@ class LocalHttpServer(
 ) {
     companion object {
         private const val TAG = "LocalHttpServer"
-        private const val PORT = 8085
+        const val PORT = 8085
+        @Volatile private var instance: LocalHttpServer? = null
+
+        fun startServer(context: Context, repository: FamilyTimeRepository): LocalHttpServer {
+            return instance?.also { if (!it.isRunning) it.start() } ?: synchronized(this) {
+                instance?.also { if (!it.isRunning) it.start() } ?: LocalHttpServer(context.applicationContext, repository).also {
+                    instance = it
+                    it.start()
+                }
+            }
+        }
+
+        fun stopServer() {
+            synchronized(this) {
+                instance?.stop()
+                instance = null
+            }
+        }
+
+        fun getInstance(): LocalHttpServer? = instance
     }
 
     private var serverSocket: ServerSocket? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var isRunning = false
     private val scope = CoroutineScope(Dispatchers.IO)
 
     fun start() {
         if (isRunning) return
         isRunning = true
+
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            wifiLock = wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "FamilyLinkBuddy:HttpServerLock")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.d(TAG, "Acquired WifiLock for LocalHttpServer")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire WifiLock", e)
+        }
+
         Thread {
             try {
-                serverSocket = ServerSocket(PORT)
+                serverSocket = ServerSocket().apply {
+                    reuseAddress = true
+                    bind(java.net.InetSocketAddress("0.0.0.0", PORT), 50)
+                }
                 Log.d(TAG, "Local developer HTTP server started on port $PORT")
                 while (isRunning) {
                     val client = serverSocket?.accept() ?: break
@@ -67,6 +103,8 @@ class LocalHttpServer(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Exception in server loop", e)
+            } finally {
+                isRunning = false
             }
         }.start()
     }
@@ -74,7 +112,18 @@ class LocalHttpServer(
     fun stop() {
         isRunning = false
         try {
+            wifiLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+            wifiLock = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Error releasing WifiLock", e)
+        }
+        try {
             serverSocket?.close()
+            serverSocket = null
             Log.d(TAG, "Local developer HTTP server stopped")
         } catch (e: Exception) {
             Log.e(TAG, "Error closing server socket", e)

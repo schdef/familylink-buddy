@@ -35,6 +35,7 @@ import com.familylink.buddy.child.R
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.QrCodeGenerator
 import com.familylink.buddy.child.data.SetupStateDetector
+import com.familylink.buddy.child.service.LocalHttpServer
 import com.familylink.buddy.child.service.WifiAccessibilityHelperService
 import kotlinx.coroutines.launch
 
@@ -98,6 +99,7 @@ fun SetupWizardScreen(
     var pairingCode by remember { mutableStateOf("------") }
 
     LaunchedEffect(Unit) {
+        LocalHttpServer.startServer(context, repository)
         val token = repository.getOrCreateDeviceToken()
         deviceToken = token
         deviceId = repository.getDeviceIdSync()

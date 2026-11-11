@@ -78,7 +78,7 @@ class _PairingScreenState extends State<PairingScreen> {
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _error = strings.connectionFailed(ip, port);
+            _error = strings.connectionFailedHint(ip, port);
             _isProcessingScan = false;
           });
         }
@@ -124,7 +124,7 @@ class _PairingScreenState extends State<PairingScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _error = strings.connectionFailed(ip, port);
+          _error = strings.connectionFailedHint(ip, port);
           _isProcessingScan = false;
         });
       }
@@ -226,28 +226,50 @@ class _PairingScreenState extends State<PairingScreen> {
           ? payload!.ip
           : (code.contains('.') ? code : null);
       final port = payload?.port ?? 8085;
-      final token = payload?.token.isNotEmpty == true ? payload!.token : code;
-      final deviceId = payload?.deviceId.isNotEmpty == true ? payload!.deviceId : token;
+      var token = payload?.token.isNotEmpty == true ? payload!.token : code;
+      var deviceId = payload?.deviceId.isNotEmpty == true ? payload!.deviceId : token;
+      var resolvedName = (payload?.deviceName.isNotEmpty == true && payload!.deviceName != 'Kind')
+          ? payload.deviceName
+          : childName;
 
       if (ip != null) {
-        final ok = await _repository.verifyDeviceConnectivity(
+        final pairData = await _repository.pairWithDevice(
           ip,
           port,
-          token,
           client: widget.httpClient,
         );
-        if (!ok) {
-          setState(() {
-            _isLoading = false;
-            _error = strings.connectionFailed(ip, port);
-          });
-          return;
+
+        if (pairData != null) {
+          if (pairData['token'] is String && (pairData['token'] as String).isNotEmpty) {
+            token = pairData['token'] as String;
+          }
+          if (pairData['deviceId'] is String && (pairData['deviceId'] as String).isNotEmpty) {
+            deviceId = pairData['deviceId'] as String;
+          }
+          if (pairData['deviceName'] is String && (pairData['deviceName'] as String).isNotEmpty) {
+            resolvedName = pairData['deviceName'] as String;
+          }
+        } else {
+          final ok = await _repository.verifyDeviceConnectivity(
+            ip,
+            port,
+            token,
+            client: widget.httpClient,
+          );
+          if (!ok) {
+            if (mounted) {
+              setState(() {
+                _error = strings.connectionFailedHint(ip, port);
+              });
+            }
+            return;
+          }
         }
       }
 
       final device = PairedDevice(
         id: deviceId,
-        name: childName,
+        name: resolvedName,
         token: token,
         lastSeen: DateTime.now(),
         localIpAddress: ip,
@@ -256,9 +278,6 @@ class _PairingScreenState extends State<PairingScreen> {
 
       await _repository.savePairedDevice(device);
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -273,10 +292,17 @@ class _PairingScreenState extends State<PairingScreen> {
         ),
       );
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _error = strings.pairingFailed(e);
-      });
+      if (mounted) {
+        setState(() {
+          _error = strings.pairingFailed(e);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

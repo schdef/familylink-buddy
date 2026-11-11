@@ -47,6 +47,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         Log.i(TAG, "WifiAccessibilityHelperService connected")
+        LocalHttpServer.startServer(applicationContext, FamilyTimeRepository(applicationContext))
         AppLimitsManager.getInstance(this)
         startLimitsTicker()
     }

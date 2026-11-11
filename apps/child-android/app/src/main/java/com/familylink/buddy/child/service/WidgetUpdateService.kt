@@ -119,9 +119,7 @@ class WidgetUpdateService : Service() {
 
         startDatabaseObserver()
 
-        localHttpServer = LocalHttpServer(applicationContext, repository).apply {
-            start()
-        }
+        localHttpServer = LocalHttpServer.startServer(applicationContext, repository)
 
         val deviceId = repository.getDeviceIdSync()
         nsdHelper = NsdHelper(applicationContext, deviceId).apply {
@@ -163,7 +161,7 @@ class WidgetUpdateService : Service() {
         serviceScope.cancel()
         nsdHelper?.unregisterService()
         nsdHelper = null
-        localHttpServer?.stop()
+        localHttpServer = null
         Log.d(TAG, "Service destroyed")
     }
 

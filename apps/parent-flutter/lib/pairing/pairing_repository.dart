@@ -115,13 +115,19 @@ class PairingQrPayload {
     }
 
     // Backwards compatibility for plain token/IP strings
-    if (trimmed.contains('.')) {
-      String ip = trimmed;
+    var clean = trimmed;
+    if (clean.startsWith('http://')) clean = clean.substring(7);
+    if (clean.startsWith('https://')) clean = clean.substring(8);
+    clean = clean.trim();
+    if (clean.endsWith('/')) clean = clean.substring(0, clean.length - 1).trim();
+
+    if (clean.contains('.')) {
+      String ip = clean;
       int port = 8085;
-      if (trimmed.contains(':')) {
-        final parts = trimmed.split(':');
-        ip = parts[0];
-        port = int.tryParse(parts[1]) ?? 8085;
+      if (clean.contains(':')) {
+        final parts = clean.split(':');
+        ip = parts[0].trim();
+        port = int.tryParse(parts[1].trim()) ?? 8085;
       }
       return PairingQrPayload(
         version: 1,
@@ -135,11 +141,11 @@ class PairingQrPayload {
 
     return PairingQrPayload(
       version: 1,
-      deviceId: trimmed,
+      deviceId: clean,
       deviceName: 'Kind',
       ip: '',
       port: 8085,
-      token: trimmed,
+      token: clean,
     );
   }
 }
@@ -210,21 +216,63 @@ class PairingRepository {
     await prefs.remove(_keyDevicePort);
   }
 
+  Future<Map<String, dynamic>?> pairWithDevice(
+    String ip,
+    int port, {
+    String? customToken,
+    http.Client? client,
+    Duration timeout = const Duration(seconds: 7),
+  }) async {
+    final httpClient = client ?? http.Client();
+    try {
+      final url = Uri.parse('http://$ip:$port/pair');
+      final body = customToken != null && customToken.isNotEmpty
+          ? jsonEncode({'token': customToken})
+          : '{}';
+      final res = await httpClient.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      ).timeout(timeout);
+
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {
+      // Fallback to GET /status
+    } finally {
+      if (client == null) httpClient.close();
+    }
+    return null;
+  }
+
   Future<bool> verifyDeviceConnectivity(
     String ip,
     int port,
     String token, {
     http.Client? client,
-    Duration timeout = const Duration(seconds: 3),
+    Duration timeout = const Duration(seconds: 7),
   }) async {
     final httpClient = client ?? http.Client();
     try {
       final url = Uri.parse('http://$ip:$port/status');
-      final response = await httpClient.get(
-        url,
-        headers: {'X-Buddy-Token': token},
-      ).timeout(timeout);
-      return response.statusCode == 200;
+      for (int attempt = 0; attempt < 2; attempt++) {
+        try {
+          final response = await httpClient.get(
+            url,
+            headers: {'X-Buddy-Token': token},
+          ).timeout(timeout);
+          if (response.statusCode == 200) {
+            return true;
+          }
+        } catch (_) {
+          // Attempt failed or timed out
+        }
+        if (attempt == 0) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+      }
+      return false;
     } catch (_) {
       return false;
     } finally {

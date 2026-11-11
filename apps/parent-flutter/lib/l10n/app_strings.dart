@@ -155,6 +155,7 @@ abstract class AppStrings {
   String get pairChildLocallyDesc;
   String get invalidQrCode;
   String connectionFailed(String ip, int port);
+  String connectionFailedHint(String ip, int port);
   String get successfullyPaired;
   String get fillAllFields;
   String pairingFailed(dynamic error);
@@ -545,6 +546,8 @@ class AppStringsEn extends AppStrings {
   String get invalidQrCode => 'Invalid QR code. Please try again.';
   @override
   String connectionFailed(String ip, int port) => 'Connection to device at $ip:$port failed (timeout after 3s). Please check Wi-Fi.';
+  @override
+  String connectionFailedHint(String ip, int port) => 'Connection to $ip:$port failed. Please check:\n1. Both devices on same Wi-Fi? (Not Guest Wi-Fi)\n2. Router \'WLAN devices may communicate\' enabled?\n3. Tablet app open?';
   @override
   String get successfullyPaired => 'Successfully paired!';
   @override
@@ -1181,6 +1184,8 @@ class AppStringsDe extends AppStrings {
   String get invalidQrCode => 'Ungültiger QR-Code. Bitte erneut versuchen.';
   @override
   String connectionFailed(String ip, int port) => 'Verbindung zum Gerät unter $ip:$port fehlgeschlagen (Timeout nach 3s). Bitte WLAN prüfen.';
+  @override
+  String connectionFailedHint(String ip, int port) => 'Verbindung zu $ip:$port fehlgeschlagen. Bitte prüfen:\n1. Beide Geräte im selben WLAN? (Kein Gast-WLAN)\n2. Im Router \'WLAN-Geräte dürfen untereinander kommunizieren\' aktiviert?\n3. Tablet-App geöffnet?';
   @override
   String get successfullyPaired => 'Erfolgreich gekoppelt!';
   @override

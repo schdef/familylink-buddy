@@ -81,6 +81,23 @@ void main() {
       expect(payload.port, 9090);
     });
 
+    test('Sanitizes and parses http:// and https:// IP strings with ports and trailing slashes', () {
+      final p1 = PairingQrPayload.tryParse('http://192.168.178.49');
+      expect(p1, isNotNull);
+      expect(p1!.ip, '192.168.178.49');
+      expect(p1.port, 8085);
+
+      final p2 = PairingQrPayload.tryParse('http://192.168.178.49:8085/');
+      expect(p2, isNotNull);
+      expect(p2!.ip, '192.168.178.49');
+      expect(p2.port, 8085);
+
+      final p3 = PairingQrPayload.tryParse('https://192.168.178.49:9090/');
+      expect(p3, isNotNull);
+      expect(p3!.ip, '192.168.178.49');
+      expect(p3.port, 9090);
+    });
+
     test('Parses plain token string for backwards compatibility', () {
       final payload = PairingQrPayload.tryParse('fcm-token-xyz-987');
 
@@ -201,6 +218,68 @@ void main() {
 
       expect(result, isFalse);
     });
+
+    test('pairWithDevice succeeds with 200 and parses response map', () async {
+      final mockClient = MockHttpClient((req) async {
+        expect(req.url.toString(), 'http://192.168.1.50:8085/pair');
+        expect(req.method, 'POST');
+        return http.Response(
+          jsonEncode({
+            'status': 'paired',
+            'token': 'issued-token-456',
+            'deviceId': 'child-tab-99',
+            'deviceName': 'Emma',
+          }),
+          200,
+        );
+      });
+
+      final result = await repository.pairWithDevice(
+        '192.168.1.50',
+        8085,
+        client: mockClient,
+      );
+
+      expect(result, isNotNull);
+      expect(result!['token'], 'issued-token-456');
+      expect(result['deviceId'], 'child-tab-99');
+      expect(result['deviceName'], 'Emma');
+    });
+
+    test('pairWithDevice returns null on server failure', () async {
+      final mockClient = MockHttpClient((req) async {
+        return http.Response('Server error', 500);
+      });
+
+      final result = await repository.pairWithDevice(
+        '192.168.1.50',
+        8085,
+        client: mockClient,
+      );
+
+      expect(result, isNull);
+    });
+
+    test('verifyDeviceConnectivity retries once and succeeds if second attempt is 200', () async {
+      int attempts = 0;
+      final mockClient = MockHttpClient((req) async {
+        attempts++;
+        if (attempts == 1) {
+          throw Exception('Transient radio wakeup drop');
+        }
+        return http.Response('{"status":"online"}', 200);
+      });
+
+      final result = await repository.verifyDeviceConnectivity(
+        '192.168.1.50',
+        8085,
+        'token-abc',
+        client: mockClient,
+      );
+
+      expect(result, isTrue);
+      expect(attempts, 2);
+    });
   });
 
   group('PairingScreen Widget Tests', () {
@@ -306,8 +385,80 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Verbindung zum Gerät unter 192.168.1.99:8085 fehlgeschlagen'), findsOneWidget);
+      expect(find.textContaining('Verbindung zu 192.168.1.99:8085 fehlgeschlagen'), findsOneWidget);
+      expect(find.textContaining('Kein Gast-WLAN'), findsOneWidget);
       expect(find.byType(VolumeControlScreen), findsNothing);
+    });
+
+    testWidgets('Entering IP exchanges token via /pair and navigates with updated credentials',
+        (tester) async {
+      final mockClient = MockHttpClient((req) async {
+        if (req.url.path == '/pair') {
+          return http.Response(
+            jsonEncode({
+              'status': 'paired',
+              'token': 'exchanged-secret-token-777',
+              'deviceId': 'handshake-child-id',
+              'deviceName': 'Handshake Felix',
+            }),
+            200,
+          );
+        }
+        if (req.url.path == '/volume_report') {
+          return http.Response(
+            jsonEncode({
+              'type': 'VOLUME_REPORT',
+              'mediaVolume': 5,
+              'ringtoneVolume': 5,
+              'alarmVolume': 5,
+              'maxMediaVolume': 15,
+              'maxRingtoneVolume': 15,
+              'maxAlarmVolume': 15,
+              'isMuted': false,
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+            }),
+            200,
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final volumeRepo = VolumeRepository();
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<VolumeRepository>.value(value: volumeRepo),
+          ],
+          child: MaterialApp(
+            home: PairingScreen(
+              httpClient: mockClient,
+            ),
+          ),
+        ),
+      );
+
+      final textField = find.byType(TextField).at(1);
+      await tester.enterText(textField, 'http://192.168.178.49:8085');
+      await tester.pump();
+
+      final connectBtn = find.widgetWithText(ElevatedButton, 'Verbinden');
+      await tester.tap(connectBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Erfolgreich gekoppelt!'), findsOneWidget);
+      expect(find.byType(VolumeControlScreen), findsOneWidget);
+
+      final repo = PairingRepository();
+      final paired = await repo.loadPairedDevice();
+      expect(paired, isNotNull);
+      expect(paired!.id, 'handshake-child-id');
+      expect(paired.name, 'Handshake Felix');
+      expect(paired.token, 'exchanged-secret-token-777');
+      expect(paired.localIpAddress, '192.168.178.49');
+      expect(paired.port, 8085);
     });
 
     testWidgets('Tapping QR scan opens scanner and back button returns without hanging', (tester) async {
