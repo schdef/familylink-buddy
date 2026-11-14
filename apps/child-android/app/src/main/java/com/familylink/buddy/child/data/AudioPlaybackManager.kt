@@ -1,16 +1,48 @@
 package com.familylink.buddy.child.data
 
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 object AudioPlaybackManager {
     private const val TAG = "AudioPlaybackManager"
+
+    @Volatile
+    var currentMediaTitle: String? = null
+
+    @Volatile
+    var currentMediaArtist: String? = null
+
+    @Volatile
+    var currentMediaPackage: String? = null
+
+    @Volatile
+    var lastMediaUpdateTime: Long = 0L
+
+    fun updateMediaInfo(title: String?, artist: String?, pkg: String?) {
+        if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
+            currentMediaTitle = title
+            currentMediaArtist = artist
+            currentMediaPackage = pkg
+            lastMediaUpdateTime = System.currentTimeMillis()
+        }
+    }
+
+    fun clearMediaInfo() {
+        currentMediaTitle = null
+        currentMediaArtist = null
+        currentMediaPackage = null
+    }
 
     /**
      * Checks whether any audio playback (music/media) is currently active on the device.
@@ -91,6 +123,8 @@ object AudioPlaybackManager {
             audioManager.dispatchMediaKeyEvent(stopDown)
             audioManager.dispatchMediaKeyEvent(stopUp)
 
+            clearMediaInfo()
+
             Log.i(TAG, "Successfully dispatched audio stop and pause commands")
             true
         } catch (e: Exception) {
@@ -106,6 +140,167 @@ object AudioPlaybackManager {
         return JSONObject().apply {
             put("status", "success")
             put("isMusicActive", isMusicActive)
+        }
+    }
+
+    /**
+     * Maps user-facing stream string ("MEDIA", "RINGTONE", "ALARM", "ALL") to AudioManager stream constants.
+     */
+    fun mapStreamType(stream: String?): Int {
+        return when (stream?.uppercase()) {
+            "RINGTONE" -> AudioManager.STREAM_RING
+            "ALARM" -> AudioManager.STREAM_ALARM
+            "MEDIA" -> AudioManager.STREAM_MUSIC
+            else -> AudioManager.STREAM_MUSIC
+        }
+    }
+
+    /**
+     * Safely parses stream parameter from optional JSON body and query parameters.
+     */
+    fun parseStreamParam(bodyJson: JSONObject?, queryParams: Map<String, String>): String {
+        return bodyJson?.optString("stream")?.takeIf { it.isNotBlank() }
+            ?: queryParams["stream"]?.takeIf { it.isNotBlank() }
+            ?: "MEDIA"
+    }
+
+    /**
+     * Safely parses level parameter from optional JSON body and query parameters.
+     */
+    fun parseLevelParam(bodyJson: JSONObject?, queryParams: Map<String, String>): Int {
+        return when {
+            bodyJson != null && bodyJson.has("level") && !bodyJson.isNull("level") -> bodyJson.optInt("level", 0)
+            queryParams.containsKey("level") -> queryParams["level"]?.toIntOrNull() ?: 0
+            else -> 0
+        }
+    }
+
+    /**
+     * Sets volume for a specific stream type with full Android M+ unmute/mute logic, DND safety, and HUD UI flags.
+     */
+    fun setStreamVolume(
+        context: Context,
+        audioManager: AudioManager,
+        streamType: Int,
+        level: Int,
+        flags: Int = AudioManager.FLAG_SHOW_UI
+    ) {
+        try {
+            if (streamType == AudioManager.STREAM_RING && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                if (notificationManager?.isNotificationPolicyAccessGranted != true) {
+                    Log.w(TAG, "Skipping STREAM_RING: DND access not granted")
+                    return
+                }
+            }
+
+            val max = audioManager.getStreamMaxVolume(streamType)
+            val clamped = level.coerceIn(0, max)
+            val currentVol = audioManager.getStreamVolume(streamType)
+            val isCurrentlyMuted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audioManager.isStreamMute(streamType) || currentVol == 0
+            } else {
+                currentVol == 0
+            }
+
+            if (clamped == 0) {
+                audioManager.setStreamVolume(streamType, 0, flags)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        audioManager.adjustStreamVolume(streamType, AudioManager.ADJUST_MUTE, flags)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to adjustStreamVolume ADJUST_MUTE for $streamType: ${e.message}")
+                    }
+                }
+            } else {
+                if (isCurrentlyMuted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        audioManager.adjustStreamVolume(streamType, AudioManager.ADJUST_UNMUTE, 0)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to adjustStreamVolume ADJUST_UNMUTE for $streamType: ${e.message}")
+                    }
+                }
+                audioManager.setStreamVolume(streamType, clamped, flags)
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException setting stream $streamType volume (likely DND): ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting stream volume for $streamType: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Dispatches volume adjustment on the Android Main Looper (to avoid OEM ROMs dropping background audio mixer commands)
+     * and waits for completion.
+     */
+    fun applyVolumeChangeOnMainLooper(
+        context: Context,
+        stream: String,
+        level: Int,
+        flags: Int = AudioManager.FLAG_SHOW_UI,
+        timeoutMs: Long = 1500L
+    ) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val runnable = Runnable {
+            if (stream.equals("ALL", ignoreCase = true)) {
+                setStreamVolume(context, audioManager, AudioManager.STREAM_MUSIC, level, flags)
+                setStreamVolume(context, audioManager, AudioManager.STREAM_RING, level, flags)
+                setStreamVolume(context, audioManager, AudioManager.STREAM_ALARM, level, flags)
+            } else {
+                val streamType = mapStreamType(stream)
+                setStreamVolume(context, audioManager, streamType, level, flags)
+            }
+        }
+
+        try {
+            val mainLooper = Looper.getMainLooper()
+            if (mainLooper != null && Looper.myLooper() == mainLooper) {
+                runnable.run()
+            } else if (mainLooper != null) {
+                val latch = CountDownLatch(1)
+                Handler(mainLooper).post {
+                    try {
+                        runnable.run()
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+                latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            } else {
+                runnable.run()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing volume change on main looper", e)
+            runnable.run()
+        }
+    }
+
+    /**
+     * Builds updated volume response payload for /set_volume endpoint.
+     */
+    fun buildSetVolumeResponse(
+        stream: String,
+        level: Int,
+        state: VolumeState
+    ): JSONObject {
+        return JSONObject().apply {
+            put("status", "success")
+            put("stream", stream)
+            put("level", level)
+            put("mediaVolume", state.mediaVolume)
+            put("ringtoneVolume", state.ringtoneVolume)
+            put("alarmVolume", state.alarmVolume)
+            put("maxMediaVolume", state.maxMediaVolume)
+            put("maxRingtoneVolume", state.maxRingtoneVolume)
+            put("maxAlarmVolume", state.maxAlarmVolume)
+            put("isMuted", state.isMuted)
+            put("isMusicActive", state.isMusicActive)
+            if (state.isMusicActive) {
+                put("mediaTitle", currentMediaTitle ?: "")
+                put("mediaArtist", currentMediaArtist ?: "")
+                put("mediaPackage", currentMediaPackage ?: "")
+            }
+            put("timestamp", System.currentTimeMillis())
         }
     }
 }

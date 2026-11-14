@@ -14,6 +14,9 @@ class VolumeState {
   final int maxAlarmVolume;
   final bool isMuted;
   final bool isMusicActive;
+  final String? mediaTitle;
+  final String? mediaArtist;
+  final String? mediaPackage;
   final DateTime? timestamp;
 
   const VolumeState({
@@ -25,6 +28,9 @@ class VolumeState {
     this.maxAlarmVolume = 15,
     this.isMuted = false,
     this.isMusicActive = false,
+    this.mediaTitle,
+    this.mediaArtist,
+    this.mediaPackage,
     this.timestamp,
   });
 
@@ -38,6 +44,9 @@ class VolumeState {
       maxAlarmVolume: json['maxAlarmVolume'] as int? ?? 15,
       isMuted: json['isMuted'] as bool? ?? false,
       isMusicActive: json['isMusicActive'] as bool? ?? false,
+      mediaTitle: json['mediaTitle'] as String? ?? json['trackTitle'] as String?,
+      mediaArtist: json['mediaArtist'] as String? ?? json['artist'] as String?,
+      mediaPackage: json['mediaPackage'] as String? ?? json['packageName'] as String?,
       timestamp: json['timestamp'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int)
           : null,
@@ -53,6 +62,9 @@ class VolumeState {
     int? maxAlarmVolume,
     bool? isMuted,
     bool? isMusicActive,
+    String? mediaTitle,
+    String? mediaArtist,
+    String? mediaPackage,
     DateTime? timestamp,
   }) {
     return VolumeState(
@@ -64,6 +76,9 @@ class VolumeState {
       maxAlarmVolume: maxAlarmVolume ?? this.maxAlarmVolume,
       isMuted: isMuted ?? this.isMuted,
       isMusicActive: isMusicActive ?? this.isMusicActive,
+      mediaTitle: mediaTitle ?? this.mediaTitle,
+      mediaArtist: mediaArtist ?? this.mediaArtist,
+      mediaPackage: mediaPackage ?? this.mediaPackage,
       timestamp: timestamp ?? this.timestamp,
     );
   }
@@ -193,13 +208,45 @@ class VolumeRepository extends ChangeNotifier {
     try {
       final url = Uri.parse('http://$host:8085/set_volume?stream=$stream&level=$level');
       debugPrint('VolumeRepository: Sending LAN set_volume to $url');
+      final body = jsonEncode({'stream': stream, 'level': level});
+      final headers = {
+        'Content-Type': 'application/json',
+        'X-Buddy-Token': childFcmToken,
+      };
       final client = _httpClient;
       final response = client != null
-          ? await client.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3))
-          : await http.post(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3));
+          ? await client.post(url, headers: headers, body: body).timeout(const Duration(seconds: 3))
+          : await http.post(url, headers: headers, body: body).timeout(const Duration(seconds: 3));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        _updateVolumeStateLocally(stream, level);
+        bool stateUpdated = false;
+        try {
+          if (response.body.isNotEmpty) {
+            final data = jsonDecode(response.body);
+            if (data is Map<String, dynamic>) {
+              if (data.containsKey('mediaVolume')) {
+                final parsed = VolumeState.fromJson(data);
+                _volumeState = parsed.timestamp == null
+                    ? parsed.copyWith(timestamp: DateTime.now())
+                    : parsed;
+                _isConnected = true;
+                _lastSeen = DateTime.now();
+                stateUpdated = true;
+                notifyListeners();
+              } else if (data.containsKey('level')) {
+                final respLevel = (data['level'] as num).toInt();
+                final respStream = (data['stream'] as String?) ?? stream;
+                _updateVolumeStateLocally(respStream, respLevel);
+                stateUpdated = true;
+              }
+            }
+          }
+        } catch (_) {
+          // Fall back to local update
+        }
+        if (!stateUpdated) {
+          _updateVolumeStateLocally(stream, level);
+        }
         return true;
       } else {
         debugPrint('VolumeRepository: LAN set_volume failed with HTTP ${response.statusCode}');
@@ -259,6 +306,9 @@ class VolumeRepository extends ChangeNotifier {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         _volumeState = _volumeState.copyWith(
           isMusicActive: false,
+          mediaTitle: null,
+          mediaArtist: null,
+          mediaPackage: null,
           timestamp: DateTime.now(),
         );
         _isConnected = true;

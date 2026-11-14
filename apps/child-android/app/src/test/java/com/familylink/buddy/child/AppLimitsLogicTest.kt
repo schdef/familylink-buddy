@@ -337,4 +337,47 @@ class AppLimitsLogicTest {
         assertEquals(30L, manager.getCategoryUsageSeconds("video"))
         assertEquals(60L, manager.getCategoryUsageSeconds("games"))
     }
+
+    @Test
+    fun testGoogleSearchBoxBlacklistInterception() {
+        val manager = AppLimitsManager()
+        val rules = AppRules(
+            blacklistedPackages = setOf(
+                com.familylink.buddy.child.data.InstalledAppsManager.GOOGLE_SEARCH_PACKAGE
+            )
+        )
+        manager.updateRules(rules)
+
+        val result = manager.onPackageChanged(
+            com.familylink.buddy.child.data.InstalledAppsManager.GOOGLE_SEARCH_PACKAGE,
+            "Google"
+        )
+        assertTrue(result is AppInterceptionResult.BlockedBlacklist)
+        val blocked = result as AppInterceptionResult.BlockedBlacklist
+        assertEquals(com.familylink.buddy.child.data.InstalledAppsManager.GOOGLE_SEARCH_PACKAGE, blocked.packageName)
+        assertEquals("Google", blocked.appName)
+        assertEquals("Google ist auf diesem Tablet gesperrt", blocked.message)
+    }
+
+    @Test
+    fun testExcludedAllowedAppsFiltering() {
+        val ownPkg = "com.familylink.buddy.child"
+
+        // Allowed / essential apps must be excluded from blockable list
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.spotify.music", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.familylink.buddy.child", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.android.settings", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.google.android.settings", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.android.dialer", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.google.android.dialer", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.samsung.android.dialer", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.android.phone", ownPackage = ownPkg))
+        assertTrue(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.android.systemui", ownPackage = ownPkg))
+
+        // Standard games/apps and Google Search must NOT be excluded (they are blockable)
+        assertFalse(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.roblox.client", ownPackage = ownPkg))
+        assertFalse(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.mojang.minecraftpe", ownPackage = ownPkg))
+        assertFalse(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.google.android.youtube", ownPackage = ownPkg))
+        assertFalse(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.google.android.googlequicksearchbox", ownPackage = ownPkg))
+    }
 }

@@ -35,3 +35,14 @@ GoogleService-Info.plist
 
 # Local developer token cache
 .token_cache
+
+# Secrets, keys, and local environment configs
+local.properties
+**/local.properties
+*.jks
+*.keystore
+*.key
+*.pem
+.env*
+.kotlin/
+**/.kotlin/

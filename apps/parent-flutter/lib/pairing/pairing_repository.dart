@@ -25,6 +25,7 @@ class PairedDevice {
 
   // Backwards compatibility getters
   String get fcmToken => token;
+  String get deviceId => id;
   String? get ipAddress => localIpAddress;
 
   PairedDevice copyWith({
@@ -85,6 +86,52 @@ class PairingQrPayload {
     required this.token,
   });
 
+  static (String, int) extractHostAndPort(String input, {int defaultPort = 8085}) {
+    var clean = input.trim();
+    if (clean.startsWith('http://')) {
+      clean = clean.substring(7);
+    } else if (clean.startsWith('https://')) {
+      clean = clean.substring(8);
+    }
+    // Remove query params if any
+    final queryIndex = clean.indexOf('?');
+    if (queryIndex != -1) {
+      clean = clean.substring(0, queryIndex);
+    }
+    // Remove path if any
+    final slashIndex = clean.indexOf('/');
+    if (slashIndex != -1) {
+      clean = clean.substring(0, slashIndex);
+    }
+    clean = clean.trim();
+
+    int port = defaultPort;
+    String host = clean;
+    if (clean.contains(':')) {
+      final parts = clean.split(':');
+      host = parts[0].trim();
+      if (parts.length > 1) {
+        final parsedPort = int.tryParse(parts[1].trim());
+        if (parsedPort != null && parsedPort > 0 && parsedPort <= 65535) {
+          port = parsedPort;
+        }
+      }
+    }
+    return (host, port);
+  }
+
+  static bool isIpAddress(String str) {
+    final clean = str.trim().toLowerCase();
+    if (clean == 'emulator' || clean == 'localhost') return true;
+    final parts = clean.split('.');
+    if (parts.length != 4) return false;
+    for (final p in parts) {
+      final n = int.tryParse(p);
+      if (n == null || n < 0 || n > 255) return false;
+    }
+    return true;
+  }
+
   static PairingQrPayload? tryParse(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
@@ -94,10 +141,17 @@ class PairingQrPayload {
         final map = jsonDecode(trimmed) as Map<String, dynamic>;
         final deviceId = map['deviceId'] as String? ?? map['id'] as String? ?? '';
         final deviceName = map['deviceName'] as String? ?? map['name'] as String? ?? 'Kind';
-        final ip = map['ip'] as String? ?? map['ipAddress'] as String? ?? '';
-        final port = map['port'] is int
+        var rawIp = map['ip'] as String? ?? map['ipAddress'] as String? ?? '';
+        var rawPort = map['port'] is int
             ? map['port'] as int
             : (map['port'] is String ? int.tryParse(map['port'] as String) ?? 8085 : 8085);
+
+        if (rawIp.isNotEmpty) {
+          final (h, p) = extractHostAndPort(rawIp, defaultPort: rawPort);
+          rawIp = h;
+          rawPort = p;
+        }
+
         final token = map['token'] as String? ?? map['fcmToken'] as String? ?? '';
         final version = map['v'] as int? ?? 1;
 
@@ -105,8 +159,8 @@ class PairingQrPayload {
           version: version,
           deviceId: deviceId.isNotEmpty ? deviceId : token,
           deviceName: deviceName.isNotEmpty ? deviceName : 'Kind',
-          ip: ip,
-          port: port,
+          ip: rawIp,
+          port: rawPort,
           token: token,
         );
       } catch (_) {
@@ -115,37 +169,26 @@ class PairingQrPayload {
     }
 
     // Backwards compatibility for plain token/IP strings
-    var clean = trimmed;
-    if (clean.startsWith('http://')) clean = clean.substring(7);
-    if (clean.startsWith('https://')) clean = clean.substring(8);
-    clean = clean.trim();
-    if (clean.endsWith('/')) clean = clean.substring(0, clean.length - 1).trim();
+    final (host, port) = extractHostAndPort(trimmed);
 
-    if (clean.contains('.')) {
-      String ip = clean;
-      int port = 8085;
-      if (clean.contains(':')) {
-        final parts = clean.split(':');
-        ip = parts[0].trim();
-        port = int.tryParse(parts[1].trim()) ?? 8085;
-      }
+    if (isIpAddress(host) || host.contains('.')) {
       return PairingQrPayload(
         version: 1,
-        deviceId: ip,
+        deviceId: host,
         deviceName: 'Kind',
-        ip: ip,
+        ip: host,
         port: port,
-        token: ip,
+        token: host,
       );
     }
 
     return PairingQrPayload(
       version: 1,
-      deviceId: clean,
+      deviceId: trimmed,
       deviceName: 'Kind',
       ip: '',
       port: 8085,
-      token: clean,
+      token: trimmed,
     );
   }
 }
@@ -157,9 +200,17 @@ class PairingRepository {
   static const _keyLastSeen = 'paired_device_last_seen';
   static const _keyDeviceIp = 'paired_device_ip';
   static const _keyDevicePort = 'paired_device_port';
+  static const _keyDevicesList = 'paired_devices_list';
 
   Future<PairedDevice?> loadPairedDevice() async {
     final prefs = await SharedPreferences.getInstance();
+    final single = _loadSinglePairedDevice(prefs);
+    if (single != null) return single;
+    final list = await loadAllPairedDevices();
+    return list.isNotEmpty ? list.first : null;
+  }
+
+  PairedDevice? _loadSinglePairedDevice(SharedPreferences prefs) {
     final token = prefs.getString(_keyDeviceToken);
     if (token == null || token.isEmpty) return null;
     return PairedDevice(
@@ -174,11 +225,29 @@ class PairingRepository {
     );
   }
 
-  Future<List<PairedDevice>> loadPairedDevices() async {
-    final single = await loadPairedDevice();
-    if (single == null) return [];
-    return [single];
+  Future<List<PairedDevice>> loadAllPairedDevices() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawJson = prefs.getString(_keyDevicesList);
+    if (rawJson != null && rawJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawJson);
+        if (decoded is List) {
+          final list = decoded
+              .map((e) => PairedDevice.fromJson(Map<String, dynamic>.from(e as Map)))
+              .toList();
+          if (list.isNotEmpty) return list;
+        }
+      } catch (_) {}
+    }
+
+    final single = _loadSinglePairedDevice(prefs);
+    if (single != null) {
+      return [single];
+    }
+    return [];
   }
+
+  Future<List<PairedDevice>> loadPairedDevices() => loadAllPairedDevices();
 
   Future<void> savePairedDevice(PairedDevice device) async {
     final prefs = await SharedPreferences.getInstance();
@@ -192,6 +261,48 @@ class PairingRepository {
       await prefs.remove(_keyDeviceIp);
     }
     await prefs.setInt(_keyDevicePort, device.port);
+
+    final devices = await loadAllPairedDevices();
+    final index = devices.indexWhere((d) => d.id == device.id || d.token == device.token);
+    if (index >= 0) {
+      devices[index] = device;
+    } else {
+      devices.add(device);
+    }
+    await prefs.setString(
+      _keyDevicesList,
+      jsonEncode(devices.map((d) => d.toJson()).toList()),
+    );
+  }
+
+  Future<void> removePairedDevice(String deviceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final devices = await loadAllPairedDevices();
+    devices.removeWhere((d) => d.id == deviceId || d.token == deviceId);
+
+    if (devices.isNotEmpty) {
+      await prefs.setString(
+        _keyDevicesList,
+        jsonEncode(devices.map((d) => d.toJson()).toList()),
+      );
+      final currentToken = prefs.getString(_keyDeviceToken);
+      final currentId = prefs.getString(_keyDeviceId);
+      if (currentId == deviceId || currentToken == deviceId) {
+        final first = devices.first;
+        await prefs.setString(_keyDeviceId, first.id);
+        await prefs.setString(_keyDeviceName, first.name);
+        await prefs.setString(_keyDeviceToken, first.token);
+        await prefs.setInt(_keyLastSeen, first.lastSeen.millisecondsSinceEpoch);
+        if (first.localIpAddress != null && first.localIpAddress!.isNotEmpty) {
+          await prefs.setString(_keyDeviceIp, first.localIpAddress!);
+        } else {
+          await prefs.remove(_keyDeviceIp);
+        }
+        await prefs.setInt(_keyDevicePort, first.port);
+      }
+    } else {
+      await clearPairedDevice();
+    }
   }
 
   Future<void> updateDeviceIp(String newIp, {int? port}) async {
@@ -214,6 +325,7 @@ class PairingRepository {
     await prefs.remove(_keyLastSeen);
     await prefs.remove(_keyDeviceIp);
     await prefs.remove(_keyDevicePort);
+    await prefs.remove(_keyDevicesList);
   }
 
   Future<Map<String, dynamic>?> pairWithDevice(
@@ -221,7 +333,7 @@ class PairingRepository {
     int port, {
     String? customToken,
     http.Client? client,
-    Duration timeout = const Duration(seconds: 7),
+    Duration timeout = const Duration(seconds: 4),
   }) async {
     final httpClient = client ?? http.Client();
     try {
@@ -235,11 +347,14 @@ class PairingRepository {
         body: body,
       ).timeout(timeout);
 
-      if (res.statusCode == 200) {
-        return jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
       }
     } catch (_) {
-      // Fallback to GET /status
+      // Unreachable, timeout, or invalid response
     } finally {
       if (client == null) httpClient.close();
     }

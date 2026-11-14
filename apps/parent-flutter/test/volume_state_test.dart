@@ -56,6 +56,22 @@ void main() {
       expect(state.isKnown, true);
     });
 
+    test('fromJson parses mediaTitle, mediaArtist, and mediaPackage', () {
+      final json = {
+        'mediaVolume': 8,
+        'ringtoneVolume': 5,
+        'alarmVolume': 5,
+        'isMusicActive': true,
+        'mediaTitle': 'Die Drei ??? Kids',
+        'mediaArtist': 'Europa',
+        'mediaPackage': 'com.spotify.music',
+      };
+      final state = VolumeState.fromJson(json);
+      expect(state.mediaTitle, 'Die Drei ??? Kids');
+      expect(state.mediaArtist, 'Europa');
+      expect(state.mediaPackage, 'com.spotify.music');
+    });
+
     test('fromJson parsing with nulls / missing values', () {
       final json = <String, dynamic>{};
       final state = VolumeState.fromJson(json);
@@ -104,8 +120,48 @@ void main() {
       }, () => MockClient((request) async {
         expect(request.url.toString(), 'http://192.168.1.100:8085/set_volume?stream=MEDIA&level=8');
         expect(request.headers['X-Buddy-Token'], 'some_token');
+        expect(request.headers['Content-Type'], 'application/json');
+        expect(jsonDecode(request.body), {'stream': 'MEDIA', 'level': 8});
         expect(request.method, 'POST');
         return http.Response(jsonEncode({'status': 'success'}), 200);
+      }));
+    });
+
+    test('setVolume updates volumeState from response body when full state is returned', () async {
+      final repo = VolumeRepository();
+      repo.localIpAddress = '192.168.1.100';
+
+      await http.runWithClient(() async {
+        final result = await repo.setVolume(
+          childFcmToken: 'some_token',
+          stream: 'MEDIA',
+          level: 10,
+        );
+
+        expect(result, isTrue);
+        expect(repo.volumeState.mediaVolume, 10);
+        expect(repo.volumeState.maxMediaVolume, 15);
+        expect(repo.volumeState.ringtoneVolume, 7);
+        expect(repo.volumeState.isMusicActive, false);
+        expect(repo.isConnected, isTrue);
+      }, () => MockClient((request) async {
+        expect(request.url.toString(), 'http://192.168.1.100:8085/set_volume?stream=MEDIA&level=10');
+        expect(request.headers['X-Buddy-Token'], 'some_token');
+        expect(request.headers['Content-Type'], 'application/json');
+        return http.Response(
+          jsonEncode({
+            'status': 'success',
+            'mediaVolume': 10,
+            'maxMediaVolume': 15,
+            'ringtoneVolume': 7,
+            'maxRingtoneVolume': 15,
+            'alarmVolume': 5,
+            'maxAlarmVolume': 15,
+            'isMuted': false,
+            'isMusicActive': false,
+          }),
+          200,
+        );
       }));
     });
 
@@ -331,6 +387,61 @@ void main() {
           'ringtoneVolume': 5,
           'alarmVolume': 5,
           'isMusicActive': false,
+        }), 200);
+      }));
+    });
+
+    testWidgets('renders track title and artist when mediaTitle/mediaArtist available', (tester) async {
+      final repo = VolumeRepository();
+      repo.localIpAddress = '192.168.1.100';
+      repo.volumeStateForTesting = VolumeState(
+        mediaVolume: 8,
+        ringtoneVolume: 5,
+        alarmVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'Song Title 123',
+        mediaArtist: 'Great Artist',
+        timestamp: DateTime.now(),
+      );
+
+      final device = PairedDevice(
+        id: 'dev-1',
+        name: 'Kind-Tablet',
+        token: 'token-abc',
+        localIpAddress: '192.168.1.100',
+        lastSeen: DateTime.now(),
+      );
+
+      await http.runWithClient(() async {
+        await tester.pumpWidget(
+          ChangeNotifierProvider<VolumeRepository>.value(
+            value: repo,
+            child: MaterialApp(
+              home: VolumeControlScreen(device: device),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('active_audio_card')), findsOneWidget);
+        expect(find.text('Song Title 123'), findsOneWidget);
+        expect(find.textContaining('Great Artist'), findsOneWidget);
+
+        // Verify Mute All exists and Max Volume does not exist
+        expect(find.byKey(const ValueKey('btn_mute_all')), findsOneWidget);
+        expect(find.text('Lautstärke 100%'), findsNothing);
+        expect(find.text('Max Volume'), findsNothing);
+
+        // Verify Add Kid button exists in AppBar
+        expect(find.byKey(const ValueKey('btn_add_kid')), findsOneWidget);
+      }, () => MockClient((request) async {
+        return http.Response(jsonEncode({
+          'mediaVolume': 8,
+          'ringtoneVolume': 5,
+          'alarmVolume': 5,
+          'isMusicActive': true,
+          'mediaTitle': 'Song Title 123',
+          'mediaArtist': 'Great Artist',
         }), 200);
       }));
     });

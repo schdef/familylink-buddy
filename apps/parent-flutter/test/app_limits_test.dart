@@ -363,31 +363,31 @@ void main() {
     });
   });
 
+  Widget buildTestScreen({
+    required AppLimitsRepository appLimitsRepo,
+    VolumeRepository? volumeRepo,
+    String? localIpAddress,
+  }) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AppLimitsRepository>.value(value: appLimitsRepo),
+        ChangeNotifierProvider<VolumeRepository>.value(
+          value: volumeRepo ?? VolumeRepository(),
+        ),
+      ],
+      child: MaterialApp(
+        home: AppLimitsScreen(
+          device: testDevice,
+          localIpAddress: localIpAddress,
+        ),
+      ),
+    );
+  }
+
   group('AppLimitsScreen Widget Tests', () {
     final testMockClient = MockClient((request) async {
       return http.Response(jsonEncode({'status': 'ok'}), 200);
     });
-
-    Widget buildTestScreen({
-      required AppLimitsRepository appLimitsRepo,
-      VolumeRepository? volumeRepo,
-      String? localIpAddress,
-    }) {
-      return MultiProvider(
-        providers: [
-          ChangeNotifierProvider<AppLimitsRepository>.value(value: appLimitsRepo),
-          ChangeNotifierProvider<VolumeRepository>.value(
-            value: volumeRepo ?? VolumeRepository(),
-          ),
-        ],
-        child: MaterialApp(
-          home: AppLimitsScreen(
-            device: testDevice,
-            localIpAddress: localIpAddress,
-          ),
-        ),
-      );
-    }
 
     testWidgets('Renders AppBar, tabs, and connection badge', (tester) async {
       final repo = AppLimitsRepository(httpClient: testMockClient);
@@ -599,6 +599,169 @@ void main() {
       expect(find.byType(AppLimitsScreen), findsOneWidget);
       expect(find.byKey(const ValueKey('tab_blacklist')), findsOneWidget);
       expect(find.byKey(const ValueKey('tab_categories')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tab_app_history')), findsOneWidget);
+    });
+  });
+
+  group('AppOpeningRecord Model Tests', () {
+    test('Constructs and converts to/from JSON correctly', () {
+      final now = DateTime.now();
+      final record = AppOpeningRecord(
+        packageName: 'com.roblox.client',
+        label: 'Roblox',
+        timestamp: now,
+      );
+
+      expect(record.packageName, 'com.roblox.client');
+      expect(record.label, 'Roblox');
+      expect(record.timestamp, now);
+
+      final json = record.toJson();
+      expect(json['packageName'], 'com.roblox.client');
+      expect(json['label'], 'Roblox');
+      expect(json['timestamp'], now.millisecondsSinceEpoch);
+
+      final restored = AppOpeningRecord.fromJson(json);
+      expect(restored.packageName, 'com.roblox.client');
+      expect(restored.label, 'Roblox');
+      expect(restored.timestamp.millisecondsSinceEpoch, now.millisecondsSinceEpoch);
+    });
+  });
+
+  group('fetchAppHistory Tests', () {
+    test('fetches history from LAN endpoint with days parameter and X-Buddy-Token', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/app_history');
+        expect(request.url.queryParameters['days'], '5');
+        expect(request.headers['X-Buddy-Token'], 'token-123');
+
+        return http.Response(
+          jsonEncode({
+            'status': 'success',
+            'history': [
+              {
+                'packageName': 'com.roblox.client',
+                'label': 'Roblox',
+                'timestamp': 1700000000000,
+              },
+              {
+                'packageName': 'com.mojang.minecraftpe',
+                'label': 'Minecraft',
+                'timestamp': 1700000100000,
+              },
+            ],
+          }),
+          200,
+        );
+      });
+
+      final repo = AppLimitsRepository(httpClient: client);
+      final history = await repo.fetchAppHistory(
+        'token-123',
+        localIpAddress: '192.168.1.50',
+        days: 5,
+      );
+
+      expect(history.length, 2);
+      // Sorted reverse chronologically: newer first
+      expect(history[0].packageName, 'com.mojang.minecraftpe');
+      expect(history[1].packageName, 'com.roblox.client');
+      expect(repo.appHistory.length, 2);
+    });
+  });
+
+  group('Available Apps to Block & History UI Tests', () {
+    testWidgets('Tab 1: Available Apps excludes Spotify and allows direct blocking', (tester) async {
+      final repo = AppLimitsRepository(httpClient: MockClient((request) async {
+        return http.Response(jsonEncode({'status': 'ok'}), 200);
+      }));
+
+      // Set installed apps including Spotify and YouTube Kids
+      repo.state = repo.state.copyWith(
+        blacklistedPackages: [],
+        installedApps: const [
+          InstalledAppInfo(packageName: 'com.spotify.music', appName: 'Spotify'),
+          InstalledAppInfo(packageName: 'com.google.android.apps.youtube.kids', appName: 'YouTube Kids'),
+          InstalledAppInfo(packageName: 'com.roblox.client', appName: 'Roblox'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildTestScreen(
+          appLimitsRepo: repo,
+          localIpAddress: '192.168.1.100',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Spotify should NOT be in the available blockable apps list
+      expect(find.text('Spotify'), findsNothing);
+
+      // YouTube Kids and Roblox should be present
+      expect(find.text('YouTube Kids'), findsOneWidget);
+      expect(find.text('Roblox'), findsOneWidget);
+
+      // Tap direct block button for Roblox
+      final blockRobloxBtn = find.byKey(const ValueKey('btn_toggle_block_com.roblox.client'));
+      expect(blockRobloxBtn, findsOneWidget);
+
+      await tester.ensureVisible(blockRobloxBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(blockRobloxBtn);
+      await tester.pumpAndSettle();
+
+      // Roblox is now blacklisted
+      expect(repo.state.isBlacklisted('com.roblox.client'), isTrue);
+    });
+
+    testWidgets('Tab 3: App-Historie displays empty state when no records and history when present', (tester) async {
+      final repo = AppLimitsRepository(httpClient: MockClient((request) async {
+        return http.Response(jsonEncode({'status': 'ok'}), 200);
+      }));
+
+      repo.appHistory = [];
+
+      await tester.pumpWidget(
+        buildTestScreen(
+          appLimitsRepo: repo,
+          localIpAddress: '192.168.1.100',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Tab 3
+      final tabHistory = find.byKey(const ValueKey('tab_app_history'));
+      expect(tabHistory, findsOneWidget);
+      await tester.tap(tabHistory);
+      await tester.pumpAndSettle();
+
+      // Empty state visible
+      expect(find.byKey(const ValueKey('empty_app_history')), findsOneWidget);
+      expect(find.text('Keine App-Aktivitäten in den letzten 5 Tagen aufgezeichnet.'), findsOneWidget);
+
+      // Add history entries
+      repo.appHistory = [
+        AppOpeningRecord(
+          packageName: 'com.roblox.client',
+          label: 'Roblox',
+          timestamp: DateTime.now(),
+        ),
+      ];
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('empty_app_history')), findsNothing);
+      expect(find.text('Roblox'), findsOneWidget);
+      expect(find.text('com.roblox.client'), findsOneWidget);
+
+      final blockBtn = find.byKey(const ValueKey('btn_block_history_com.roblox.client'));
+      expect(blockBtn, findsOneWidget);
+
+      await tester.ensureVisible(blockBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(blockBtn);
+      await tester.pumpAndSettle();
+
+      expect(repo.state.isBlacklisted('com.roblox.client'), isTrue);
     });
   });
 }

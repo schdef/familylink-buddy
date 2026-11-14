@@ -128,6 +128,6 @@ object QrCodeGenerator {
                 ?: Build.MODEL
         } catch (_: Exception) {
             Build.MODEL
-        } ?: "Felix"
+        } ?: "Child Tablet"
     }
 }

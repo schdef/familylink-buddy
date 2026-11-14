@@ -193,6 +193,21 @@ class FamilyTimeRepository(private val context: Context) {
         return cached
     }
 
+    val isSetupCompleted: Flow<Boolean> = context.dataStore.data
+        .map { preferences -> preferences[KEY_SETUP_COMPLETED] ?: false }
+
+    suspend fun setSetupCompleted(completed: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SETUP_COMPLETED] = completed
+        }
+    }
+
+    fun isSetupCompletedSync(): Boolean {
+        return runBlocking {
+            context.dataStore.data.first()[KEY_SETUP_COMPLETED] ?: false
+        }
+    }
+
     suspend fun getOrCreateDeviceId(): String {
         val current = context.dataStore.data.first()[KEY_DEVICE_ID]
         if (!current.isNullOrBlank()) {
@@ -232,6 +247,7 @@ class FamilyTimeRepository(private val context: Context) {
         private val KEY_BEDTIME_ACTIVE_DAYS = stringPreferencesKey("bedtime_active_days")
         private val KEY_BEDTIME_CURRENTLY_BLOCKED = booleanPreferencesKey("bedtime_currently_blocked")
         private val KEY_PARENT_PIN = stringPreferencesKey("parent_pin")
+        private val KEY_SETUP_COMPLETED = booleanPreferencesKey("setup_completed")
 
         fun serializeAppUsages(usages: List<AppUsage>): String {
             val array = org.json.JSONArray()

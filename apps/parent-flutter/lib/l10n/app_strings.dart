@@ -156,6 +156,7 @@ abstract class AppStrings {
   String get invalidQrCode;
   String connectionFailed(String ip, int port);
   String connectionFailedHint(String ip, int port);
+  String deviceNotFoundOnLan(String code);
   String get successfullyPaired;
   String get fillAllFields;
   String pairingFailed(dynamic error);
@@ -166,6 +167,10 @@ abstract class AppStrings {
   String get codeOrIpHint;
   String get connect;
   String get methodB;
+  String get cameraUnavailableTitle;
+  String get cameraUnavailableDesc;
+  String get enterManually;
+  String get webManualPairingHint;
   String get localEmulatorPairing;
 
   // ===========================================================================
@@ -324,6 +329,15 @@ abstract class AppStrings {
   String get searchApps;
   String get saveCategoryButton;
   String appUnblockConfirm(String name);
+  String get tabAppHistory;
+  String get appHistoryTitle;
+  String get appHistorySubtitle;
+  String get noAppHistory;
+  String get availableApps;
+  String get availableAppsDesc;
+  String get searchAvailableApps;
+  String get switchKid;
+  String get addKid;
 
   // ===========================================================================
   // 7. BEDTIME SCHEDULE SCREEN
@@ -549,6 +563,8 @@ class AppStringsEn extends AppStrings {
   @override
   String connectionFailedHint(String ip, int port) => 'Connection to $ip:$port failed. Please check:\n1. Both devices on same Wi-Fi? (Not Guest Wi-Fi)\n2. Router \'WLAN devices may communicate\' enabled?\n3. Tablet app open?';
   @override
+  String deviceNotFoundOnLan(String code) => 'Device \'$code\' was not found on the local Wi-Fi. Please ensure both devices are on the same Wi-Fi network, or pair directly using the tablet\'s IP address or QR code.';
+  @override
   String get successfullyPaired => 'Successfully paired!';
   @override
   String get fillAllFields => 'Please fill in all fields.';
@@ -557,7 +573,7 @@ class AppStringsEn extends AppStrings {
   @override
   String get enterCodeOrIp => 'Please enter the code or IP address.';
   @override
-  String get deviceNameLabel => 'Device name (e.g. Felix)';
+  String get deviceNameLabel => 'Device name (e.g. Child Tablet)';
   @override
   String get defaultChildName => 'Child';
   @override
@@ -568,6 +584,14 @@ class AppStringsEn extends AppStrings {
   String get connect => 'Connect';
   @override
   String get methodB => 'Method B: Scan QR code';
+  @override
+  String get cameraUnavailableTitle => 'Camera Not Available';
+  @override
+  String get cameraUnavailableDesc => 'Camera access was denied or is not supported in this browser. Please enter the tablet\'s IP address or 6-digit code manually.';
+  @override
+  String get enterManually => 'Enter Code / IP Manually';
+  @override
+  String get webManualPairingHint => 'Web Browser Mode: Enter the IP address or 6-digit pairing code shown on the child tablet.';
   @override
   String get localEmulatorPairing => 'Local emulator pairing (Auto-Pair)';
 
@@ -866,6 +890,24 @@ class AppStringsEn extends AppStrings {
   String get saveCategoryButton => 'Save category';
   @override
   String appUnblockConfirm(String name) => 'Do you really want to unblock „$name“?';
+  @override
+  String get tabAppHistory => 'History';
+  @override
+  String get appHistoryTitle => 'App Activity History';
+  @override
+  String get appHistorySubtitle => 'App launches over the last 5 days on this tablet';
+  @override
+  String get noAppHistory => 'No app activity recorded in the last 5 days.';
+  @override
+  String get availableApps => 'Available Apps on Tablet';
+  @override
+  String get availableAppsDesc => 'Tap to block or unblock apps directly without modals.';
+  @override
+  String get searchAvailableApps => 'Filter available apps...';
+  @override
+  String get switchKid => 'Switch Kid';
+  @override
+  String get addKid => 'Add Kid';
 
   // 7. Bedtime Schedule Screen
   @override
@@ -1187,6 +1229,8 @@ class AppStringsDe extends AppStrings {
   @override
   String connectionFailedHint(String ip, int port) => 'Verbindung zu $ip:$port fehlgeschlagen. Bitte prüfen:\n1. Beide Geräte im selben WLAN? (Kein Gast-WLAN)\n2. Im Router \'WLAN-Geräte dürfen untereinander kommunizieren\' aktiviert?\n3. Tablet-App geöffnet?';
   @override
+  String deviceNotFoundOnLan(String code) => 'Gerät \'$code\' wurde im lokalen WLAN nicht gefunden. Bitte sicherstellen, dass beide Geräte im selben WLAN sind, oder direkt per IP-Adresse oder QR-Code koppeln.';
+  @override
   String get successfullyPaired => 'Erfolgreich gekoppelt!';
   @override
   String get fillAllFields => 'Bitte füllen Sie alle Felder aus.';
@@ -1195,7 +1239,7 @@ class AppStringsDe extends AppStrings {
   @override
   String get enterCodeOrIp => 'Bitte geben Sie den Code oder die IP-Adresse ein.';
   @override
-  String get deviceNameLabel => 'Geräte-Name (z.B. Felix)';
+  String get deviceNameLabel => 'Geräte-Name (z.B. Kind Tablet)';
   @override
   String get defaultChildName => 'Kind';
   @override
@@ -1206,6 +1250,14 @@ class AppStringsDe extends AppStrings {
   String get connect => 'Verbinden';
   @override
   String get methodB => 'Methode B: QR-Code scannen';
+  @override
+  String get cameraUnavailableTitle => 'Kamera nicht verfügbar';
+  @override
+  String get cameraUnavailableDesc => 'Kamerazugriff wurde verweigert oder wird in diesem Browser nicht unterstützt. Bitte gib die IP-Adresse oder den 6-stelligen Code des Tablets manuell ein.';
+  @override
+  String get enterManually => 'Code / IP manuell eingeben';
+  @override
+  String get webManualPairingHint => 'Webbrowser-Modus: Gib die IP-Adresse oder den 6-stelligen Kopplungscode ein, der auf dem Kind-Tablet angezeigt wird.';
   @override
   String get localEmulatorPairing => 'Lokale Emulator-Kopplung (Auto-Pair)';
 
@@ -1504,6 +1556,24 @@ class AppStringsDe extends AppStrings {
   String get saveCategoryButton => 'Kategorie speichern';
   @override
   String appUnblockConfirm(String name) => 'Möchtest du „$name“ wirklich entsperren?';
+  @override
+  String get tabAppHistory => 'Historie';
+  @override
+  String get appHistoryTitle => 'App-Öffnungsverlauf';
+  @override
+  String get appHistorySubtitle => 'App-Starts der letzten 5 Tage auf diesem Tablet';
+  @override
+  String get noAppHistory => 'Keine App-Aktivitäten in den letzten 5 Tagen aufgezeichnet.';
+  @override
+  String get availableApps => 'Verfügbare Apps auf dem Tablet';
+  @override
+  String get availableAppsDesc => 'Tippe auf Sperren, um eine App direkt zu blockieren.';
+  @override
+  String get searchAvailableApps => 'Verfügbare Apps filtern...';
+  @override
+  String get switchKid => 'Kind wechseln';
+  @override
+  String get addKid => 'Kind hinzufügen';
 
   // 7. Bedtime Schedule Screen
   @override

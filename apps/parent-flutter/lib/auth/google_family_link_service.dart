@@ -15,14 +15,14 @@ class GoogleFamilyLinkService {
     // Simulates querying the Google supervised family group endpoints (kid.family scope)
     await Future.delayed(const Duration(milliseconds: 600)); // Simulate API network latency
     
-    if (parentEmail.toLowerCase() == 'stefanheintz@gmail.com') {
+    if (parentEmail.toLowerCase() == 'parent@example.com') {
       return [
-        const FamilyMember(name: 'Felix', email: 'felix.heintz@gmail.com'),
+        const FamilyMember(name: 'Alex', email: 'alex@example.com'),
       ];
     } else {
       return [
-        const FamilyMember(name: 'Felix', email: 'felix@gmail.com'),
-        const FamilyMember(name: 'Emma', email: 'emma@gmail.com'),
+        const FamilyMember(name: 'Alex', email: 'alex@example.com'),
+        const FamilyMember(name: 'Emma', email: 'emma@example.com'),
       ];
     }
   }

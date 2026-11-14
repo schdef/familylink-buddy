@@ -56,6 +56,60 @@ class InstalledAppInfo {
 }
 
 @immutable
+class AppOpeningRecord {
+  final String packageName;
+  final String label;
+  final DateTime timestamp;
+
+  const AppOpeningRecord({
+    required this.packageName,
+    required this.label,
+    required this.timestamp,
+  });
+
+  factory AppOpeningRecord.fromJson(Map<String, dynamic> json) {
+    DateTime ts;
+    final rawTs = json['timestamp'];
+    if (rawTs is int) {
+      ts = DateTime.fromMillisecondsSinceEpoch(rawTs);
+    } else if (rawTs is String) {
+      ts = DateTime.tryParse(rawTs) ?? DateTime.now();
+    } else {
+      ts = DateTime.now();
+    }
+
+    return AppOpeningRecord(
+      packageName: (json['packageName'] ?? json['pkg'] ?? '').toString(),
+      label: (json['label'] ?? json['name'] ?? json['appName'] ?? '').toString(),
+      timestamp: ts,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'packageName': packageName,
+        'label': label,
+        'timestamp': timestamp.millisecondsSinceEpoch,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppOpeningRecord &&
+          runtimeType == other.runtimeType &&
+          packageName == other.packageName &&
+          label == other.label &&
+          timestamp == other.timestamp;
+
+  @override
+  int get hashCode =>
+      packageName.hashCode ^ label.hashCode ^ timestamp.hashCode;
+
+  @override
+  String toString() =>
+      'AppOpeningRecord(pkg: $packageName, label: $label, timestamp: $timestamp)';
+}
+
+@immutable
 class AppCategoryRule {
   final String id;
   final String name;

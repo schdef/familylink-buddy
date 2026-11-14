@@ -794,7 +794,10 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
           return SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
-            child: Column(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Camera Facing & Flash Info Bar
@@ -1947,7 +1950,9 @@ class _ScreenshotScreenState extends State<ScreenshotScreen> {
                 const SizedBox(height: 32),
               ],
             ),
-          );
+          ),
+        ),
+      );
         },
       ),
     );

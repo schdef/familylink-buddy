@@ -9,6 +9,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -219,5 +220,119 @@ class AudioAndCameraLogicTest {
         // Public paths
         assertTrue(isAuthorized("/status", null, null))
         assertTrue(isAuthorized("/pair", null, null))
+    }
+
+    @Test
+    fun testVolumeStreamTypeMapping() {
+        assertEquals(android.media.AudioManager.STREAM_MUSIC, AudioPlaybackManager.mapStreamType("MEDIA"))
+        assertEquals(android.media.AudioManager.STREAM_MUSIC, AudioPlaybackManager.mapStreamType("media"))
+        assertEquals(android.media.AudioManager.STREAM_RING, AudioPlaybackManager.mapStreamType("RINGTONE"))
+        assertEquals(android.media.AudioManager.STREAM_RING, AudioPlaybackManager.mapStreamType("ringtone"))
+        assertEquals(android.media.AudioManager.STREAM_ALARM, AudioPlaybackManager.mapStreamType("ALARM"))
+        assertEquals(android.media.AudioManager.STREAM_ALARM, AudioPlaybackManager.mapStreamType("alarm"))
+        assertEquals(android.media.AudioManager.STREAM_MUSIC, AudioPlaybackManager.mapStreamType("UNKNOWN"))
+        assertEquals(android.media.AudioManager.STREAM_MUSIC, AudioPlaybackManager.mapStreamType(null))
+    }
+
+    @Test
+    fun testVolumeStreamParamParsing() {
+        // Body JSON has valid stream
+        val jsonWithStream = JSONObject().put("stream", "RINGTONE")
+        assertEquals("RINGTONE", AudioPlaybackManager.parseStreamParam(jsonWithStream, emptyMap()))
+
+        // Body JSON has empty stream string -> must fall back to queryParams
+        val jsonWithBlankStream = JSONObject().put("stream", "")
+        val queryWithStream = mapOf("stream" to "ALARM")
+        assertEquals("ALARM", AudioPlaybackManager.parseStreamParam(jsonWithBlankStream, queryWithStream))
+
+        // Body JSON is null -> falls back to queryParams
+        assertEquals("ALARM", AudioPlaybackManager.parseStreamParam(null, queryWithStream))
+
+        // Both empty or absent -> defaults to "MEDIA"
+        assertEquals("MEDIA", AudioPlaybackManager.parseStreamParam(null, emptyMap()))
+        assertEquals("MEDIA", AudioPlaybackManager.parseStreamParam(JSONObject(), emptyMap()))
+        assertEquals("MEDIA", AudioPlaybackManager.parseStreamParam(JSONObject().put("stream", "   "), emptyMap()))
+    }
+
+    @Test
+    fun testVolumeLevelParamParsing() {
+        // Body JSON has level
+        val jsonWithLevel = JSONObject().put("level", 8)
+        assertEquals(8, AudioPlaybackManager.parseLevelParam(jsonWithLevel, emptyMap()))
+
+        // Body JSON has level 0
+        val jsonWithZero = JSONObject().put("level", 0)
+        assertEquals(0, AudioPlaybackManager.parseLevelParam(jsonWithZero, mapOf("level" to "12")))
+
+        // Query param fallback
+        assertEquals(11, AudioPlaybackManager.parseLevelParam(null, mapOf("level" to "11")))
+        assertEquals(7, AudioPlaybackManager.parseLevelParam(JSONObject(), mapOf("level" to "7")))
+
+        // Missing or invalid level defaults to 0
+        assertEquals(0, AudioPlaybackManager.parseLevelParam(null, emptyMap()))
+        assertEquals(0, AudioPlaybackManager.parseLevelParam(null, mapOf("level" to "invalid")))
+    }
+
+    @Test
+    fun testBuildSetVolumeResponse() {
+        val state = VolumeState(
+            mediaVolume = 9,
+            ringtoneVolume = 5,
+            alarmVolume = 7,
+            maxMediaVolume = 15,
+            maxRingtoneVolume = 15,
+            maxAlarmVolume = 15,
+            isMuted = false,
+            isMusicActive = true
+        )
+
+        val response = AudioPlaybackManager.buildSetVolumeResponse("MEDIA", 9, state)
+
+        assertEquals("success", response.getString("status"))
+        assertEquals("MEDIA", response.getString("stream"))
+        assertEquals(9, response.getInt("level"))
+        assertEquals(9, response.getInt("mediaVolume"))
+        assertEquals(5, response.getInt("ringtoneVolume"))
+        assertEquals(7, response.getInt("alarmVolume"))
+        assertEquals(15, response.getInt("maxMediaVolume"))
+        assertEquals(15, response.getInt("maxRingtoneVolume"))
+        assertEquals(15, response.getInt("maxAlarmVolume"))
+        assertFalse(response.getBoolean("isMuted"))
+        assertTrue(response.getBoolean("isMusicActive"))
+        assertTrue(response.has("timestamp"))
+    }
+
+    @Test
+    fun testMediaInfoTrackingAndPayloadInclusion() {
+        // Initially clear
+        AudioPlaybackManager.clearMediaInfo()
+        assertNull(AudioPlaybackManager.currentMediaTitle)
+        assertNull(AudioPlaybackManager.currentMediaArtist)
+        assertNull(AudioPlaybackManager.currentMediaPackage)
+
+        // Update media info from notification
+        AudioPlaybackManager.updateMediaInfo("Song A", "Artist B", "com.spotify.music")
+        assertEquals("Song A", AudioPlaybackManager.currentMediaTitle)
+        assertEquals("Artist B", AudioPlaybackManager.currentMediaArtist)
+        assertEquals("com.spotify.music", AudioPlaybackManager.currentMediaPackage)
+
+        // When music is active, buildSetVolumeResponse includes media fields
+        val activeState = VolumeState(mediaVolume = 10, isMusicActive = true)
+        val activeResponse = AudioPlaybackManager.buildSetVolumeResponse("MEDIA", 10, activeState)
+        assertEquals("Song A", activeResponse.getString("mediaTitle"))
+        assertEquals("Artist B", activeResponse.getString("mediaArtist"))
+        assertEquals("com.spotify.music", activeResponse.getString("mediaPackage"))
+
+        // When music is NOT active, buildSetVolumeResponse should not include media details
+        val inactiveState = VolumeState(mediaVolume = 10, isMusicActive = false)
+        val inactiveResponse = AudioPlaybackManager.buildSetVolumeResponse("MEDIA", 10, inactiveState)
+        assertFalse(inactiveResponse.has("mediaTitle"))
+        assertFalse(inactiveResponse.has("mediaArtist"))
+
+        // Clearing media info
+        AudioPlaybackManager.clearMediaInfo()
+        assertNull(AudioPlaybackManager.currentMediaTitle)
+        assertNull(AudioPlaybackManager.currentMediaArtist)
+        assertNull(AudioPlaybackManager.currentMediaPackage)
     }
 }

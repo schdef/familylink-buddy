@@ -24,12 +24,14 @@ class AppLimitsScreen extends StatefulWidget {
 class _AppLimitsScreenState extends State<AppLimitsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final TextEditingController _availableAppsSearchController = TextEditingController();
+  String _availableAppsSearchQuery = '';
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final repo = Provider.of<AppLimitsRepository>(context, listen: false);
@@ -40,6 +42,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
 
   @override
   void dispose() {
+    _availableAppsSearchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -306,11 +309,14 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.block_rounded, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        strings.tabBlacklist(state.blacklistedPackages.length),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      const Icon(Icons.block_rounded, size: 16),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          strings.tabBlacklist(state.blacklistedPackages.length),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -320,11 +326,31 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.hourglass_top_rounded, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        strings.tabCategories(state.categories.length),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      const Icon(Icons.hourglass_top_rounded, size: 16),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          strings.tabCategories(state.categories.length),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Tab(
+                  key: const ValueKey('tab_app_history'),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.history_rounded, size: 16),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          strings.tabAppHistory,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -339,6 +365,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                 children: [
                   _buildBlacklistTab(context, repo),
                   _buildCategoriesTab(context, repo),
+                  _buildAppHistoryTab(context, repo),
                 ],
               ),
               if (_isSaving)
@@ -365,7 +392,10 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Info banner
@@ -547,9 +577,13 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
                 );
               },
             ),
+          const SizedBox(height: 28),
+          _buildAvailableAppsSection(context, repo),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildBlacklistEmptyState(BuildContext context, AppLimitsRepository repo) {
@@ -646,7 +680,10 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Info banner
@@ -743,7 +780,9 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
             ),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildCategoriesEmptyState(BuildContext context, AppLimitsRepository repo) {
@@ -1116,6 +1155,521 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
         );
       },
     );
+  }
+
+  Widget _buildAvailableAppsSection(BuildContext context, AppLimitsRepository repo) {
+    final strings = context.strings;
+    final state = repo.state;
+
+    // Filter out Family Link allowed apps like Spotify, system apps, and already blocked apps
+    final apps = state.installedApps.where((app) {
+      final pkg = app.packageName.toLowerCase();
+      if (pkg == 'com.spotify.music') return false;
+      if (pkg == 'com.familylink.buddy.child') return false;
+      if (pkg.contains('dialer') || pkg.contains('.phone')) return false;
+      if (pkg == 'com.android.settings' || pkg == 'com.google.android.settings') return false;
+      if (state.isBlacklisted(app.packageName)) return false;
+
+      if (_availableAppsSearchQuery.isNotEmpty) {
+        final q = _availableAppsSearchQuery.toLowerCase();
+        final nameMatches = app.appName.toLowerCase().contains(q);
+        final pkgMatches = pkg.contains(q);
+        if (!nameMatches && !pkgMatches) return false;
+      }
+      return true;
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              strings.availableApps,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                '${apps.length}',
+                style: const TextStyle(
+                  color: Color(0xFF818CF8),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          strings.availableAppsDesc,
+          style: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Search bar
+        TextField(
+          key: const ValueKey('input_search_available_apps'),
+          controller: _availableAppsSearchController,
+          onChanged: (val) {
+            setState(() {
+              _availableAppsSearchQuery = val.trim();
+            });
+          },
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: strings.searchAvailableApps,
+            hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
+            prefixIcon: const Icon(Icons.search, color: Color(0xFF818CF8), size: 20),
+            suffixIcon: _availableAppsSearchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, color: Color(0xFF94A3B8), size: 18),
+                    onPressed: () {
+                      _availableAppsSearchController.clear();
+                      setState(() {
+                        _availableAppsSearchQuery = '';
+                      });
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: const Color(0xFF1E293B),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+            ),
+            focusedBorder: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+              borderSide: BorderSide(color: Color(0xFF818CF8)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (apps.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Text(
+                strings.noInstalledAppsFound,
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: apps.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final app = apps[index];
+              final isBlocked = state.isBlacklisted(app.packageName);
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isBlocked
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                        : Colors.white.withValues(alpha: 0.05),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: isBlocked
+                            ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                            : const Color(0xFF6366F1).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(
+                          app.appName.isNotEmpty ? app.appName[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            color: isBlocked ? const Color(0xFFEF4444) : const Color(0xFF818CF8),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            app.appName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            app.packageName,
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (isBlocked)
+                      OutlinedButton(
+                        key: ValueKey('btn_toggle_block_${app.packageName}'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF10B981),
+                          side: const BorderSide(color: Color(0xFF10B981), width: 1.2),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () => _toggleBlacklist(app.packageName, false),
+                        child: Text(
+                          strings.unblock,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        key: ValueKey('btn_toggle_block_${app.packageName}'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFEF4444),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(Icons.block_rounded, size: 14),
+                        label: Text(
+                          strings.blockApp,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () => _toggleBlacklist(app.packageName, true),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      );
+  }
+
+  // ==========================================
+  // TAB 3: APP-HISTORIE (5 TAGE)
+  // ==========================================
+  Widget _buildAppHistoryTab(BuildContext context, AppLimitsRepository repo) {
+    final strings = context.strings;
+    final state = repo.state;
+    final history = repo.appHistory;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Banner
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF6366F1).withValues(alpha: 0.15),
+                  const Color(0xFF1E293B),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.history_rounded,
+                    color: Color(0xFF818CF8),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        strings.appHistoryTitle,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        strings.appHistorySubtitle,
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('btn_refresh_history'),
+                  icon: const Icon(Icons.refresh_rounded, color: Color(0xFF818CF8)),
+                  tooltip: strings.refreshTooltip,
+                  onPressed: () {
+                    final effectiveIp = _resolveEffectiveIp(context);
+                    repo.fetchAppHistory(
+                      widget.device.fcmToken,
+                      localIpAddress: effectiveIp,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          if (history.isEmpty)
+            Container(
+              key: const ValueKey('empty_app_history'),
+              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.history_toggle_off_rounded,
+                    size: 48,
+                    color: Color(0xFF64748B),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    strings.noAppHistory,
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: history.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final record = history[index];
+                final isBlocked = state.isBlacklisted(record.packageName);
+                final displayName = record.label.isNotEmpty
+                    ? record.label
+                    : state.getAppName(record.packageName);
+
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isBlocked
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                          : Colors.white.withValues(alpha: 0.06),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isBlocked
+                              ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                              : const Color(0xFF6366F1).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                            style: TextStyle(
+                              color: isBlocked
+                                  ? const Color(0xFFEF4444)
+                                  : const Color(0xFF818CF8),
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _formatTimestamp(context, record.timestamp),
+                                  style: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              record.packageName,
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      if (isBlocked)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            strings.statusBlocked,
+                            style: const TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      else
+                        ElevatedButton.icon(
+                          key: ValueKey('btn_block_history_${record.packageName}'),
+                          icon: const Icon(Icons.block_rounded, size: 14),
+                          label: Text(strings.blockApp),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFEF4444),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () => _toggleBlacklist(record.packageName, true),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    ),
+  ),
+);
+  }
+
+  String _formatTimestamp(BuildContext context, DateTime dt) {
+    final now = DateTime.now();
+    String pad2(int n) => n.toString().padLeft(2, '0');
+    final timeStr = '${pad2(dt.hour)}:${pad2(dt.minute)}';
+    final today = DateTime(now.year, now.month, now.day);
+    final itemDate = DateTime(dt.year, dt.month, dt.day);
+    final diffDays = today.difference(itemDate).inDays;
+
+    if (diffDays == 0) {
+      return '${context.strings.todayFilter}, $timeStr';
+    } else if (diffDays == 1) {
+      final yLabel = context.strings.languageCode == 'de' ? 'Gestern' : 'Yesterday';
+      return '$yLabel, $timeStr';
+    } else {
+      return '${pad2(dt.day)}.${pad2(dt.month)}. $timeStr';
+    }
   }
 }
 

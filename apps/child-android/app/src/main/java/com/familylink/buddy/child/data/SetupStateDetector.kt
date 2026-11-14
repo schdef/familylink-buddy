@@ -11,7 +11,8 @@ data class SetupWizardState(
     val localIp: String = "127.0.0.1",
     val localPort: Int = 8085,
     val pairingPayload: String = "",
-    val isPinConfigured: Boolean = false
+    val isPinConfigured: Boolean = false,
+    val isCameraPermissionGranted: Boolean = false
 ) {
     val completedStepsCount: Int
         get() {
@@ -20,11 +21,12 @@ data class SetupWizardState(
             if (isAccessibilityActive) count++
             if (isBatteryOptimizationExempt) count++
             if (isWifiConnected) count++
+            if (isCameraPermissionGranted) count++
             return count
         }
 
     val isAllCompleted: Boolean
-        get() = completedStepsCount == 4
+        get() = completedStepsCount == 5
 }
 
 object SetupStateDetector {
@@ -32,7 +34,7 @@ object SetupStateDetector {
     /**
      * Calculates the progress percentage (0 to 100) based on completed steps.
      */
-    fun calculateProgressPercentage(completedSteps: Int, totalSteps: Int = 4): Int {
+    fun calculateProgressPercentage(completedSteps: Int, totalSteps: Int = 5): Int {
         if (totalSteps <= 0) return 0
         return ((completedSteps.coerceIn(0, totalSteps).toDouble() / totalSteps) * 100).toInt()
     }

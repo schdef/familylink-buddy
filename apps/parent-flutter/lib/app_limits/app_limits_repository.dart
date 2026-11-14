@@ -12,16 +12,25 @@ class AppLimitsRepository extends ChangeNotifier {
     categories: defaultCategories,
   );
 
+  List<AppOpeningRecord> _appHistory = [];
+
   AppLimitsRepository({
     http.Client? httpClient,
     dynamic firestore,
   }) : _httpClient = httpClient;
 
   AppLimitsState get state => _state;
+  List<AppOpeningRecord> get appHistory => _appHistory;
 
   @visibleForTesting
   set state(AppLimitsState value) {
     _state = value;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  set appHistory(List<AppOpeningRecord> value) {
+    _appHistory = value;
     notifyListeners();
   }
 
@@ -123,6 +132,7 @@ class AppLimitsRepository extends ChangeNotifier {
   void subscribeToDevice(String childFcmToken, {String? localIpAddress}) {
     fetchRules(childFcmToken, localIpAddress: localIpAddress);
     fetchInstalledApps(childFcmToken, localIpAddress: localIpAddress);
+    fetchAppHistory(childFcmToken, localIpAddress: localIpAddress);
   }
 
   /// Fetches app rules from child device via GET /get_app_rules over LAN
@@ -209,6 +219,40 @@ class AppLimitsRepository extends ChangeNotifier {
       debugPrint('AppLimitsRepository: fetchInstalledApps error: $e');
     }
     return false;
+  }
+
+  /// Fetches 5-day (or specified days) app opening history via GET /app_history?days=$days over LAN
+  Future<List<AppOpeningRecord>> fetchAppHistory(
+    String childFcmToken, {
+    String? localIpAddress,
+    int days = 5,
+  }) async {
+    try {
+      final host = _resolveHost(localIpAddress, childFcmToken);
+      final url = Uri.parse('http://$host:8085/app_history?days=$days');
+      final client = _httpClient;
+      final response = client != null
+          ? await client.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3))
+          : await http.get(url, headers: {'X-Buddy-Token': childFcmToken}).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final rawHistory = data['history'] as List<dynamic>?;
+        if (rawHistory != null) {
+          final list = rawHistory.map((item) {
+            final map = Map<String, dynamic>.from(item as Map);
+            return AppOpeningRecord.fromJson(map);
+          }).toList();
+          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          _appHistory = list;
+          notifyListeners();
+          return list;
+        }
+      }
+    } catch (e) {
+      debugPrint('AppLimitsRepository: fetchAppHistory error: $e');
+    }
+    return _appHistory;
   }
 
   /// Parses snapshot data for backward compatibility in unit tests

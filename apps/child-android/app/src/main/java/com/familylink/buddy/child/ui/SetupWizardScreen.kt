@@ -1,13 +1,17 @@
 package com.familylink.buddy.child.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.familylink.buddy.child.R
@@ -71,6 +76,17 @@ fun SetupWizardScreen(
     var isWifiActive by remember {
         mutableStateOf(isWifiConnected(context))
     }
+    var isCameraGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        isCameraGranted = isGranted
+    }
 
     // Refresh states when returning from Android system settings
     DisposableEffect(lifecycleOwner) {
@@ -79,6 +95,7 @@ fun SetupWizardScreen(
                 isAccessibilityActive = SetupGuideHelper.isAccessibilityServiceEnabled(context) || WifiAccessibilityHelperService.instance != null
                 isBatteryExempt = SetupGuideHelper.isBatteryOptimizationIgnored(context)
                 isWifiActive = isWifiConnected(context)
+                isCameraGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 if (!SetupStateDetector.isAndroid13OrHigher()) {
                     isRestrictedSettingsUnlocked = true
                 }
@@ -124,10 +141,11 @@ fun SetupWizardScreen(
     val completedStepsCount = (if (isRestrictedSettingsUnlocked) 1 else 0) +
             (if (isAccessibilityActive) 1 else 0) +
             (if (isBatteryExempt) 1 else 0) +
+            (if (isCameraGranted) 1 else 0) +
             (if (isWifiActive) 1 else 0)
 
-    val progressPercent = SetupStateDetector.calculateProgressPercentage(completedStepsCount, 4)
-    val isAllStepsDone = completedStepsCount == 4
+    val progressPercent = SetupStateDetector.calculateProgressPercentage(completedStepsCount, 5)
+    val isAllStepsDone = completedStepsCount == 5
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -207,7 +225,7 @@ fun SetupWizardScreen(
                             text = if (isAllStepsDone) {
                                 stringResource(R.string.setup_wizard_complete)
                             } else {
-                                stringResource(R.string.setup_wizard_progress, completedStepsCount, 4)
+                                stringResource(R.string.setup_wizard_progress, completedStepsCount, 5)
                             },
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -348,6 +366,100 @@ fun SetupWizardScreen(
                     }
                 }
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ==========================================
+            // Camera Permission Card
+            // ==========================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(if (isCameraGranted) Color(0xFF10B981) else Color(0xFF6366F1)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isCameraGranted) "✓" else "📷",
+                                fontSize = 15.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.wizard_camera_card_title),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (isCameraGranted) {
+                                    stringResource(R.string.wizard_camera_active)
+                                } else {
+                                    stringResource(R.string.wizard_camera_inactive)
+                                },
+                                fontSize = 12.sp,
+                                color = if (isCameraGranted) Color(0xFF10B981) else Color(0xFFF59E0B)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = stringResource(R.string.wizard_camera_desc),
+                        fontSize = 12.5.sp,
+                        lineHeight = 17.sp,
+                        color = Color(0xFFCBD5E1)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                if (!isCameraGranted) {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
+                            },
+                            enabled = !isCameraGranted,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isCameraGranted) Color(0xFF10B981) else Color(0xFF45A29E),
+                                disabledContainerColor = Color(0xFF10B981).copy(alpha = 0.85f),
+                                disabledContentColor = Color.Black
+                            )
+                        ) {
+                            Text(
+                                text = if (isCameraGranted) {
+                                    stringResource(R.string.wizard_camera_btn_granted)
+                                } else {
+                                    stringResource(R.string.wizard_camera_btn_grant)
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCameraGranted) Color.Black else Color.White
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -605,7 +717,15 @@ fun SetupWizardScreen(
 
             // Bottom Done Button
             Button(
-                onClick = onDismiss,
+                onClick = {
+                    if (isAllStepsDone) {
+                        prefs.edit().putBoolean("setup_completed", true).apply()
+                        scope.launch {
+                            repository.setSetupCompleted(true)
+                        }
+                    }
+                    onDismiss()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),

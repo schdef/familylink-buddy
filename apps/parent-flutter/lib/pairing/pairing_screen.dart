@@ -1,18 +1,22 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../volume/volume_control_screen.dart';
 import '../l10n/app_strings.dart';
+import 'lan_discovery_service.dart';
 import 'pairing_repository.dart';
 
 class PairingScreen extends StatefulWidget {
   final http.Client? httpClient;
   final PairingRepository? repository;
+  final LanDiscoveryService? discoveryService;
 
   const PairingScreen({
     super.key,
     this.httpClient,
     this.repository,
+    this.discoveryService,
   });
 
   @override
@@ -21,7 +25,7 @@ class PairingScreen extends StatefulWidget {
 
 class _PairingScreenState extends State<PairingScreen> {
   final MobileScannerController _scannerController = MobileScannerController();
-  final _deviceNameController = TextEditingController(text: 'Felix');
+  final _deviceNameController = TextEditingController(text: 'Child Tablet');
   final _deviceTokenController = TextEditingController();
   final _pairingCodeController = TextEditingController();
   late final PairingRepository _repository;
@@ -221,45 +225,48 @@ class _PairingScreenState extends State<PairingScreen> {
     });
 
     try {
-      final payload = PairingQrPayload.tryParse(code);
-      final ip = payload?.ip.isNotEmpty == true
-          ? payload!.ip
-          : (code.contains('.') ? code : null);
-      final port = payload?.port ?? 8085;
-      var token = payload?.token.isNotEmpty == true ? payload!.token : code;
-      var deviceId = payload?.deviceId.isNotEmpty == true ? payload!.deviceId : token;
-      var resolvedName = (payload?.deviceName.isNotEmpty == true && payload!.deviceName != 'Kind')
-          ? payload.deviceName
-          : childName;
-
-      if (ip != null) {
-        final pairData = await _repository.pairWithDevice(
-          ip,
-          port,
-          client: widget.httpClient,
-        );
-
-        if (pairData != null) {
-          if (pairData['token'] is String && (pairData['token'] as String).isNotEmpty) {
-            token = pairData['token'] as String;
-          }
-          if (pairData['deviceId'] is String && (pairData['deviceId'] as String).isNotEmpty) {
-            deviceId = pairData['deviceId'] as String;
-          }
-          if (pairData['deviceName'] is String && (pairData['deviceName'] as String).isNotEmpty) {
-            resolvedName = pairData['deviceName'] as String;
-          }
-        } else {
-          final ok = await _repository.verifyDeviceConnectivity(
-            ip,
-            port,
-            token,
+      // Check if code is a JSON payload (e.g. pasted QR code)
+      if (code.startsWith('{') && code.endsWith('}')) {
+        final payload = PairingQrPayload.tryParse(code);
+        if (payload != null &&
+            payload.ip.isNotEmpty &&
+            payload.token.isNotEmpty &&
+            payload.token != payload.ip) {
+          final isReachable = await _repository.verifyDeviceConnectivity(
+            payload.ip,
+            payload.port,
+            payload.token,
             client: widget.httpClient,
           );
-          if (!ok) {
+          if (isReachable) {
+            final device = PairedDevice(
+              id: payload.deviceId.isNotEmpty ? payload.deviceId : payload.token,
+              name: payload.deviceName.isNotEmpty ? payload.deviceName : childName,
+              token: payload.token,
+              lastSeen: DateTime.now(),
+              localIpAddress: payload.ip,
+              port: payload.port,
+            );
+            await _repository.savePairedDevice(device);
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(strings.successfullyPaired),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => VolumeControlScreen(device: device)),
+            );
+            return;
+          } else {
             if (mounted) {
               setState(() {
-                _error = strings.connectionFailedHint(ip, port);
+                _isLoading = false;
+                _error = strings.connectionFailedHint(payload.ip, payload.port);
               });
             }
             return;
@@ -267,38 +274,151 @@ class _PairingScreenState extends State<PairingScreen> {
         }
       }
 
-      final device = PairedDevice(
-        id: deviceId,
-        name: resolvedName,
-        token: token,
-        lastSeen: DateTime.now(),
-        localIpAddress: ip,
+      final (host, port) = PairingQrPayload.extractHostAndPort(code);
+      final isIp = PairingQrPayload.isIpAddress(host) ||
+          (host.contains('.') && host.split('.').length == 4);
+
+      if (isIp) {
+        // User entered an IP address (with or without port)
+        final pairData = await _repository.pairWithDevice(
+          host,
+          port,
+          client: widget.httpClient,
+        );
+
+        final token = pairData?['token'] as String?;
+        final isValidToken = token != null &&
+            token.isNotEmpty &&
+            token != host &&
+            !PairingQrPayload.isIpAddress(token);
+
+        if (pairData != null && isValidToken) {
+          final deviceId = (pairData['deviceId'] as String?)?.isNotEmpty == true
+              ? pairData['deviceId'] as String
+              : token;
+          final resolvedName = (pairData['deviceName'] as String?)?.isNotEmpty == true
+              ? pairData['deviceName'] as String
+              : childName;
+
+          final device = PairedDevice(
+            id: deviceId,
+            name: resolvedName,
+            token: token,
+            lastSeen: DateTime.now(),
+            localIpAddress: host,
+            port: port,
+          );
+
+          await _repository.savePairedDevice(device);
+          if (!mounted) return;
+
+          setState(() {
+            _isLoading = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(strings.successfullyPaired),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => VolumeControlScreen(device: device),
+            ),
+          );
+          return;
+        } else {
+          // pairData is null or returned token is invalid.
+          // CRITICAL: Never fall back to saving the raw IP address as device.token!
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _error = strings.connectionFailedHint(host, port);
+            });
+          }
+          return;
+        }
+      }
+
+      // User entered a 6-digit code or device name WITHOUT an IP address
+      final discoveryService = widget.discoveryService ?? LanDiscoveryService(client: widget.httpClient);
+      final discoveredIp = await discoveryService.discoverDevice(
+        deviceId: code,
         port: port,
+        client: widget.httpClient,
       );
 
-      await _repository.savePairedDevice(device);
-      if (!mounted) return;
+      if (discoveredIp != null) {
+        final pairData = await _repository.pairWithDevice(
+          discoveredIp,
+          port,
+          client: widget.httpClient,
+        );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(strings.successfullyPaired),
-          backgroundColor: const Color(0xFF10B981),
-        ),
-      );
+        final token = pairData?['token'] as String?;
+        final isValidToken = token != null &&
+            token.isNotEmpty &&
+            token != discoveredIp &&
+            !PairingQrPayload.isIpAddress(token);
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => VolumeControlScreen(device: device),
-        ),
-      );
+        if (pairData != null && isValidToken) {
+          final deviceId = (pairData['deviceId'] as String?)?.isNotEmpty == true
+              ? pairData['deviceId'] as String
+              : token;
+          final resolvedName = (pairData['deviceName'] as String?)?.isNotEmpty == true
+              ? pairData['deviceName'] as String
+              : childName;
+
+          final device = PairedDevice(
+            id: deviceId,
+            name: resolvedName,
+            token: token,
+            lastSeen: DateTime.now(),
+            localIpAddress: discoveredIp,
+            port: port,
+          );
+
+          await _repository.savePairedDevice(device);
+          if (!mounted) return;
+
+          setState(() {
+            _isLoading = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(strings.successfullyPaired),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => VolumeControlScreen(device: device),
+            ),
+          );
+          return;
+        }
+      }
+
+      // Device was not found on the local Wi-Fi
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = strings.deviceNotFoundOnLan(code);
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
+          _isLoading = false;
           _error = strings.pairingFailed(e);
         });
       }
     } finally {
-      if (mounted) {
+      if (mounted && _isLoading) {
         setState(() {
           _isLoading = false;
         });
@@ -312,8 +432,10 @@ class _PairingScreenState extends State<PairingScreen> {
 
     if (_isScanning) {
       return Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
         appBar: AppBar(
           title: Text(strings.scanQrCodeTitle),
+          backgroundColor: const Color(0xFF1E293B),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
@@ -327,6 +449,56 @@ class _PairingScreenState extends State<PairingScreen> {
         ),
         body: MobileScanner(
           controller: _scannerController,
+          errorBuilder: (context, error, child) {
+            return Container(
+              color: const Color(0xFF0F172A),
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.videocam_off, size: 64, color: Color(0xFFEF4444)),
+                    const SizedBox(height: 16),
+                    Text(
+                      strings.cameraUnavailableTitle,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      strings.cameraUnavailableDesc,
+                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        _scannerController.stop();
+                        setState(() {
+                          _isScanning = false;
+                          _isProcessingScan = false;
+                        });
+                      },
+                      icon: const Icon(Icons.keyboard),
+                      label: Text(strings.enterManually),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
           onDetect: (capture) {
             if (_isLoading || _isProcessingScan || !_isScanning) return;
             final List<Barcode> barcodes = capture.barcodes;
@@ -340,6 +512,36 @@ class _PairingScreenState extends State<PairingScreen> {
               }
             }
           },
+        ),
+        bottomNavigationBar: Container(
+          color: const Color(0xFF1E293B),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: SafeArea(
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      _scannerController.stop();
+                      setState(() {
+                        _isScanning = false;
+                        _isProcessingScan = false;
+                      });
+                    },
+                    icon: const Icon(Icons.keyboard, color: Colors.white),
+                    label: Text(
+                      strings.enterManually,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF334155)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -356,7 +558,10 @@ class _PairingScreenState extends State<PairingScreen> {
           : SafeArea(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
@@ -405,6 +610,30 @@ class _PairingScreenState extends State<PairingScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+
+                    if (kIsWeb) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.language, color: Color(0xFF6366F1), size: 24),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                strings.webManualPairingHint,
+                                style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
 
                     // SECTION 1: Code / IP Entry
                     Container(
@@ -462,12 +691,21 @@ class _PairingScreenState extends State<PairingScreen> {
 
                     // SECTION 2: QR Code Scan
                     ElevatedButton.icon(
-                      onPressed: () {
+                      onPressed: () async {
                         setState(() {
                           _isScanning = true;
                           _isProcessingScan = false;
                         });
-                        _scannerController.start();
+                        try {
+                          await _scannerController.start();
+                        } catch (e) {
+                          if (mounted) {
+                            setState(() {
+                              _isScanning = false;
+                              _error = strings.cameraUnavailableDesc;
+                            });
+                          }
+                        }
                       },
                       icon: const Icon(Icons.qr_code_scanner),
                       label: Text(strings.methodB),
@@ -485,7 +723,7 @@ class _PairingScreenState extends State<PairingScreen> {
                     // DEV OVERRIDES
                     OutlinedButton.icon(
                       onPressed: () {
-                        _deviceNameController.text = "Felix (Emulator)";
+                        _deviceNameController.text = "Child (Emulator)";
                         _deviceTokenController.text = "emulator";
                         _handleDirectPairing();
                       },
@@ -504,6 +742,8 @@ class _PairingScreenState extends State<PairingScreen> {
                 ),
               ),
             ),
+          ),
+        ),
     );
   }
 

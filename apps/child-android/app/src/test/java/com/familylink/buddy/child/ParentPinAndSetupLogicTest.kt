@@ -220,6 +220,14 @@ class ParentPinAndSetupLogicTest {
         assertEquals(75, SetupStateDetector.calculateProgressPercentage(3, 4))
         assertEquals(100, SetupStateDetector.calculateProgressPercentage(4, 4))
 
+        // 5-step progress (including Camera permission)
+        assertEquals(0, SetupStateDetector.calculateProgressPercentage(0, 5))
+        assertEquals(20, SetupStateDetector.calculateProgressPercentage(1, 5))
+        assertEquals(40, SetupStateDetector.calculateProgressPercentage(2, 5))
+        assertEquals(60, SetupStateDetector.calculateProgressPercentage(3, 5))
+        assertEquals(80, SetupStateDetector.calculateProgressPercentage(4, 5))
+        assertEquals(100, SetupStateDetector.calculateProgressPercentage(5, 5))
+
         // Clamping edge cases
         assertEquals(0, SetupStateDetector.calculateProgressPercentage(-1, 4))
         assertEquals(100, SetupStateDetector.calculateProgressPercentage(5, 4))
@@ -246,7 +254,8 @@ class ParentPinAndSetupLogicTest {
             isRestrictedSettingsUnlocked = true,
             isAccessibilityActive = true,
             isBatteryOptimizationExempt = false,
-            isWifiConnected = false
+            isWifiConnected = false,
+            isCameraPermissionGranted = false
         )
         assertEquals(2, halfState.completedStepsCount)
         assertFalse(halfState.isAllCompleted)
@@ -255,9 +264,26 @@ class ParentPinAndSetupLogicTest {
             isRestrictedSettingsUnlocked = true,
             isAccessibilityActive = true,
             isBatteryOptimizationExempt = true,
-            isWifiConnected = true
+            isWifiConnected = true,
+            isCameraPermissionGranted = true
         )
-        assertEquals(4, completeState.completedStepsCount)
+        assertEquals(5, completeState.completedStepsCount)
         assertTrue(completeState.isAllCompleted)
+    }
+
+    @Test
+    fun testBootReceiverPackageReplacedActionMatching() {
+        val packageReplacedAction = android.content.Intent.ACTION_MY_PACKAGE_REPLACED
+        assertEquals("android.intent.action.MY_PACKAGE_REPLACED", packageReplacedAction)
+
+        val supportedActions = setOf(
+            android.content.Intent.ACTION_BOOT_COMPLETED,
+            "android.intent.action.QUICKBOOT_POWERON",
+            android.content.Intent.ACTION_MY_PACKAGE_REPLACED
+        )
+        assertTrue(supportedActions.contains("android.intent.action.MY_PACKAGE_REPLACED"))
+        assertTrue(supportedActions.contains("android.intent.action.BOOT_COMPLETED"))
+        assertTrue(supportedActions.contains("android.intent.action.QUICKBOOT_POWERON"))
+        assertFalse(supportedActions.contains("android.intent.action.ACTION_POWER_CONNECTED"))
     }
 }

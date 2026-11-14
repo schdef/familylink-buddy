@@ -95,7 +95,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Boot Completed Receiver -->
+        <!-- Boot & Package Replaced Receiver -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -103,6 +103,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

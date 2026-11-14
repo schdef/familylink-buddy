@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../pairing/pairing_repository.dart';
+import '../pairing/pairing_screen.dart';
 import '../pairing/lan_discovery_service.dart';
 import '../pairing/device_list_screen.dart';
 import '../bedtime/bedtime_schedule_screen.dart';
@@ -40,10 +42,13 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
   final Map<String, DateTime> _lastSetTimes = {};
   bool _isRefreshing = false;
   Timer? _refreshTimeoutTimer;
+  late PairedDevice _currentDevice;
+  List<PairedDevice> _allDevices = [];
 
   @override
   void initState() {
     super.initState();
+    _currentDevice = widget.device;
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -58,13 +63,55 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     _volumeRepository.addListener(_onRepositoryUpdate);
     _volumeRepository.initialize().then((_) {
       _volumeRepository.subscribeToDevice(
-        widget.device.fcmToken,
-        ipAddress: widget.device.localIpAddress,
-        deviceId: widget.device.id,
+        _currentDevice.fcmToken,
+        ipAddress: _currentDevice.localIpAddress,
+        deviceId: _currentDevice.id,
         pairingRepo: PairingRepository(),
         discoveryService: LanDiscoveryService(),
       );
-      _volumeRepository.requestVolumeReport(widget.device.fcmToken);
+      _volumeRepository.requestVolumeReport(_currentDevice.fcmToken);
+    });
+    _loadAllDevices();
+  }
+
+  Future<void> _loadAllDevices() async {
+    final devices = await PairingRepository().loadAllPairedDevices();
+    if (mounted) {
+      setState(() {
+        _allDevices = devices;
+        final idx = devices.indexWhere((d) => d.id == _currentDevice.id);
+        if (idx >= 0) {
+          _currentDevice = devices[idx];
+        }
+      });
+    }
+  }
+
+  void _switchDevice(PairedDevice newDevice) {
+    if (newDevice.id == _currentDevice.id && newDevice.token == _currentDevice.token) return;
+    setState(() {
+      _currentDevice = newDevice;
+      _localValues.clear();
+      _lastSetTimes.clear();
+    });
+    _volumeRepository.subscribeToDevice(
+      newDevice.fcmToken,
+      ipAddress: newDevice.localIpAddress,
+      deviceId: newDevice.id,
+      pairingRepo: PairingRepository(),
+      discoveryService: LanDiscoveryService(),
+    );
+    _volumeRepository.requestVolumeReport(newDevice.fcmToken);
+    PairingRepository().savePairedDevice(newDevice);
+  }
+
+  void _openAddKid() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PairingScreen(),
+      ),
+    ).then((_) {
+      _loadAllDevices();
     });
   }
 
@@ -92,7 +139,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
           if (streamName == 'MEDIA') repoVal = _volumeRepository.volumeState.mediaVolume;
           if (streamName == 'RINGTONE') repoVal = _volumeRepository.volumeState.ringtoneVolume;
           if (streamName == 'ALARM') repoVal = _volumeRepository.volumeState.alarmVolume;
-          return repoVal == localVal.toInt();
+          return repoVal >= 0 && repoVal == localVal.round();
         });
       });
     }
@@ -133,19 +180,27 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
       }
     });
 
-    await _volumeRepository.requestVolumeReport(widget.device.fcmToken);
+    await _volumeRepository.requestVolumeReport(_currentDevice.fcmToken);
   }
 
   // Using static utility from VolumeRepository instead
 
   Future<void> _handleUnpair() async {
     final pairingRepo = PairingRepository();
-    await pairingRepo.clearPairedDevice();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const DeviceListScreen()),
-        (route) => false,
-      );
+    await pairingRepo.removePairedDevice(_currentDevice.id);
+    final remaining = await pairingRepo.loadAllPairedDevices();
+    if (remaining.isNotEmpty) {
+      if (mounted) {
+        _switchDevice(remaining.first);
+        _loadAllDevices();
+      }
+    } else {
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const DeviceListScreen()),
+          (route) => false,
+        );
+      }
     }
   }
 
@@ -203,20 +258,28 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      strings.audioPlayingSpotify,
+                      (repo.volumeState.mediaTitle != null && repo.volumeState.mediaTitle!.isNotEmpty)
+                          ? repo.volumeState.mediaTitle!
+                          : strings.audioPlayingSpotify,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      strings.activeMediaPlayback,
+                      (repo.volumeState.mediaArtist != null && repo.volumeState.mediaArtist!.isNotEmpty)
+                          ? '${repo.volumeState.mediaArtist} • ${strings.activeMediaPlayback}'
+                          : strings.activeMediaPlayback,
                       style: const TextStyle(
                         color: Color(0xFF94A3B8),
                         fontSize: 12,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -228,7 +291,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
             key: const ValueKey('stop_audio_button'),
             onPressed: () async {
               HapticFeedback.mediumImpact();
-              final success = await repo.stopAudioPlayback(childToken: widget.device.fcmToken);
+              final success = await repo.stopAudioPlayback(childToken: _currentDevice.fcmToken);
               if (!context.mounted) return;
               if (success) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -277,7 +340,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
     final DateTime? lastSet = _lastSetTimes[streamName];
     final bool useLocal = localVal != null &&
         lastSet != null &&
-        DateTime.now().difference(lastSet).inSeconds < 3;
+        DateTime.now().difference(lastSet).inSeconds < 8;
 
     final double displayValue = useLocal ? localVal : (value >= 0 ? value.toDouble() : 0);
     return Container(
@@ -391,11 +454,11 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 onTap: () {
                   final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
                       ? repo.localIpAddress
-                      : widget.device.localIpAddress;
+                      : _currentDevice.localIpAddress;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => AppLimitsScreen(
-                        device: widget.device,
+                        device: _currentDevice,
                         localIpAddress: effectiveIp,
                       ),
                     ),
@@ -414,11 +477,11 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 onTap: () {
                   final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
                       ? repo.localIpAddress
-                      : widget.device.localIpAddress;
+                      : _currentDevice.localIpAddress;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => BedtimeScheduleScreen(
-                        device: widget.device,
+                        device: _currentDevice,
                         localIpAddress: effectiveIp,
                       ),
                     ),
@@ -440,11 +503,11 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 onTap: () {
                   final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
                       ? repo.localIpAddress
-                      : widget.device.localIpAddress;
+                      : _currentDevice.localIpAddress;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => ScreenshotScreen(
-                        device: widget.device,
+                        device: _currentDevice,
                         localIpAddress: effectiveIp,
                       ),
                     ),
@@ -463,7 +526,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 onTap: () {
                   final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
                       ? repo.localIpAddress
-                      : widget.device.localIpAddress;
+                      : _currentDevice.localIpAddress;
                   _showP2PUpdateDialog(context, effectiveIp);
                 },
               ),
@@ -587,6 +650,44 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         actions: [
+          if (_allDevices.length > 1)
+            PopupMenuButton<PairedDevice>(
+              key: const ValueKey('btn_switch_kid'),
+              icon: const Icon(Icons.people_alt_outlined, color: Color(0xFF818CF8)),
+              tooltip: strings.switchKid,
+              onSelected: _switchDevice,
+              itemBuilder: (context) => _allDevices.map((d) {
+                final isSelected = d.deviceId == _currentDevice.deviceId;
+                return PopupMenuItem<PairedDevice>(
+                  value: d,
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                        color: isSelected ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          d.name,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          IconButton(
+            key: const ValueKey('btn_add_kid'),
+            icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF818CF8)),
+            tooltip: strings.addKid,
+            onPressed: _openAddKid,
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
             tooltip: strings.unpairTooltip,
@@ -597,7 +698,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                   backgroundColor: const Color(0xFF1E293B),
                   title: Text(strings.unpairDeviceTitle, style: const TextStyle(color: Colors.white)),
                   content: Text(
-                    strings.unpairDeviceConfirm(widget.device.name),
+                    strings.unpairDeviceConfirm(_currentDevice.name),
                     style: const TextStyle(color: Color(0xFF94A3B8)),
                   ),
                   actions: [
@@ -609,10 +710,11 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                       child: Text(strings.unpair, style: const TextStyle(color: Color(0xFFEF4444))),
                       onPressed: () async {
                         Navigator.of(ctx).pop();
+                        final name = _currentDevice.name;
                         await _handleUnpair();
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(strings.deviceUnpaired(widget.device.name))),
+                            SnackBar(content: Text(strings.deviceUnpaired(name))),
                           );
                         }
                       },
@@ -636,7 +738,10 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
               behavior: _ScrollBehavior(),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 800),
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Header card
@@ -673,13 +778,76 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  widget.device.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _currentDevice.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (_allDevices.length > 1) ...[
+                                      const SizedBox(width: 8),
+                                      PopupMenuButton<PairedDevice>(
+                                        key: const ValueKey('header_switch_kid'),
+                                        tooltip: strings.switchKid,
+                                        onSelected: _switchDevice,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                strings.switchKid,
+                                                style: const TextStyle(
+                                                  color: Color(0xFF818CF8),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              const Icon(Icons.arrow_drop_down, color: Color(0xFF818CF8), size: 16),
+                                            ],
+                                          ),
+                                        ),
+                                        itemBuilder: (context) => _allDevices.map((d) {
+                                          final isSelected = d.deviceId == _currentDevice.deviceId;
+                                          return PopupMenuItem<PairedDevice>(
+                                            value: d,
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                                  color: isSelected ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                                                  size: 20,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    d.name,
+                                                    style: TextStyle(
+                                                      color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 const SizedBox(height: 4),
                                 Wrap(
@@ -751,12 +919,24 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                       value: repo.volumeState.mediaVolume,
                       maxValue: repo.volumeState.maxMediaVolume,
                       streamName: 'MEDIA',
-                      onChanged: (val) {
-                        repo.setVolume(
-                          childFcmToken: widget.device.fcmToken,
+                      onChanged: (val) async {
+                        final success = await repo.setVolume(
+                          childFcmToken: _currentDevice.fcmToken,
                           stream: 'MEDIA',
-                          level: val.toInt(),
+                          level: val.round(),
                         );
+                        if (!mounted) return;
+                        if (success) {
+                          setState(() {
+                            _localValues['MEDIA'] = val;
+                            _lastSetTimes['MEDIA'] = DateTime.now();
+                          });
+                        } else {
+                          setState(() {
+                            _localValues.remove('MEDIA');
+                            _lastSetTimes.remove('MEDIA');
+                          });
+                        }
                       },
                     ),
 
@@ -766,12 +946,24 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                       value: repo.volumeState.ringtoneVolume,
                       maxValue: repo.volumeState.maxRingtoneVolume,
                       streamName: 'RINGTONE',
-                      onChanged: (val) {
-                        repo.setVolume(
-                          childFcmToken: widget.device.fcmToken,
+                      onChanged: (val) async {
+                        final success = await repo.setVolume(
+                          childFcmToken: _currentDevice.fcmToken,
                           stream: 'RINGTONE',
-                          level: val.toInt(),
+                          level: val.round(),
                         );
+                        if (!mounted) return;
+                        if (success) {
+                          setState(() {
+                            _localValues['RINGTONE'] = val;
+                            _lastSetTimes['RINGTONE'] = DateTime.now();
+                          });
+                        } else {
+                          setState(() {
+                            _localValues.remove('RINGTONE');
+                            _lastSetTimes.remove('RINGTONE');
+                          });
+                        }
                       },
                     ),
 
@@ -781,64 +973,68 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                       value: repo.volumeState.alarmVolume,
                       maxValue: repo.volumeState.maxAlarmVolume,
                       streamName: 'ALARM',
-                      onChanged: (val) {
-                        repo.setVolume(
-                          childFcmToken: widget.device.fcmToken,
+                      onChanged: (val) async {
+                        final success = await repo.setVolume(
+                          childFcmToken: _currentDevice.fcmToken,
                           stream: 'ALARM',
-                          level: val.toInt(),
+                          level: val.round(),
                         );
+                        if (!mounted) return;
+                        if (success) {
+                          setState(() {
+                            _localValues['ALARM'] = val;
+                            _lastSetTimes['ALARM'] = DateTime.now();
+                          });
+                        } else {
+                          setState(() {
+                            _localValues.remove('ALARM');
+                            _lastSetTimes.remove('ALARM');
+                          });
+                        }
                       },
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Global Preset Action Buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              repo.setVolume(
-                                childFcmToken: widget.device.fcmToken,
-                                stream: 'ALL',
-                                level: 0,
-                              );
-                            },
-                            icon: const Icon(Icons.volume_mute, size: 20),
-                            label: Text(strings.muteAll),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFEF4444),
-                              side: const BorderSide(color: Color(0xFFEF4444)),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
+                    // Global Preset Action Buttons (Mute All)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        key: const ValueKey('btn_mute_all'),
+                        onPressed: () async {
+                          final now = DateTime.now();
+                          setState(() {
+                            _localValues['MEDIA'] = 0;
+                            _localValues['RINGTONE'] = 0;
+                            _localValues['ALARM'] = 0;
+                            _lastSetTimes['MEDIA'] = now;
+                            _lastSetTimes['RINGTONE'] = now;
+                            _lastSetTimes['ALARM'] = now;
+                          });
+                          final success = await repo.setVolume(
+                            childFcmToken: _currentDevice.fcmToken,
+                            stream: 'ALL',
+                            level: 0,
+                          );
+                          if (!mounted) return;
+                          if (!success) {
+                            setState(() {
+                              _localValues.clear();
+                              _lastSetTimes.clear();
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.volume_mute, size: 20),
+                        label: Text(strings.muteAll),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              repo.setVolume(
-                                childFcmToken: widget.device.fcmToken,
-                                stream: 'ALL',
-                                level: 15,
-                              );
-                            },
-                            icon: const Icon(Icons.volume_up, size: 20),
-                            label: Text(strings.maxVolume),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF6366F1),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
 
                     const SizedBox(height: 24),
@@ -846,6 +1042,8 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 ),
               ),
             ),
+          ),
+        ),
           );
         },
       ),
@@ -857,7 +1055,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
       context: context,
       builder: (ctx) => _P2PUpdateDialog(
         initialLocalIp: localIpAddress,
-        childFcmToken: widget.device.fcmToken,
+        childFcmToken: _currentDevice.fcmToken,
       ),
     );
   }
@@ -896,8 +1094,9 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
   }
 
   void _checkDefaultApk() {
+    if (kIsWeb) return;
     final candidates = [
-      '/home/stefanheintz/coding/familylink-buddy/build/child-app-release.apk',
+      'build/child-app-release.apk',
       '/tmp/child-app-release.apk',
       '${Directory.systemTemp.path}/child-update.apk',
     ];
@@ -928,6 +1127,13 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
 
   Future<void> _pickApkFile() async {
     final strings = context.strings;
+    if (kIsWeb) {
+      setState(() {
+        _hasError = true;
+        _statusMessage = 'P2P APK update is only supported on Android / desktop app.';
+      });
+      return;
+    }
     setState(() {
       _isPicking = true;
       _hasError = false;
@@ -966,6 +1172,13 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
 
   Future<void> _startP2PUpdate() async {
     final strings = context.strings;
+    if (kIsWeb) {
+      setState(() {
+        _hasError = true;
+        _statusMessage = 'P2P APK update is only supported on Android / desktop app.';
+      });
+      return;
+    }
     final ip = _ipController.text.trim();
     if (ip.isEmpty) {
       setState(() {

@@ -19,6 +19,7 @@ class P2PUpdaterService {
   /// - 'size': int (file size in bytes)
   /// or null if the user cancelled the picker.
   Future<Map<String, dynamic>?> pickApkFile() async {
+    if (kIsWeb) return null;
     try {
       final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('pickApkFile');
       if (result == null) return null;
@@ -36,6 +37,9 @@ class P2PUpdaterService {
     required String apkFilePath,
     required Function(double progress) onProgress,
   }) async {
+    if (kIsWeb) {
+      throw UnsupportedError('pushUpdateToChild is not supported on web');
+    }
     final file = File(apkFilePath);
     if (!await file.exists()) {
       throw FileSystemException('APK-Datei nicht gefunden', apkFilePath);

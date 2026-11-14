@@ -25,6 +25,7 @@ void main() {
       expect(en.timeBankTitle, 'Time Bank');
       expect(en.walkieTalkieTitle, 'Walkie-Talkie Comms');
       expect(en.connectionFailedHint('192.168.1.1', 8085), contains('Not Guest Wi-Fi'));
+      expect(en.deviceNotFoundOnLan('123456'), contains('was not found on the local Wi-Fi'));
 
       final de = AppStrings.getStrings('de');
       expect(de, isA<AppStringsDe>());
@@ -36,6 +37,7 @@ void main() {
       expect(de.timeBankTitle, 'Zeitkonto');
       expect(de.walkieTalkieTitle, 'Walkie-Talkie Comms');
       expect(de.connectionFailedHint('192.168.1.1', 8085), contains('Kein Gast-WLAN'));
+      expect(de.deviceNotFoundOnLan('123456'), contains('im lokalen WLAN nicht gefunden'));
     });
 
     test('Unknown language codes fall back to English by default', () {

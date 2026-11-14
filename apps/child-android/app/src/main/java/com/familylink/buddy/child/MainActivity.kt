@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var repository: FamilyTimeRepository
     private val canDrawOverlaysState = mutableStateOf(false)
     private val hasUsageAccessState = mutableStateOf(false)
+    private val hasCameraPermissionState = mutableStateOf(false)
 
     private fun playCoinSound() {
         try {
@@ -178,6 +179,9 @@ class MainActivity : ComponentActivity() {
         // Request notification permission if Android 13+
         requestNotificationPermission()
 
+        // Request camera runtime permission
+        requestCameraPermission()
+
         // Initialize local pairing token in DataStore
         lifecycleScopeLaunch {
             repository.getOrCreateDeviceToken()
@@ -186,18 +190,21 @@ class MainActivity : ComponentActivity() {
         // Update local volume state on startup
         updateLocalVolumeState()
 
-        // Write initial data if none exists
+        // Write initial data only if no existing data exists in repository
         lifecycleScopeLaunch {
-            val initial = FamilyTimeData(
-                totalRemainingMinutes = 60,
-                totalLimitMinutes = 120,
-                appUsages = listOf(
-                    AppUsage("com.google.android.youtube", "YouTube", 15, 30),
-                    AppUsage("com.mojang.minecraftpe", "Minecraft", 20, 60)
+            val existing = repository.familyTimeData.first()
+            if (existing.appUsages.isEmpty()) {
+                val initial = FamilyTimeData(
+                    totalRemainingMinutes = 60,
+                    totalLimitMinutes = 120,
+                    appUsages = listOf(
+                        AppUsage("com.google.android.youtube", "YouTube", 15, 30),
+                        AppUsage("com.mojang.minecraftpe", "Minecraft", 20, 60)
+                    )
                 )
-            )
-            repository.updateFamilyTimeData(initial)
-            FamilyBuddyWidget().updateAll(applicationContext)
+                repository.updateFamilyTimeData(initial)
+                FamilyBuddyWidget().updateAll(applicationContext)
+            }
         }
 
         setContent {
@@ -574,6 +581,39 @@ class MainActivity : ComponentActivity() {
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
                                     ) {
                                         Text(stringResource(R.string.perm_usage_btn), color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Camera Permission Warning Card
+                        val hasCameraPermission by hasCameraPermissionState
+                        if (!hasCameraPermission) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.perm_camera_title),
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF38BDF8)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.perm_camera_desc),
+                                        fontSize = 13.sp,
+                                        color = Color(0xFFE2E8F0),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            requestCameraPermission()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                                    ) {
+                                        Text(stringResource(R.string.perm_camera_btn), color = Color.White)
                                     }
                                 }
                             }
@@ -1347,6 +1387,10 @@ class MainActivity : ComponentActivity() {
             true
         }
         hasUsageAccessState.value = checkUsageAccessPermission()
+        hasCameraPermissionState.value = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
         if (hasUsageAccessState.value) {
             refreshRealAppUsageData()
         }
@@ -1364,6 +1408,26 @@ class MainActivity : ComponentActivity() {
             val permission = Manifest.permission.POST_NOTIFICATIONS
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(permission), 1)
+            }
+        }
+    }
+
+    private fun requestCameraPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 102)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            102 -> {
+                hasCameraPermissionState.value = grantResults.isNotEmpty() &&
+                        grantResults[0] == PackageManager.PERMISSION_GRANTED
             }
         }
     }

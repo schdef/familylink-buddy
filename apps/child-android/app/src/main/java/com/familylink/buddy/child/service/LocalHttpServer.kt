@@ -1,8 +1,11 @@
 package com.familylink.buddy.child.service
 
 import android.app.NotificationManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -242,22 +245,21 @@ class LocalHttpServer(
                 } catch (e: Exception) {
                     null
                 }
-                val stream = bodyJson?.optString("stream") ?: queryParams["stream"] ?: "MEDIA"
-                val level = bodyJson?.optInt("level", -1).let {
-                    if (it != null && it != -1) it else queryParams["level"]?.toIntOrNull() ?: 0
+                val stream = AudioPlaybackManager.parseStreamParam(bodyJson, queryParams)
+                val level = AudioPlaybackManager.parseLevelParam(bodyJson, queryParams)
+
+                AudioPlaybackManager.applyVolumeChangeOnMainLooper(context, stream, level)
+
+                val state = readCurrentVolumeState()
+                scope.launch {
+                    repository.updateVolumeState(state)
                 }
 
-                applyVolumeChange(stream, level)
-
-                val responseJson = JSONObject().apply {
-                    put("status", "success")
-                    put("stream", stream)
-                    put("level", level)
-                }
-
+                val responseJson = AudioPlaybackManager.buildSetVolumeResponse(stream, level, state)
                 sendHttpResponse(writer, 200, "OK", responseJson.toString())
             } else if (path == "/volume_report") {
                 val state = readCurrentVolumeState()
+                val isMusicActive = AudioPlaybackManager.isMusicActive(context)
                 val responseJson = JSONObject().apply {
                     put("type", "VOLUME_REPORT")
                     put("mediaVolume", state.mediaVolume)
@@ -267,7 +269,12 @@ class LocalHttpServer(
                     put("maxRingtoneVolume", state.maxRingtoneVolume)
                     put("maxAlarmVolume", state.maxAlarmVolume)
                     put("isMuted", state.isMuted)
-                    put("isMusicActive", AudioPlaybackManager.isMusicActive(context))
+                    put("isMusicActive", isMusicActive)
+                    if (isMusicActive) {
+                        put("mediaTitle", AudioPlaybackManager.currentMediaTitle ?: "")
+                        put("mediaArtist", AudioPlaybackManager.currentMediaArtist ?: "")
+                        put("mediaPackage", AudioPlaybackManager.currentMediaPackage ?: "")
+                    }
                     put("timestamp", System.currentTimeMillis())
                 }
 
@@ -320,6 +327,9 @@ class LocalHttpServer(
                 handleGetAppRules(writer)
             } else if (path == "/installed_apps") {
                 handleGetInstalledApps(writer)
+            } else if (path == "/app_history") {
+                val days = queryParams["days"]?.toIntOrNull()?.coerceIn(1, 30) ?: 5
+                handleGetAppHistory(writer, days)
             } else if (path == "/add_bonus_minutes") {
                 val bodyString = readBodyString(rawInput, contentLength)
                 val bodyJson = try {
@@ -758,23 +768,7 @@ class LocalHttpServer(
     }
 
     private fun applyVolumeChange(stream: String, level: Int) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val streamType = when (stream) {
-            "MEDIA" -> AudioManager.STREAM_MUSIC
-            "RINGTONE" -> AudioManager.STREAM_RING
-            "ALARM" -> AudioManager.STREAM_ALARM
-            else -> AudioManager.STREAM_MUSIC
-        }
-
-        if (stream == "ALL") {
-            setStreamVolume(audioManager, AudioManager.STREAM_MUSIC, level)
-            setStreamVolume(audioManager, AudioManager.STREAM_RING, level)
-            setStreamVolume(audioManager, AudioManager.STREAM_ALARM, level)
-        } else {
-            setStreamVolume(audioManager, streamType, level)
-        }
-
-        // Persist the state change locally
+        AudioPlaybackManager.applyVolumeChangeOnMainLooper(context, stream, level)
         scope.launch {
             val state = readCurrentVolumeState()
             repository.updateVolumeState(state)
@@ -782,26 +776,16 @@ class LocalHttpServer(
     }
 
     private fun setStreamVolume(audioManager: AudioManager, streamType: Int, level: Int) {
-        try {
-            if (streamType == AudioManager.STREAM_RING && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                if (notificationManager?.isNotificationPolicyAccessGranted != true) {
-                    Log.w(TAG, "Skipping STREAM_RING: DND access not granted")
-                    return
-                }
-            }
-            val max = audioManager.getStreamMaxVolume(streamType)
-            val clamped = level.coerceIn(0, max)
-            audioManager.setStreamVolume(streamType, clamped, 0)
-        } catch (e: SecurityException) {
-            Log.w(TAG, "SecurityException setting stream $streamType volume (likely DND): ${e.message}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting stream volume for $streamType", e)
-        }
+        AudioPlaybackManager.setStreamVolume(context, audioManager, streamType, level)
     }
 
     private fun readCurrentVolumeState(): VolumeState {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val isMuted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            audioManager.isStreamMute(AudioManager.STREAM_MUSIC) || audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+        } else {
+            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+        }
         return VolumeState(
             mediaVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
             ringtoneVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING),
@@ -809,7 +793,7 @@ class LocalHttpServer(
             maxMediaVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
             maxRingtoneVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
             maxAlarmVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM),
-            isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0,
+            isMuted = isMuted,
             isMusicActive = AudioPlaybackManager.isMusicActive(context)
         )
     }
@@ -924,15 +908,83 @@ class LocalHttpServer(
         }
     }
 
+    private fun handleGetAppHistory(writer: PrintWriter, days: Int) {
+        try {
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            val now = System.currentTimeMillis()
+            val startTime = now - (days * 24 * 60 * 60 * 1000L)
+            val historyArray = JSONArray()
+
+            if (usageStatsManager != null) {
+                val events = usageStatsManager.queryEvents(startTime, now)
+                val event = UsageEvents.Event()
+                val pm = context.packageManager
+                val labelCache = HashMap<String, String>()
+
+                while (events != null && events.hasNextEvent()) {
+                    events.getNextEvent(event)
+                    if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                        val pkg = event.packageName ?: continue
+
+                        // Filter out system UI, launchers, and allowed apps (Spotify, child app, settings, dialer)
+                        if (pkg == "com.android.systemui" ||
+                            WifiAccessibilityHelperService.isLauncherPackage(context, pkg) ||
+                            InstalledAppsManager.isAllowedExcludedApp(context, pkg)) {
+                            continue
+                        }
+
+                        val label = labelCache.getOrPut(pkg) {
+                            try {
+                                val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    pm.getApplicationInfo(pkg, 0)
+                                }
+                                val l = pm.getApplicationLabel(appInfo).toString()
+                                if (l.isNotBlank()) l else pkg
+                            } catch (e: Exception) {
+                                pkg
+                            }
+                        }
+
+                        val item = JSONObject().apply {
+                            put("packageName", pkg)
+                            put("label", label)
+                            put("timestamp", event.timeStamp)
+                        }
+                        historyArray.put(item)
+                    }
+                }
+            }
+
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("history", historyArray)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying app history over LAN", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
     private fun handleStatus(writer: PrintWriter) {
         val deviceId = repository.getDeviceIdSync()
         val deviceName = getDeviceName()
+        val isMusicActive = AudioPlaybackManager.isMusicActive(context)
         val responseJson = JSONObject().apply {
             put("status", "online")
             put("deviceId", deviceId)
             put("deviceName", deviceName)
             put("version", BuildConfig.VERSION_NAME)
             put("hasParentPin", repository.isPinConfiguredSync())
+            put("isMusicActive", isMusicActive)
+            if (isMusicActive) {
+                put("mediaTitle", AudioPlaybackManager.currentMediaTitle ?: "")
+                put("mediaArtist", AudioPlaybackManager.currentMediaArtist ?: "")
+                put("mediaPackage", AudioPlaybackManager.currentMediaPackage ?: "")
+            }
         }
         sendHttpResponse(writer, 200, "OK", responseJson.toString())
     }
@@ -1010,7 +1062,7 @@ class LocalHttpServer(
                 ?: Build.MODEL
         } catch (e: Exception) {
             Build.MODEL
-        } ?: "Felix"
+        } ?: "Child Tablet"
     }
 
     private fun sendHttpResponse(writer: PrintWriter, statusCode: Int, statusText: String, body: String) {
@@ -1018,6 +1070,9 @@ class LocalHttpServer(
         writer.println("Content-Type: application/json")
         writer.println("Content-Length: ${body.toByteArray(Charsets.UTF_8).size}")
         writer.println("Access-Control-Allow-Origin: *")
+        writer.println("Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE")
+        writer.println("Access-Control-Allow-Headers: X-Buddy-Token, Authorization, Content-Type, Accept, Origin")
+        writer.println("Access-Control-Max-Age: 86400")
         writer.println()
         writer.print(body)
         writer.flush()

@@ -70,6 +70,22 @@ class WifiAccessibilityHelperService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
+        // Media playback detection via active notifications
+        if (event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            val parcelable = event.parcelableData
+            if (parcelable is android.app.Notification) {
+                val extras = parcelable.extras
+                val title = extras?.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
+                val text = extras?.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString()
+                val subText = extras?.getCharSequence(android.app.Notification.EXTRA_SUB_TEXT)?.toString()
+                val artist = if (!text.isNullOrBlank()) text else subText
+                val eventPkg = event.packageName?.toString()
+                if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
+                    com.familylink.buddy.child.data.AudioPlaybackManager.updateMediaInfo(title, artist, eventPkg)
+                }
+            }
+        }
+
         val pkg = event.packageName?.toString()
         if (!pkg.isNullOrBlank()) {
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || latestPackageName == null) {
@@ -101,7 +117,8 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                 }
             }
 
-            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                pkg == com.familylink.buddy.child.data.InstalledAppsManager.GOOGLE_SEARCH_PACKAGE) {
                 val interception = checkAndInterceptPackage(pkg)
                 if (interception is AppInterceptionResult.BlockedBlacklist ||
                     interception is AppInterceptionResult.BlockedCategoryLimit) {
@@ -242,6 +259,22 @@ class WifiAccessibilityHelperService : AccessibilityService() {
     fun checkAndInterceptPackage(pkg: String): AppInterceptionResult {
         if (pkg.isBlank()) return AppInterceptionResult.None
 
+        val manager = AppLimitsManager.getInstance(this)
+
+        // Always check blacklist first! Ensure com.google.android.googlequicksearchbox
+        // or any blacklisted package is intercepted immediately.
+        val isBlacklisted = manager.getRules().blacklistedPackages.contains(pkg)
+        if (isBlacklisted) {
+            val appLabel = getAppLabel(pkg)
+            val result = manager.onPackageChanged(pkg, appLabel)
+            if (result is AppInterceptionResult.BlockedBlacklist) {
+                Log.w(TAG, "Blocking blacklisted app: $pkg ($appLabel)")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                showInterceptionToast(getString(R.string.app_blocked_toast, appLabel))
+                return result
+            }
+        }
+
         // Ignore launcher, our own child app, and System UI
         if (isLauncherPackage(this, pkg) || pkg == packageName || pkg == "com.android.systemui") {
             AppLimitsManager.getInstance(this).onSystemOrLauncherActive(pkg)
@@ -249,7 +282,6 @@ class WifiAccessibilityHelperService : AccessibilityService() {
         }
 
         val appLabel = getAppLabel(pkg)
-        val manager = AppLimitsManager.getInstance(this)
         val result = manager.onPackageChanged(pkg, appLabel)
 
         when (result) {
@@ -457,7 +489,11 @@ class WifiAccessibilityHelperService : AccessibilityService() {
             return Pair(finalLabel, rawPackage)
         }
 
-        private fun isLauncherPackage(context: Context, packageName: String): Boolean {
+        fun isLauncherPackage(context: Context, packageName: String): Boolean {
+            if (packageName.isBlank()) return false
+            if (packageName == com.familylink.buddy.child.data.InstalledAppsManager.GOOGLE_SEARCH_PACKAGE) {
+                return false
+            }
             if (packageName.contains("launcher", ignoreCase = true) ||
                 packageName.contains("nexuslauncher", ignoreCase = true) ||
                 packageName.contains("trebuchet", ignoreCase = true) ||

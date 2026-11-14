@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:parent_app/pairing/pairing_repository.dart';
+import 'package:parent_app/pairing/lan_discovery_service.dart';
 import 'package:parent_app/pairing/pairing_screen.dart';
 import 'package:parent_app/volume/volume_control_screen.dart';
 import 'package:parent_app/volume/volume_repository.dart';
@@ -290,6 +291,17 @@ void main() {
     testWidgets('Entering IP/code connects, saves device, shows banner, and navigates',
         (tester) async {
       final mockClient = MockHttpClient((req) async {
+        if (req.url.path == '/pair') {
+          return http.Response(
+            jsonEncode({
+              'status': 'paired',
+              'deviceId': 'dev-widget-test',
+              'deviceName': 'Felix Test Tab',
+              'token': 'mock-secret-token-123',
+            }),
+            200,
+          );
+        }
         if (req.url.path == '/status') {
           return http.Response(
             jsonEncode({
@@ -358,7 +370,8 @@ void main() {
       final repo = PairingRepository();
       final paired = await repo.loadPairedDevice();
       expect(paired, isNotNull);
-      expect(paired!.localIpAddress, '192.168.1.77');
+      expect(paired!.token, 'mock-secret-token-123');
+      expect(paired.localIpAddress, '192.168.1.77');
       expect(paired.port, 8085);
     });
 
@@ -488,6 +501,154 @@ void main() {
       // Should return to pairing screen
       expect(find.text('Kinder-Gerät lokal koppeln'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('Entering IP when /pair fails never saves raw IP as token and displays error', (tester) async {
+      final mockClient = MockHttpClient((req) async {
+        if (req.url.path == '/pair') {
+          return http.Response('Server Error', 500);
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PairingScreen(
+            httpClient: mockClient,
+          ),
+        ),
+      );
+
+      final textField = find.byType(TextField).at(1);
+      await tester.enterText(textField, '192.168.1.145:8085');
+      await tester.pump();
+
+      final connectBtn = find.widgetWithText(ElevatedButton, 'Verbinden');
+      await tester.tap(connectBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Verbindung zu 192.168.1.145:8085 fehlgeschlagen'), findsOneWidget);
+      expect(find.byType(VolumeControlScreen), findsNothing);
+
+      final repo = PairingRepository();
+      final paired = await repo.loadPairedDevice();
+      expect(paired, isNull);
+    });
+
+    testWidgets('Entering 6-digit code or device name discovers device via LAN discovery and pairs successfully', (tester) async {
+      final mockClient = MockHttpClient((req) async {
+        if (req.url.path == '/status') {
+          return http.Response(
+            jsonEncode({
+              'status': 'online',
+              'deviceId': 'child-tab-99',
+              'deviceName': 'Emma Tab',
+            }),
+            200,
+          );
+        }
+        if (req.url.path == '/pair') {
+          return http.Response(
+            jsonEncode({
+              'status': 'paired',
+              'deviceId': 'child-tab-99',
+              'deviceName': 'Emma Tab',
+              'token': '9F83A0BC1234',
+            }),
+            200,
+          );
+        }
+        if (req.url.path == '/volume_report') {
+          return http.Response(
+            jsonEncode({
+              'type': 'VOLUME_REPORT',
+              'mediaVolume': 6,
+              'ringtoneVolume': 6,
+              'alarmVolume': 6,
+              'maxMediaVolume': 15,
+              'maxRingtoneVolume': 15,
+              'maxAlarmVolume': 15,
+              'isMuted': false,
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+            }),
+            200,
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final volumeRepo = VolumeRepository();
+      final discoveryService = LanDiscoveryService(client: mockClient, defaultCandidateIps: ['127.0.0.1']);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<VolumeRepository>.value(value: volumeRepo),
+          ],
+          child: MaterialApp(
+            home: PairingScreen(
+              httpClient: mockClient,
+              discoveryService: discoveryService,
+            ),
+          ),
+        ),
+      );
+
+      final textField = find.byType(TextField).at(1);
+      await tester.enterText(textField, '9F83A0');
+      await tester.pump();
+
+      final connectBtn = find.widgetWithText(ElevatedButton, 'Verbinden');
+      await tester.tap(connectBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Erfolgreich gekoppelt!'), findsOneWidget);
+      expect(find.byType(VolumeControlScreen), findsOneWidget);
+
+      final repo = PairingRepository();
+      final paired = await repo.loadPairedDevice();
+      expect(paired, isNotNull);
+      expect(paired!.token, '9F83A0BC1234');
+      expect(paired.id, 'child-tab-99');
+      expect(paired.name, 'Emma Tab');
+    });
+
+    testWidgets('Entering 6-digit code when device is not found displays clear localized error', (tester) async {
+      final mockClient = MockHttpClient((req) async {
+        return http.Response('Not Found', 404);
+      });
+
+      final discoveryService = LanDiscoveryService(client: mockClient, defaultCandidateIps: ['127.0.0.1']);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PairingScreen(
+            httpClient: mockClient,
+            discoveryService: discoveryService,
+          ),
+        ),
+      );
+
+      final textField = find.byType(TextField).at(1);
+      await tester.enterText(textField, '999999');
+      await tester.pump();
+
+      final connectBtn = find.widgetWithText(ElevatedButton, 'Verbinden');
+      await tester.tap(connectBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Gerät \'999999\' wurde im lokalen WLAN nicht gefunden'), findsOneWidget);
+      expect(find.byType(VolumeControlScreen), findsNothing);
+
+      final repo = PairingRepository();
+      final paired = await repo.loadPairedDevice();
+      expect(paired, isNull);
     });
   });
 }

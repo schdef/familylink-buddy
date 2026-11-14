@@ -8,12 +8,17 @@ import 'pairing_repository.dart';
 
 class LanDiscoveryService {
   final http.Client? _client;
+  final List<String>? defaultCandidateIps;
 
-  LanDiscoveryService({http.Client? client}) : _client = client;
+  LanDiscoveryService({http.Client? client, this.defaultCandidateIps}) : _client = client;
 
   /// Discovers active local subnet prefixes from network interfaces (e.g. '192.168.1.').
   Future<List<String>> getLocalSubnetPrefixes() async {
     final prefixes = <String>{};
+    if (kIsWeb) {
+      // In browser sandbox, raw network sockets are restricted; use common home router subnets
+      return ['192.168.1.', '192.168.0.', '192.168.178.'];
+    }
     try {
       final interfaces = await NetworkInterface.list(
         includeLoopback: false,
@@ -55,8 +60,41 @@ class LanDiscoveryService {
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body) as Map<String, dynamic>;
         final deviceId = body['deviceId'] as String? ?? body['id'] as String? ?? '';
-        if (deviceId == expectedDeviceId) {
+        final deviceName = body['deviceName'] as String? ?? '';
+        final expected = expectedDeviceId.trim();
+
+        if (expected.isEmpty ||
+            deviceId.toLowerCase() == expected.toLowerCase() ||
+            deviceName.toLowerCase() == expected.toLowerCase() ||
+            deviceId.toLowerCase().contains(expected.toLowerCase()) ||
+            deviceName.toLowerCase().contains(expected.toLowerCase())) {
           return body;
+        }
+
+        // If expected is a 6-digit code or pairing code:
+        // Probe /pair to check if token prefix matches the 6-digit code
+        if (expected.length == 6) {
+          try {
+            final pairUrl = Uri.parse('http://$ip:$port/pair');
+            final pairRes = await httpClient.post(
+              pairUrl,
+              headers: {'Content-Type': 'application/json'},
+              body: '{}',
+            ).timeout(timeout);
+            if (pairRes.statusCode == 200) {
+              final pairData = jsonDecode(pairRes.body) as Map<String, dynamic>;
+              final pToken = pairData['token'] as String? ?? '';
+              final pCode = pToken.length >= 6
+                  ? pToken.substring(0, 6).toUpperCase()
+                  : pToken.toUpperCase();
+              if (pCode == expected.toUpperCase() ||
+                  pToken.toUpperCase().contains(expected.toUpperCase())) {
+                return pairData;
+              }
+            }
+          } catch (_) {
+            // Ignore pair probe failure
+          }
         }
       }
     } catch (_) {
@@ -84,34 +122,38 @@ class LanDiscoveryService {
   }) async {
     final httpClient = client ?? _client ?? http.Client();
 
+    final List<String>? explicitCandidates = candidateIps ?? defaultCandidateIps;
+    final List<String> ipsToProbe = [];
+
     try {
-      // 1. Try mDNS hostname resolution: FamilyLinkBuddy-<deviceId>.local
-      try {
-        final mDnsAddresses = await InternetAddress.lookup('FamilyLinkBuddy-$deviceId.local')
-            .timeout(const Duration(milliseconds: 400));
-        for (final addr in mDnsAddresses) {
-          final res = await probeDevice(
-            ip: addr.address,
-            port: port,
-            expectedDeviceId: deviceId,
-            token: token,
-            client: httpClient,
-            timeout: probeTimeout,
-          );
-          if (res != null) {
-            debugPrint('LanDiscoveryService: Located device via mDNS at ${addr.address}');
-            return addr.address;
+      if (explicitCandidates != null && explicitCandidates.isNotEmpty) {
+        ipsToProbe.addAll(explicitCandidates);
+      } else {
+        // 1. Try mDNS hostname resolution: FamilyLinkBuddy-<deviceId>.local (native only)
+        if (!kIsWeb) {
+          try {
+            final mDnsAddresses = await InternetAddress.lookup('FamilyLinkBuddy-$deviceId.local')
+                .timeout(const Duration(milliseconds: 400));
+            for (final addr in mDnsAddresses) {
+              final res = await probeDevice(
+                ip: addr.address,
+                port: port,
+                expectedDeviceId: deviceId,
+                token: token,
+                client: httpClient,
+                timeout: probeTimeout,
+              );
+              if (res != null) {
+                debugPrint('LanDiscoveryService: Located device via mDNS at ${addr.address}');
+                return addr.address;
+              }
+            }
+          } catch (_) {
+            // mDNS not available or unresolvable
           }
         }
-      } catch (_) {
-        // mDNS not available or unresolvable
-      }
 
-      // 2. Prepare IP candidates to probe
-      final List<String> ipsToProbe = [];
-      if (candidateIps != null && candidateIps.isNotEmpty) {
-        ipsToProbe.addAll(candidateIps);
-      } else {
+        // 2. Prepare IP candidates to probe
         final prefixes = <String>{};
         if (subnetPrefix != null && subnetPrefix.isNotEmpty) {
           prefixes.add(subnetPrefix.endsWith('.') ? subnetPrefix : '$subnetPrefix.');
@@ -124,6 +166,10 @@ class LanDiscoveryService {
           for (int i = 1; i <= 254; i++) {
             ipsToProbe.add('$prefix$i');
           }
+        }
+
+        if (prefixes.isEmpty) {
+          ipsToProbe.addAll(['10.0.2.2', '127.0.0.1', 'localhost']);
         }
       }
 
