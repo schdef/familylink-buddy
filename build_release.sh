@@ -96,7 +96,7 @@ fi
 # 2. Compile Parent App (Android APK)
 if [ "$BUILD_PARENT" = true ]; then
     echo "Cleaning and compiling Parent App APK (com.familylink.buddy.parent)..."
-    (cd "$PARENT_DIR" && flutter clean && flutter build apk --release --target-platform android-arm64,android-x64)
+    (cd "$PARENT_DIR" && flutter clean && flutter build apk --release --target-platform android-arm64,android-x64 --android-skip-build-dependency-validation)
     if [ $? -ne 0 ]; then
         echo "❌ Parent app build failed!"
         exit 1
