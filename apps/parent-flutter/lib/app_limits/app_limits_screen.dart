@@ -34,8 +34,9 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
     _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        final effectiveIp = _resolveEffectiveIp(context);
         final repo = Provider.of<AppLimitsRepository>(context, listen: false);
-        repo.subscribeToDevice(widget.device.fcmToken);
+        repo.subscribeToDevice(widget.device.fcmToken, localIpAddress: effectiveIp);
       }
     });
   }
@@ -50,6 +51,9 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
   String? _resolveEffectiveIp(BuildContext context) {
     if (widget.localIpAddress != null && widget.localIpAddress!.isNotEmpty) {
       return widget.localIpAddress;
+    }
+    if (widget.device.localIpAddress != null && widget.device.localIpAddress!.isNotEmpty) {
+      return widget.device.localIpAddress;
     }
     try {
       final volRepo = Provider.of<VolumeRepository>(context, listen: false);

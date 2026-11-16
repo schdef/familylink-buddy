@@ -226,4 +226,19 @@
     <string name="setup_toast_a11y_err">Could not open accessibility settings.</string>
     <string name="setup_toast_battery_err">Could not open battery settings.</string>
     <string name="setup_toast_dnd_err">Could not open Do Not Disturb settings.</string>
+
+    <!-- Communication Monitoring Setup Wizard -->
+    <string name="wizard_call_log_title">Call Log Monitoring</string>
+    <string name="wizard_call_log_active">Call Log Access Granted ✓</string>
+    <string name="wizard_call_log_inactive">Permission Required</string>
+    <string name="wizard_call_log_desc">Allows parents to view recent incoming and outgoing phone calls and durations locally.</string>
+    <string name="wizard_call_log_btn_grant">Grant Access</string>
+    <string name="wizard_call_log_btn_granted">✓ Granted</string>
+
+    <string name="wizard_notification_title">Chat &amp; Notification Monitoring</string>
+    <string name="wizard_notification_active">Notification Access Enabled ✓</string>
+    <string name="wizard_notification_inactive">Access Disabled</string>
+    <string name="wizard_notification_desc">Captures incoming chat messages from WhatsApp, Signal, Telegram, and Messages directly over local Wi-Fi.</string>
+    <string name="wizard_notification_btn_enable">Enable Access</string>
+    <string name="wizard_notification_btn_enabled">✓ Enabled</string>
 </resources>

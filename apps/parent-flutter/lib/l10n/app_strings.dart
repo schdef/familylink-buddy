@@ -189,6 +189,8 @@ abstract class AppStrings {
   String get quickActionBedtime;
   String get quickActionScreenshot;
   String get quickActionUpdate;
+  String get quickActionCalls;
+  String get quickActionChats;
   String get mediaVolume;
   String get ringtoneVolume;
   String get alarmVolume;
@@ -452,6 +454,42 @@ abstract class AppStrings {
   String get autoPlayVoiceSubtitle;
   String get childCanInitiateTitle;
   String get childCanInitiateSubtitle;
+
+  // ===========================================================================
+  // 10. CALL HISTORY & CHAT MESSAGES
+  // ===========================================================================
+  String get callHistoryTitle;
+  String get chatMessagesTitle;
+  String get allCalls;
+  String get incomingCalls;
+  String get outgoingCalls;
+  String get missedCalls;
+  String get allApps;
+  String get appWhatsApp;
+  String get appSms;
+  String get appTelegram;
+  String get appSignal;
+  String get syncNow;
+  String get syncing;
+  String get syncSuccess;
+  String get syncFailed;
+  String get noCallsFound;
+  String get noChatsFound;
+  String get searchCallsPlaceholder;
+  String get searchChatsPlaceholder;
+  String callDurationFormat(int seconds);
+  String get incomingLabel;
+  String get outgoingLabel;
+  String get missedLabel;
+  String get rejectedLabel;
+  String get offlineNotice;
+  String lastSyncedLabel(String time);
+  String get neverSynced;
+  String get conversationsTitle;
+  String chatDetailTitle(String name);
+  String get noMessagesInChat;
+  String get today;
+  String get yesterday;
 }
 
 /// English localization implementation (Default).
@@ -622,6 +660,10 @@ class AppStringsEn extends AppStrings {
   String get quickActionScreenshot => 'Screenshot & Camera';
   @override
   String get quickActionUpdate => 'Wi-Fi Update';
+  @override
+  String get quickActionCalls => 'Call History';
+  @override
+  String get quickActionChats => 'Chat Messages';
   @override
   String get mediaVolume => 'Media volume';
   @override
@@ -1118,6 +1160,80 @@ class AppStringsEn extends AppStrings {
   String get childCanInitiateTitle => 'Child can initiate call';
   @override
   String get childCanInitiateSubtitle => 'Allows child to start walkie-talkie connection from their widget.';
+
+  // 10. Call History & Chat Messages
+  @override
+  String get callHistoryTitle => 'Call History';
+  @override
+  String get chatMessagesTitle => 'Chat Messages';
+  @override
+  String get allCalls => 'All';
+  @override
+  String get incomingCalls => 'Incoming';
+  @override
+  String get outgoingCalls => 'Outgoing';
+  @override
+  String get missedCalls => 'Missed';
+  @override
+  String get allApps => 'All Apps';
+  @override
+  String get appWhatsApp => 'WhatsApp';
+  @override
+  String get appSms => 'SMS / Messages';
+  @override
+  String get appTelegram => 'Telegram';
+  @override
+  String get appSignal => 'Signal';
+  @override
+  String get syncNow => 'Sync Now';
+  @override
+  String get syncing => 'Syncing...';
+  @override
+  String get syncSuccess => 'Logs synced successfully';
+  @override
+  String get syncFailed => 'Failed to sync logs';
+  @override
+  String get noCallsFound => 'No call records found';
+  @override
+  String get noChatsFound => 'No chat messages found';
+  @override
+  String get searchCallsPlaceholder => 'Search by name or number...';
+  @override
+  String get searchChatsPlaceholder => 'Search messages or contacts...';
+  @override
+  String callDurationFormat(int seconds) {
+    if (seconds <= 0) return '0s';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    if (m > 0) {
+      return s > 0 ? '${m}m ${s}s' : '${m}m';
+    }
+    return '${s}s';
+  }
+  @override
+  String get incomingLabel => 'Incoming';
+  @override
+  String get outgoingLabel => 'Outgoing';
+  @override
+  String get missedLabel => 'Missed';
+  @override
+  String get rejectedLabel => 'Rejected';
+  @override
+  String get offlineNotice => 'Offline • Showing cached records';
+  @override
+  String lastSyncedLabel(String time) => 'Last synced: $time';
+  @override
+  String get neverSynced => 'Never synced';
+  @override
+  String get conversationsTitle => 'Conversations';
+  @override
+  String chatDetailTitle(String name) => 'Chat with $name';
+  @override
+  String get noMessagesInChat => 'No messages in this chat';
+  @override
+  String get today => 'Today';
+  @override
+  String get yesterday => 'Yesterday';
 }
 
 /// German localization implementation.
@@ -1288,6 +1404,10 @@ class AppStringsDe extends AppStrings {
   String get quickActionScreenshot => 'Live-Screenshot';
   @override
   String get quickActionUpdate => 'WLAN-Update';
+  @override
+  String get quickActionCalls => 'Anrufverlauf';
+  @override
+  String get quickActionChats => 'Chat-Nachrichten';
   @override
   String get mediaVolume => 'Medien-Lautstärke';
   @override
@@ -1784,4 +1904,78 @@ class AppStringsDe extends AppStrings {
   String get childCanInitiateTitle => 'Kind darf Anruf starten';
   @override
   String get childCanInitiateSubtitle => 'Erlaubt dem Kind, die Walkie-Talkie Verbindung über sein Widget zu initiieren.';
+
+  // 10. Call History & Chat Messages
+  @override
+  String get callHistoryTitle => 'Anrufprotokoll';
+  @override
+  String get chatMessagesTitle => 'Chat-Nachrichten';
+  @override
+  String get allCalls => 'Alle';
+  @override
+  String get incomingCalls => 'Eingehend';
+  @override
+  String get outgoingCalls => 'Ausgehend';
+  @override
+  String get missedCalls => 'Verpasst';
+  @override
+  String get allApps => 'Alle Apps';
+  @override
+  String get appWhatsApp => 'WhatsApp';
+  @override
+  String get appSms => 'SMS / Nachrichten';
+  @override
+  String get appTelegram => 'Telegram';
+  @override
+  String get appSignal => 'Signal';
+  @override
+  String get syncNow => 'Jetzt synchronisieren';
+  @override
+  String get syncing => 'Synchronisiere...';
+  @override
+  String get syncSuccess => 'Protokolle erfolgreich synchronisiert';
+  @override
+  String get syncFailed => 'Synchronisierung fehlgeschlagen';
+  @override
+  String get noCallsFound => 'Keine Anrufe gefunden';
+  @override
+  String get noChatsFound => 'Keine Chat-Nachrichten gefunden';
+  @override
+  String get searchCallsPlaceholder => 'Nach Name oder Nummer suchen...';
+  @override
+  String get searchChatsPlaceholder => 'Nachrichten oder Kontakte suchen...';
+  @override
+  String callDurationFormat(int seconds) {
+    if (seconds <= 0) return '0 Sek.';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    if (m > 0) {
+      return s > 0 ? '$m Min. $s Sek.' : '$m Min.';
+    }
+    return '$s Sek.';
+  }
+  @override
+  String get incomingLabel => 'Eingehend';
+  @override
+  String get outgoingLabel => 'Ausgehend';
+  @override
+  String get missedLabel => 'Verpasst';
+  @override
+  String get rejectedLabel => 'Abgelehnt';
+  @override
+  String get offlineNotice => 'Offline • Gespeicherte Daten';
+  @override
+  String lastSyncedLabel(String time) => 'Zuletzt synchronisiert: $time';
+  @override
+  String get neverSynced => 'Noch nicht synchronisiert';
+  @override
+  String get conversationsTitle => 'Unterhaltungen';
+  @override
+  String chatDetailTitle(String name) => 'Chat mit $name';
+  @override
+  String get noMessagesInChat => 'Keine Nachrichten in diesem Chat';
+  @override
+  String get today => 'Heute';
+  @override
+  String get yesterday => 'Gestern';
 }

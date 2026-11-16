@@ -380,4 +380,57 @@ class AppLimitsLogicTest {
         assertFalse(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.google.android.youtube", ownPackage = ownPkg))
         assertFalse(com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(null, "com.google.android.googlequicksearchbox", ownPackage = ownPkg))
     }
+
+    @Test
+    fun testRulesPersistenceAndImmediateSave() {
+        val fakePrefs = FakeSharedPreferences()
+        val manager = AppLimitsManager()
+
+        val rules = AppRules(
+            blacklistedPackages = setOf("com.tiktok.android"),
+            bonusMinutes = mapOf("cat_games" to 15)
+        )
+        // updateRules saves to prefs immediately
+        manager.updateRules(rules, fakePrefs)
+
+        // Verify stored in prefs
+        assertTrue(fakePrefs.map.containsKey("key_rules_json"))
+
+        // New manager instance loading from prefs
+        val newManager = AppLimitsManager()
+        newManager.loadFromPreferences(fakePrefs)
+        assertEquals(setOf("com.tiktok.android"), newManager.getRules().blacklistedPackages)
+        assertEquals(15, newManager.getBonusMinutes("cat_games"))
+    }
+
+    private class FakeSharedPreferences : android.content.SharedPreferences {
+        val map = mutableMapOf<String, Any?>()
+
+        override fun getAll(): MutableMap<String, *> = map
+        override fun getString(key: String?, defValue: String?): String? = (map[key] as? String) ?: defValue
+        @Suppress("UNCHECKED_CAST")
+        override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = (map[key] as? MutableSet<String>) ?: defValues
+        override fun getInt(key: String?, defValue: Int): Int = (map[key] as? Int) ?: defValue
+        override fun getLong(key: String?, defValue: Long): Long = (map[key] as? Long) ?: defValue
+        override fun getFloat(key: String?, defValue: Float): Float = (map[key] as? Float) ?: defValue
+        override fun getBoolean(key: String?, defValue: Boolean): Boolean = (map[key] as? Boolean) ?: defValue
+        override fun contains(key: String?): Boolean = map.containsKey(key)
+        override fun edit(): android.content.SharedPreferences.Editor = FakeEditor(this)
+        override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+
+        class FakeEditor(private val prefs: FakeSharedPreferences) : android.content.SharedPreferences.Editor {
+            private val temp = mutableMapOf<String, Any?>()
+            override fun putString(key: String?, value: String?) = apply { temp[key ?: ""] = value }
+            override fun putStringSet(key: String?, values: MutableSet<String>?) = apply { temp[key ?: ""] = values }
+            override fun putInt(key: String?, value: Int) = apply { temp[key ?: ""] = value }
+            override fun putLong(key: String?, value: Long) = apply { temp[key ?: ""] = value }
+            override fun putFloat(key: String?, value: Float) = apply { temp[key ?: ""] = value }
+            override fun putBoolean(key: String?, value: Boolean) = apply { temp[key ?: ""] = value }
+            override fun remove(key: String?) = apply { temp.remove(key ?: "") }
+            override fun clear() = apply { temp.clear() }
+            override fun commit(): Boolean { prefs.map.putAll(temp); return true }
+            override fun apply() { prefs.map.putAll(temp) }
+        }
+    }
 }

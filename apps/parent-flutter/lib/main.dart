@@ -8,6 +8,7 @@ import 'time_bank/time_bank_repository.dart';
 import 'bedtime/bedtime_repository.dart';
 import 'screenshot/screenshot_repository.dart';
 import 'app_limits/app_limits_repository.dart';
+import 'comms/comms_repository.dart';
 import 'l10n/app_strings.dart';
 
 void main() async {
@@ -22,6 +23,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => BedtimeRepository()),
         ChangeNotifierProvider(create: (_) => ScreenshotRepository()),
         ChangeNotifierProvider(create: (_) => AppLimitsRepository()),
+        ChangeNotifierProvider(create: (_) => CommsRepository()),
       ],
       child: const FamilyLinkBuddyParentApp(),
     ),

@@ -11,6 +11,8 @@ import '../pairing/device_list_screen.dart';
 import '../bedtime/bedtime_schedule_screen.dart';
 import '../screenshot/screenshot_screen.dart';
 import '../app_limits/app_limits_screen.dart';
+import '../comms/calls_screen.dart';
+import '../comms/chats_screen.dart';
 import '../updater/p2p_updater_service.dart';
 import '../l10n/app_strings.dart';
 import 'volume_repository.dart';
@@ -528,6 +530,57 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                       ? repo.localIpAddress
                       : _currentDevice.localIpAddress;
                   _showP2PUpdateDialog(context, effectiveIp);
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            // 5. Call History
+            Expanded(
+              child: _buildQuickActionCard(
+                key: const ValueKey('action_calls_button'),
+                icon: Icons.phone_in_talk_rounded,
+                label: strings.quickActionCalls,
+                accentColor: const Color(0xFFF59E0B),
+                onTap: () {
+                  final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
+                      ? repo.localIpAddress
+                      : _currentDevice.localIpAddress;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CallsScreen(
+                        device: _currentDevice,
+                        localIpAddress: effectiveIp,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // 6. Chat Messages
+            Expanded(
+              child: _buildQuickActionCard(
+                key: const ValueKey('action_chats_button'),
+                icon: Icons.chat_bubble_outline_rounded,
+                label: strings.quickActionChats,
+                accentColor: const Color(0xFF14B8A6),
+                onTap: () {
+                  final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
+                      ? repo.localIpAddress
+                      : _currentDevice.localIpAddress;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ChatsScreen(
+                        device: _currentDevice,
+                        localIpAddress: effectiveIp,
+                      ),
+                    ),
+                  );
                 },
               ),
             ),

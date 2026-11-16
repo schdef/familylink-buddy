@@ -13,6 +13,7 @@ class AppLimitsManager(
         SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
 ) {
+    private var appContext: Context? = null
     private var rules = AppRules()
     private val categoryUsageTodaySeconds = mutableMapOf<String, Long>()
     private val bonusMinutes = mutableMapOf<String, Int>()
@@ -22,6 +23,11 @@ class AppLimitsManager(
         private set
     var activeCategoryId: String? = null
         private set
+
+    @Synchronized
+    fun setContext(context: Context) {
+        this.appContext = context.applicationContext
+    }
 
     @Synchronized
     fun getRules(): AppRules = rules
@@ -61,12 +67,21 @@ class AppLimitsManager(
     }
 
     @Synchronized
-    fun updateRules(newRules: AppRules): AppInterceptionResult {
+    fun updateRules(newRules: AppRules, prefs: SharedPreferences? = null): AppInterceptionResult {
         checkMidnightReset()
         rules = newRules
         // Overwrite or update bonus minutes from rules if provided
         newRules.bonusMinutes.forEach { (catId, minutes) ->
             bonusMinutes[catId] = minutes
+        }
+
+        val targetPrefs = prefs ?: appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        targetPrefs?.let {
+            try {
+                saveToPreferences(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving rules in updateRules", e)
+            }
         }
 
         val pkg = activePackageName
@@ -77,10 +92,19 @@ class AppLimitsManager(
     }
 
     @Synchronized
-    fun addBonusMinutes(categoryId: String, extraMinutes: Int): AppInterceptionResult {
+    fun addBonusMinutes(categoryId: String, extraMinutes: Int, prefs: SharedPreferences? = null): AppInterceptionResult {
         checkMidnightReset()
         val current = bonusMinutes[categoryId] ?: 0
         bonusMinutes[categoryId] = current + extraMinutes
+
+        val targetPrefs = prefs ?: appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        targetPrefs?.let {
+            try {
+                saveToPreferences(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving bonus minutes in addBonusMinutes", e)
+            }
+        }
 
         val pkg = activePackageName
         if (!pkg.isNullOrBlank()) {
@@ -245,9 +269,27 @@ class AppLimitsManager(
         private var instance: AppLimitsManager? = null
 
         fun getInstance(context: Context? = null): AppLimitsManager {
-            return instance ?: synchronized(this) {
+            val existing = instance
+            if (existing != null) {
+                if (context != null) {
+                    if (existing.appContext == null) {
+                        existing.appContext = context.applicationContext
+                    }
+                    if (existing.rules.blacklistedPackages.isEmpty() && existing.rules.categories.isEmpty()) {
+                        val prefs = context.applicationContext.getSharedPreferences(
+                            PREFS_NAME,
+                            Context.MODE_PRIVATE
+                        )
+                        existing.loadFromPreferences(prefs)
+                    }
+                }
+                return existing
+            }
+
+            return synchronized(this) {
                 instance ?: AppLimitsManager().also { manager ->
                     if (context != null) {
+                        manager.appContext = context.applicationContext
                         val prefs = context.applicationContext.getSharedPreferences(
                             PREFS_NAME,
                             Context.MODE_PRIVATE
@@ -256,6 +298,13 @@ class AppLimitsManager(
                     }
                     instance = manager
                 }
+            }
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun setInstanceForTesting(manager: AppLimitsManager?) {
+            synchronized(this) {
+                instance = manager
             }
         }
     }

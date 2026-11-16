@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:parent_app/app_limits/app_limits_model.dart';
 import 'package:parent_app/app_limits/app_limits_repository.dart';
 import 'package:parent_app/app_limits/app_limits_screen.dart';
@@ -15,6 +16,7 @@ import 'package:parent_app/l10n/app_strings.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     AppStrings.manualLocale = const Locale('de');
   });
 
@@ -762,6 +764,129 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repo.state.isBlacklisted('com.roblox.client'), isTrue);
+    });
+  });
+
+  group('SharedPreferences Caching & IP Resolution Tests', () {
+    test('loads cached rules, categories, and history from SharedPreferences on subscribeToDevice', () async {
+      const childToken = 'child-token-xyz';
+      SharedPreferences.setMockInitialValues({
+        'key_app_limits_blacklist_$childToken': ['com.example.blocked1', 'com.example.blocked2'],
+        'key_app_limits_categories_$childToken': jsonEncode([
+          {
+            'id': 'cat-custom',
+            'name': 'Custom Category',
+            'packageNames': ['com.example.blocked1'],
+            'dailyLimitMinutes': 30,
+            'usedMinutes': 10,
+            'bonusMinutes': 5,
+          }
+        ]),
+        'key_app_history_$childToken': jsonEncode([
+          {
+            'packageName': 'com.example.app',
+            'appName': 'Example App',
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }
+        ]),
+      });
+
+      final mockClient = MockClient((request) async {
+        // Return 500 so network fails, proving cache is used
+        return http.Response('Server error', 500);
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      await repo.loadCache(childToken);
+
+      expect(repo.state.blacklistedPackages, contains('com.example.blocked1'));
+      expect(repo.state.blacklistedPackages, contains('com.example.blocked2'));
+      expect(repo.state.categories.any((c) => c.id == 'cat-custom'), isTrue);
+      expect(repo.appHistory.length, 1);
+      expect(repo.appHistory.first.packageName, 'com.example.app');
+    });
+
+    test('saves blacklistedPackages and categories to SharedPreferences on saveRules', () async {
+      SharedPreferences.setMockInitialValues({});
+      const childToken = 'child-token-abc';
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode({'status': 'ok'}), 200);
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      repo.state = repo.state.copyWith(
+        blacklistedPackages: ['com.roblox.client'],
+      );
+
+      final result = await repo.saveRules(childToken, localIpAddress: '192.168.1.50');
+      expect(result, isTrue);
+
+      final prefs = await SharedPreferences.getInstance();
+      final savedBlacklist = prefs.getStringList('key_app_limits_blacklist_$childToken');
+      expect(savedBlacklist, contains('com.roblox.client'));
+
+      final savedCategoriesRaw = prefs.getString('key_app_limits_categories_$childToken');
+      expect(savedCategoriesRaw, isNotNull);
+      expect(savedCategoriesRaw, contains('Spiele'));
+    });
+
+    test('saves appHistory to SharedPreferences on fetchAppHistory', () async {
+      SharedPreferences.setMockInitialValues({});
+      const childToken = 'child-token-abc';
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode({
+          'history': [
+            {
+              'packageName': 'com.mojang.minecraftpe',
+              'appName': 'Minecraft',
+              'timestamp': 1700000000000,
+            }
+          ]
+        }), 200);
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      final history = await repo.fetchAppHistory(childToken, localIpAddress: '192.168.1.50');
+      expect(history.length, 1);
+
+      final prefs = await SharedPreferences.getInstance();
+      final savedHistoryRaw = prefs.getString('key_app_history_$childToken');
+      expect(savedHistoryRaw, isNotNull);
+      expect(savedHistoryRaw, contains('com.mojang.minecraftpe'));
+    });
+
+    testWidgets('AppLimitsScreen resolves effective IP from device.localIpAddress when widget.localIpAddress is null', (tester) async {
+      String? requestedHost;
+      final mockClient = MockClient((request) async {
+        requestedHost = request.url.host;
+        return http.Response(jsonEncode({'status': 'ok'}), 200);
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      final deviceWithIp = PairedDevice(
+        name: 'Kind-Device',
+        fcmToken: 'token-with-device-ip',
+        localIpAddress: '192.168.1.88',
+        lastSeen: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AppLimitsRepository>.value(value: repo),
+            ChangeNotifierProvider<VolumeRepository>.value(value: VolumeRepository()),
+          ],
+          child: MaterialApp(
+            home: AppLimitsScreen(
+              device: deviceWithIp,
+              localIpAddress: null,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(requestedHost, '192.168.1.88');
     });
   });
 }

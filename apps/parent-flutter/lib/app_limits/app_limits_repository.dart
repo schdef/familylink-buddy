@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_limits_model.dart';
 
 class AppLimitsRepository extends ChangeNotifier {
   final http.Client? _httpClient;
+  final SharedPreferences? _prefs;
 
   AppLimitsState _state = const AppLimitsState(
     installedApps: defaultInstalledApps,
@@ -16,8 +18,10 @@ class AppLimitsRepository extends ChangeNotifier {
 
   AppLimitsRepository({
     http.Client? httpClient,
+    SharedPreferences? prefs,
     dynamic firestore,
-  }) : _httpClient = httpClient;
+  })  : _httpClient = httpClient,
+        _prefs = prefs;
 
   AppLimitsState get state => _state;
   List<AppOpeningRecord> get appHistory => _appHistory;
@@ -115,6 +119,130 @@ class AppLimitsRepository extends ChangeNotifier {
     ),
   ];
 
+  static String blacklistKey(String childToken) => 'key_app_limits_blacklist_$childToken';
+  static String categoriesKey(String childToken) => 'key_app_limits_categories_$childToken';
+  static String appHistoryKey(String childToken) => 'key_app_history_$childToken';
+
+  Future<SharedPreferences?> _getPrefs() async {
+    if (_prefs != null) return _prefs;
+    try {
+      return await SharedPreferences.getInstance();
+    } catch (e) {
+      debugPrint('AppLimitsRepository: error getting SharedPreferences: $e');
+      return null;
+    }
+  }
+
+  Future<void> _loadCache(String childToken) async {
+    try {
+      final prefs = await _getPrefs();
+      if (prefs == null) return;
+
+      // 1. Blacklist
+      List<String>? blacklist = prefs.getStringList(blacklistKey(childToken));
+      if (blacklist == null) {
+        final raw = prefs.getString(blacklistKey(childToken));
+        if (raw != null) {
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is List) {
+              blacklist = decoded.map((e) => e.toString()).toList();
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2. Categories
+      List<AppCategoryRule>? categories;
+      final rawCategories = prefs.getString(categoriesKey(childToken));
+      if (rawCategories != null && rawCategories.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawCategories);
+          if (decoded is List) {
+            categories = decoded
+                .map((e) => AppCategoryRule.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList();
+          }
+        } catch (e) {
+          debugPrint('Error decoding cached categories: $e');
+        }
+      }
+
+      // 3. App History
+      List<AppOpeningRecord>? history;
+      final rawHistory = prefs.getString(appHistoryKey(childToken));
+      if (rawHistory != null && rawHistory.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawHistory);
+          if (decoded is List) {
+            history = decoded
+                .map((e) => AppOpeningRecord.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList();
+          }
+        } catch (e) {
+          debugPrint('Error decoding cached app history: $e');
+        }
+      }
+
+      bool stateChanged = false;
+      var newState = _state;
+
+      if (blacklist != null) {
+        newState = newState.copyWith(blacklistedPackages: blacklist);
+        stateChanged = true;
+      }
+      if (categories != null && categories.isNotEmpty) {
+        newState = newState.copyWith(categories: categories);
+        stateChanged = true;
+      }
+      if (stateChanged) {
+        _state = newState;
+        notifyListeners();
+      }
+
+      if (history != null && history.isNotEmpty) {
+        _appHistory = history;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('AppLimitsRepository: _loadCache error: $e');
+    }
+  }
+
+  Future<void> _saveCache(String childToken) async {
+    try {
+      final prefs = await _getPrefs();
+      if (prefs == null) return;
+
+      await prefs.setStringList(blacklistKey(childToken), _state.blacklistedPackages);
+      final categoriesJson = jsonEncode(_state.categories.map((c) => c.toJson()).toList());
+      await prefs.setString(categoriesKey(childToken), categoriesJson);
+    } catch (e) {
+      debugPrint('AppLimitsRepository: _saveCache error: $e');
+    }
+  }
+
+  Future<void> _saveHistoryCache(String childToken) async {
+    try {
+      final prefs = await _getPrefs();
+      if (prefs == null) return;
+
+      final historyJson = jsonEncode(_appHistory.map((h) => h.toJson()).toList());
+      await prefs.setString(appHistoryKey(childToken), historyJson);
+    } catch (e) {
+      debugPrint('AppLimitsRepository: _saveHistoryCache error: $e');
+    }
+  }
+
+  @visibleForTesting
+  Future<void> loadCache(String childToken) => _loadCache(childToken);
+
+  @visibleForTesting
+  Future<void> saveCache(String childToken) => _saveCache(childToken);
+
+  @visibleForTesting
+  Future<void> saveHistoryCache(String childToken) => _saveHistoryCache(childToken);
+
   String _resolveHost(String? localIpAddress, String childToken) {
     if (localIpAddress != null && localIpAddress.isNotEmpty) {
       return localIpAddress;
@@ -129,7 +257,8 @@ class AppLimitsRepository extends ChangeNotifier {
   }
 
   /// Starts listening to device rules over LAN
-  void subscribeToDevice(String childFcmToken, {String? localIpAddress}) {
+  void subscribeToDevice(String childFcmToken, {String? localIpAddress}) async {
+    await _loadCache(childFcmToken);
     fetchRules(childFcmToken, localIpAddress: localIpAddress);
     fetchInstalledApps(childFcmToken, localIpAddress: localIpAddress);
     fetchAppHistory(childFcmToken, localIpAddress: localIpAddress);
@@ -178,6 +307,7 @@ class AppLimitsRepository extends ChangeNotifier {
           lastUpdated: DateTime.now(),
         );
         notifyListeners();
+        await _saveCache(childFcmToken);
         return true;
       }
     } catch (e) {
@@ -246,6 +376,7 @@ class AppLimitsRepository extends ChangeNotifier {
           list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
           _appHistory = list;
           notifyListeners();
+          await _saveHistoryCache(childFcmToken);
           return list;
         }
       }
@@ -359,6 +490,7 @@ class AppLimitsRepository extends ChangeNotifier {
     String childFcmToken, {
     String? localIpAddress,
   }) async {
+    await _saveCache(childFcmToken);
     final host = _resolveHost(localIpAddress, childFcmToken);
     try {
       final url = Uri.parse('http://$host:8085/set_app_rules');
@@ -418,6 +550,7 @@ class AppLimitsRepository extends ChangeNotifier {
 
     _state = _state.copyWith(blacklistedPackages: list);
     notifyListeners();
+    await _saveCache(childFcmToken);
 
     return saveRules(childFcmToken, localIpAddress: localIpAddress);
   }
@@ -467,6 +600,7 @@ class AppLimitsRepository extends ChangeNotifier {
             ).timeout(const Duration(seconds: 3));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        await _saveCache(childFcmToken);
         return true;
       }
     } catch (e) {

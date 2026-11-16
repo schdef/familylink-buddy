@@ -226,4 +226,19 @@
     <string name="setup_toast_a11y_err">Bedienungshilfen konnten nicht geöffnet werden.</string>
     <string name="setup_toast_battery_err">Akku-Einstellungen konnten nicht geöffnet werden.</string>
     <string name="setup_toast_dnd_err">Nicht-Stören-Einstellungen konnten nicht geöffnet werden.</string>
+
+    <!-- Communication Monitoring Setup Wizard -->
+    <string name="wizard_call_log_title">Anruflisten-Überwachung</string>
+    <string name="wizard_call_log_active">Anruflisten-Zugriff erteilt ✓</string>
+    <string name="wizard_call_log_inactive">Berechtigung erforderlich</string>
+    <string name="wizard_call_log_desc">Ermöglicht es Eltern, kürzliche ein- und ausgehende Telefonanrufe sowie Anrufdauern lokal einzusehen.</string>
+    <string name="wizard_call_log_btn_grant">Zugriff gewähren</string>
+    <string name="wizard_call_log_btn_granted">✓ Erteilt</string>
+
+    <string name="wizard_notification_title">Chat- &amp; Benachrichtigungsüberwachung</string>
+    <string name="wizard_notification_active">Benachrichtigungszugriff aktiviert ✓</string>
+    <string name="wizard_notification_inactive">Zugriff deaktiviert</string>
+    <string name="wizard_notification_desc">Erfasst eingehende Chat-Nachrichten von WhatsApp, Signal, Telegram und Messages direkt über das lokale WLAN.</string>
+    <string name="wizard_notification_btn_enable">Zugriff aktivieren</string>
+    <string name="wizard_notification_btn_enabled">✓ Aktiviert</string>
 </resources>

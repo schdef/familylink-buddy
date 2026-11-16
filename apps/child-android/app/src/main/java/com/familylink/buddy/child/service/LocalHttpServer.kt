@@ -18,10 +18,13 @@ import com.familylink.buddy.child.data.AppLimitsManager
 import com.familylink.buddy.child.data.AppRules
 import com.familylink.buddy.child.data.AudioPlaybackManager
 import com.familylink.buddy.child.data.BedtimeSchedule
+import com.familylink.buddy.child.data.CallLogManager
+import com.familylink.buddy.child.data.CommunicationDatabaseHelper
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.InstalledAppsManager
 import com.familylink.buddy.child.data.SilentCameraManager
 import com.familylink.buddy.child.data.VolumeState
+import com.familylink.buddy.child.data.toJsonArray
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -417,6 +420,12 @@ class LocalHttpServer(
                         sendHttpResponse(writer, 500, "Internal Server Error", "{\"error\":\"${e.message}\"}")
                     }
                 }
+            } else if (path == "/call_logs") {
+                handleGetCallLogs(writer, queryParams)
+            } else if (path == "/chat_logs") {
+                handleGetChatLogs(writer, queryParams)
+            } else if (path == "/clear_communication_history") {
+                handleClearCommunicationHistory(writer)
             } else {
                 sendHttpResponse(writer, 404, "Not Found", "{\"error\":\"Not Found\"}")
             }
@@ -910,50 +919,62 @@ class LocalHttpServer(
 
     private fun handleGetAppHistory(writer: PrintWriter, days: Int) {
         try {
-            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
             val now = System.currentTimeMillis()
             val startTime = now - (days * 24 * 60 * 60 * 1000L)
             val historyArray = JSONArray()
 
-            if (usageStatsManager != null) {
-                val events = usageStatsManager.queryEvents(startTime, now)
-                val event = UsageEvents.Event()
-                val pm = context.packageManager
-                val labelCache = HashMap<String, String>()
+            val dbRecords = CommunicationDatabaseHelper.getInstance(context).getAppHistorySince(startTime, limit = 500)
+            if (dbRecords.isNotEmpty()) {
+                for (record in dbRecords) {
+                    val item = JSONObject().apply {
+                        put("packageName", record.packageName)
+                        put("label", record.appLabel)
+                        put("timestamp", record.timestamp)
+                    }
+                    historyArray.put(item)
+                }
+            } else {
+                val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                if (usageStatsManager != null) {
+                    val events = usageStatsManager.queryEvents(startTime, now)
+                    val event = UsageEvents.Event()
+                    val pm = context.packageManager
+                    val labelCache = HashMap<String, String>()
 
-                while (events != null && events.hasNextEvent()) {
-                    events.getNextEvent(event)
-                    if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                        val pkg = event.packageName ?: continue
+                    while (events != null && events.hasNextEvent()) {
+                        events.getNextEvent(event)
+                        if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                            val pkg = event.packageName ?: continue
 
-                        // Filter out system UI, launchers, and allowed apps (Spotify, child app, settings, dialer)
-                        if (pkg == "com.android.systemui" ||
-                            WifiAccessibilityHelperService.isLauncherPackage(context, pkg) ||
-                            InstalledAppsManager.isAllowedExcludedApp(context, pkg)) {
-                            continue
-                        }
-
-                        val label = labelCache.getOrPut(pkg) {
-                            try {
-                                val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    pm.getApplicationInfo(pkg, 0)
-                                }
-                                val l = pm.getApplicationLabel(appInfo).toString()
-                                if (l.isNotBlank()) l else pkg
-                            } catch (e: Exception) {
-                                pkg
+                            // Filter out system UI, launchers, and allowed apps (Spotify, child app, settings, dialer)
+                            if (pkg == "com.android.systemui" ||
+                                WifiAccessibilityHelperService.isLauncherPackage(context, pkg) ||
+                                InstalledAppsManager.isAllowedExcludedApp(context, pkg)) {
+                                continue
                             }
-                        }
 
-                        val item = JSONObject().apply {
-                            put("packageName", pkg)
-                            put("label", label)
-                            put("timestamp", event.timeStamp)
+                            val label = labelCache.getOrPut(pkg) {
+                                try {
+                                    val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        pm.getApplicationInfo(pkg, 0)
+                                    }
+                                    val l = pm.getApplicationLabel(appInfo).toString()
+                                    if (l.isNotBlank()) l else pkg
+                                } catch (e: Exception) {
+                                    pkg
+                                }
+                            }
+
+                            val item = JSONObject().apply {
+                                put("packageName", pkg)
+                                put("label", label)
+                                put("timestamp", event.timeStamp)
+                            }
+                            historyArray.put(item)
                         }
-                        historyArray.put(item)
                     }
                 }
             }
@@ -1053,6 +1074,61 @@ class LocalHttpServer(
             put("token", tokenToUse)
         }
         sendHttpResponse(writer, 200, "OK", responseJson.toString())
+    }
+
+    private fun handleGetCallLogs(writer: PrintWriter, queryParams: Map<String, String>) {
+        try {
+            val since = queryParams["since"]?.toLongOrNull() ?: 0L
+            val limit = queryParams["limit"]?.toIntOrNull()?.coerceIn(1, 500) ?: 100
+
+            if (CallLogManager.hasCallLogPermission(context)) {
+                CallLogManager.syncCallLogs(context, since, limit)
+            }
+
+            val calls = CommunicationDatabaseHelper.getInstance(context).getCallsSince(since, limit)
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("calls", calls.toJsonArray())
+                put("count", calls.size)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling getCallLogs: ${e.message}", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
+    private fun handleGetChatLogs(writer: PrintWriter, queryParams: Map<String, String>) {
+        try {
+            val since = queryParams["since"]?.toLongOrNull() ?: 0L
+            val pkg = queryParams["package"]?.takeIf { it.isNotBlank() }
+            val limit = queryParams["limit"]?.toIntOrNull()?.coerceIn(1, 500) ?: 200
+
+            val chats = CommunicationDatabaseHelper.getInstance(context).getChatsSince(since, pkg, limit)
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("chats", chats.toJsonArray())
+                put("count", chats.size)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling getChatLogs: ${e.message}", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
+    private fun handleClearCommunicationHistory(writer: PrintWriter) {
+        try {
+            CommunicationDatabaseHelper.getInstance(context).clearAll()
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("message", "Communication history cleared")
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing communication history: ${e.message}", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
     }
 
     private fun getDeviceName(): String {

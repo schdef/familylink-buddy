@@ -21,6 +21,8 @@ import com.familylink.buddy.child.data.AppInterceptionResult
 import com.familylink.buddy.child.data.AppLimitsManager
 import com.familylink.buddy.child.data.AppRules
 import com.familylink.buddy.child.data.AntiTamperDetector
+import com.familylink.buddy.child.data.ChatMessageRecord
+import com.familylink.buddy.child.data.CommunicationDatabaseHelper
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import java.io.ByteArrayOutputStream
 
@@ -35,6 +37,15 @@ class WifiAccessibilityHelperService : AccessibilityService() {
     private var tickerCounter = 0L
     private var lastToastTime = 0L
     private var lastToastMessage: String? = null
+
+    // Outgoing chat composition tracking
+    private var lastComposedChatText: String? = null
+    private var lastComposedChatPackage: String? = null
+    private var lastComposedChatTime: Long = 0L
+
+    // Real-time app opening recording
+    private var lastRecordedAppPackage: String? = null
+    private var lastRecordedAppTime: Long = 0L
 
     private val tickerRunnable = object : Runnable {
         override fun run() {
@@ -88,8 +99,29 @@ class WifiAccessibilityHelperService : AccessibilityService() {
 
         val pkg = event.packageName?.toString()
         if (!pkg.isNullOrBlank()) {
+            if (ChatNotificationListenerService.SUPPORTED_PACKAGES.contains(pkg)) {
+                handleMessagingAccessibilityEvent(event, pkg)
+            }
+
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || latestPackageName == null) {
                 latestPackageName = pkg
+            }
+
+            // Real-time app opening recording
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                if (pkg != "com.android.systemui" &&
+                    pkg != packageName &&
+                    !isLauncherPackage(this, pkg) &&
+                    !com.familylink.buddy.child.data.InstalledAppsManager.isAllowedExcludedApp(this, pkg)
+                ) {
+                    val now = System.currentTimeMillis()
+                    if (pkg != lastRecordedAppPackage || (now - lastRecordedAppTime > 3000L)) {
+                        val label = getAppLabel(pkg)
+                        CommunicationDatabaseHelper.getInstance(this).insertAppOpening(pkg, label, now)
+                        lastRecordedAppPackage = pkg
+                        lastRecordedAppTime = now
+                    }
+                }
             }
 
             // Anti-tamper check: prevent child from disabling accessibility or uninstalling
@@ -366,6 +398,93 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                 Log.e(TAG, "Error during periodic limits persistence", e)
             }
         }
+    }
+
+    private fun handleMessagingAccessibilityEvent(event: AccessibilityEvent, pkg: String) {
+        try {
+            // Track text being composed in EditText
+            if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+                val enteredText = event.text.joinToString(" ").trim()
+                if (enteredText.isNotEmpty()) {
+                    lastComposedChatText = enteredText
+                    lastComposedChatPackage = pkg
+                    lastComposedChatTime = System.currentTimeMillis()
+                }
+            }
+
+            // Also check current active EditText if text is blank but user is interacting
+            if (lastComposedChatText.isNullOrBlank() && event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
+                rootInActiveWindow?.let { root ->
+                    val editNode = searchNode(root) { node ->
+                        node.className?.toString()?.contains("EditText", ignoreCase = true) == true &&
+                                !node.text.isNullOrBlank()
+                    }
+                    editNode?.text?.toString()?.trim()?.let {
+                        if (it.isNotEmpty()) {
+                            lastComposedChatText = it
+                            lastComposedChatPackage = pkg
+                            lastComposedChatTime = System.currentTimeMillis()
+                        }
+                    }
+                }
+            }
+
+            // Check if Send button was clicked
+            if (isSendAction(event)) {
+                val textToSend = lastComposedChatText
+                val recentTime = System.currentTimeMillis() - lastComposedChatTime < 15_000L
+                if (!textToSend.isNullOrBlank() && recentTime) {
+                    val root = rootInActiveWindow
+                    val chatTitle = findConversationTitle(root) ?: "Active Chat"
+                    val appName = ChatNotificationListenerService.getFriendlyAppName(pkg)
+                    val recordId = "chat_out_${pkg}_${System.currentTimeMillis()}_${(textToSend.hashCode() and 0x7FFFFFFF)}"
+
+                    val record = ChatMessageRecord(
+                        id = recordId,
+                        appPackage = pkg,
+                        appName = appName,
+                        senderOrChat = chatTitle,
+                        text = textToSend,
+                        isOutgoing = true,
+                        timestamp = System.currentTimeMillis()
+                    )
+
+                    Log.d(TAG, "Captured outgoing chat message in $appName to $chatTitle: ${textToSend.take(30)}...")
+                    CommunicationDatabaseHelper.getInstance(applicationContext).insertChatMessage(record)
+                    lastComposedChatText = null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling messaging accessibility event: ${e.message}", e)
+        }
+    }
+
+    private fun isSendAction(event: AccessibilityEvent): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return false
+        val desc = event.contentDescription?.toString()?.lowercase() ?: ""
+        val text = event.text.joinToString(" ").lowercase()
+        val isSendDesc = desc.contains("send") || desc.contains("senden") || text.contains("send") || text.contains("senden")
+        if (isSendDesc) return true
+
+        val source = try { event.source } catch (_: Exception) { null }
+        val resId = source?.viewIdResourceName?.lowercase() ?: ""
+        if (resId.contains("send")) return true
+
+        return false
+    }
+
+    private fun findConversationTitle(root: AccessibilityNodeInfo?): String? {
+        if (root == null) return null
+        val found = searchNode(root) { node ->
+            val resId = node.viewIdResourceName?.lowercase() ?: ""
+            val isHeader = resId.contains("conversation_title") ||
+                    resId.contains("toolbar") ||
+                    resId.contains("action_bar_title") ||
+                    resId.contains("contact_name") ||
+                    resId.contains("chat_title")
+            isHeader && !node.text.isNullOrBlank()
+        }
+        return found?.text?.toString()?.trim()
     }
 
     companion object {
