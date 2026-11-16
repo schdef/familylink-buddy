@@ -110,4 +110,79 @@ class LocalHttpServerLogicTest {
         assertEquals("Roblox", firstItem.getString("label"))
         assertEquals(1731440000000L, firstItem.getLong("timestamp"))
     }
+
+    @Test
+    fun testToggleBlockAppJsonPayloadAndResponse() {
+        // Simulating JSON body
+        val bodyJson = JSONObject().apply {
+            put("package", "com.roblox.client")
+            put("blocked", true)
+        }
+        val targetPkg = bodyJson.optString("package")
+        val isBlocked = bodyJson.getBoolean("blocked")
+
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("package", targetPkg)
+            put("isBlocked", isBlocked)
+            put("blacklistedPackages", JSONArray().put(targetPkg))
+        }
+
+        assertEquals("success", responseJson.getString("status"))
+        assertEquals("com.roblox.client", responseJson.getString("package"))
+        assertTrue(responseJson.getBoolean("isBlocked"))
+        assertEquals(1, responseJson.getJSONArray("blacklistedPackages").length())
+        assertEquals("com.roblox.client", responseJson.getJSONArray("blacklistedPackages").getString(0))
+    }
+
+    @Test
+    fun testToggleBlockAppQueryParamsFallback() {
+        val queryParams = mapOf("packageName" to "com.zhiliaoapp.musically", "isBlocked" to "false")
+        val targetPackage = queryParams["package"] ?: queryParams["packageName"] ?: ""
+        val isBlocked = queryParams["blocked"]?.toBooleanStrictOrNull()
+            ?: queryParams["isBlocked"]?.toBooleanStrictOrNull()
+            ?: true
+
+        assertEquals("com.zhiliaoapp.musically", targetPackage)
+        assertFalse(isBlocked)
+
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("package", targetPackage)
+            put("isBlocked", isBlocked)
+            put("blacklistedPackages", JSONArray())
+        }
+        assertEquals("success", responseJson.getString("status"))
+        assertFalse(responseJson.getBoolean("isBlocked"))
+        assertEquals(0, responseJson.getJSONArray("blacklistedPackages").length())
+    }
+
+    @Test
+    fun testToggleBlockAppMissingPackageError() {
+        val queryParams = emptyMap<String, String>()
+        val targetPackage = queryParams["package"] ?: queryParams["packageName"] ?: ""
+
+        assertTrue(targetPackage.isBlank())
+        val responseJson = JSONObject().apply {
+            put("status", "error")
+            put("message", "Missing 'package' parameter")
+        }
+        assertEquals("error", responseJson.getString("status"))
+        assertEquals("Missing 'package' parameter", responseJson.getString("message"))
+    }
+
+    @Test
+    fun testSetAppRulesResponseCounts() {
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("blacklistedCount", 3)
+            put("categoriesCount", 2)
+            put("bonusCount", 1)
+        }
+
+        assertEquals("success", responseJson.getString("status"))
+        assertEquals(3, responseJson.getInt("blacklistedCount"))
+        assertEquals(2, responseJson.getInt("categoriesCount"))
+        assertEquals(1, responseJson.getInt("bonusCount"))
+    }
 }

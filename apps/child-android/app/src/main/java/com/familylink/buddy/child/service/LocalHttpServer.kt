@@ -261,6 +261,7 @@ class LocalHttpServer(
                 val responseJson = AudioPlaybackManager.buildSetVolumeResponse(stream, level, state)
                 sendHttpResponse(writer, 200, "OK", responseJson.toString())
             } else if (path == "/volume_report") {
+                AudioPlaybackManager.refreshMediaInfo(context)
                 val state = readCurrentVolumeState()
                 val isMusicActive = AudioPlaybackManager.isMusicActive(context)
                 val responseJson = JSONObject().apply {
@@ -318,6 +319,14 @@ class LocalHttpServer(
                 handleCloseApp(writer)
             } else if (path == "/lock_screen") {
                 handleLockScreen(writer)
+            } else if (path == "/toggle_block_app") {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                handleToggleBlockApp(writer, queryParams, bodyJson, bodyString)
             } else if (path == "/set_app_rules") {
                 val bodyString = readBodyString(rawInput, contentLength)
                 val bodyJson = try {
@@ -807,6 +816,84 @@ class LocalHttpServer(
         )
     }
 
+    private fun handleToggleBlockApp(
+        writer: PrintWriter,
+        queryParams: Map<String, String>,
+        bodyJson: JSONObject?,
+        bodyString: String
+    ) {
+        try {
+            val bodyParams = if (bodyString.contains("=") && !bodyString.trim().startsWith("{")) {
+                bodyString.split("&").filter { it.contains("=") }.associate {
+                    val kv = it.split("=", limit = 2)
+                    try {
+                        URLDecoder.decode(kv[0], "UTF-8") to URLDecoder.decode(kv.getOrElse(1) { "" }, "UTF-8")
+                    } catch (e: Exception) {
+                        kv[0] to kv.getOrElse(1) { "" }
+                    }
+                }
+            } else {
+                emptyMap()
+            }
+
+            val targetPackage = bodyJson?.optString("package")?.takeIf { it.isNotBlank() }
+                ?: bodyJson?.optString("packageName")?.takeIf { it.isNotBlank() }
+                ?: bodyParams["package"]?.takeIf { it.isNotBlank() }
+                ?: bodyParams["packageName"]?.takeIf { it.isNotBlank() }
+                ?: queryParams["package"]?.takeIf { it.isNotBlank() }
+                ?: queryParams["packageName"]?.takeIf { it.isNotBlank() }
+                ?: ""
+
+            if (targetPackage.isBlank()) {
+                val responseJson = JSONObject().apply {
+                    put("status", "error")
+                    put("message", "Missing 'package' parameter")
+                }
+                sendHttpResponse(writer, 400, "Bad Request", responseJson.toString())
+                return
+            }
+
+            val isBlocked = if (bodyJson != null && bodyJson.has("blocked")) {
+                bodyJson.getBoolean("blocked")
+            } else if (bodyJson != null && bodyJson.has("isBlocked")) {
+                bodyJson.getBoolean("isBlocked")
+            } else if (bodyParams.containsKey("blocked")) {
+                bodyParams["blocked"].equals("true", ignoreCase = true) || bodyParams["blocked"] == "1"
+            } else if (bodyParams.containsKey("isBlocked")) {
+                bodyParams["isBlocked"].equals("true", ignoreCase = true) || bodyParams["isBlocked"] == "1"
+            } else if (queryParams.containsKey("blocked")) {
+                queryParams["blocked"].equals("true", ignoreCase = true) || queryParams["blocked"] == "1"
+            } else if (queryParams.containsKey("isBlocked")) {
+                queryParams["isBlocked"].equals("true", ignoreCase = true) || queryParams["isBlocked"] == "1"
+            } else {
+                true
+            }
+
+            val manager = AppLimitsManager.getInstance(context)
+            val prefs = context.getSharedPreferences(AppLimitsManager.PREFS_NAME, Context.MODE_PRIVATE)
+            val updatedBlacklist = synchronized(manager) {
+                manager.toggleAppBlacklist(targetPackage, isBlocked, prefs)
+            }
+
+            // Immediately check and intercept foreground app if currently running
+            WifiAccessibilityHelperService.checkAndInterceptForeground(context)
+
+            val array = JSONArray()
+            updatedBlacklist.forEach { array.put(it) }
+
+            val responseJson = JSONObject().apply {
+                put("status", "success")
+                put("package", targetPackage)
+                put("isBlocked", isBlocked)
+                put("blacklistedPackages", array)
+            }
+            sendHttpResponse(writer, 200, "OK", responseJson.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling app blacklist over LAN", e)
+            sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"${e.message}\"}")
+        }
+    }
+
     private fun handleSetAppRules(
         writer: PrintWriter,
         queryParams: Map<String, String>,
@@ -824,13 +911,17 @@ class LocalHttpServer(
                 AppRules()
             }
 
-            WifiAccessibilityHelperService.updateAppRules(context, rules)
+            val manager = AppLimitsManager.getInstance(context)
+            synchronized(manager) {
+                WifiAccessibilityHelperService.updateAppRules(context, rules)
+            }
 
+            val currentRules = manager.getRules()
             val responseJson = JSONObject().apply {
                 put("status", "success")
-                put("blacklistedCount", rules.blacklistedPackages.size)
-                put("categoriesCount", rules.categories.size)
-                put("bonusCount", rules.bonusMinutes.size)
+                put("blacklistedCount", currentRules.blacklistedPackages.size)
+                put("categoriesCount", currentRules.categories.size)
+                put("bonusCount", currentRules.bonusMinutes.size)
             }
             sendHttpResponse(writer, 200, "OK", responseJson.toString())
         } catch (e: Exception) {
@@ -991,6 +1082,7 @@ class LocalHttpServer(
     }
 
     private fun handleStatus(writer: PrintWriter) {
+        AudioPlaybackManager.refreshMediaInfo(context)
         val deviceId = repository.getDeviceIdSync()
         val deviceName = getDeviceName()
         val isMusicActive = AudioPlaybackManager.isMusicActive(context)

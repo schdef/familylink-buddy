@@ -91,6 +91,37 @@ class AppLimitsManager(
         return AppInterceptionResult.None
     }
 
+    /**
+     * Atomically adds or removes an individual package from the blacklist without
+     * overwriting rules concurrently modified by other parent devices.
+     */
+    @Synchronized
+    fun toggleAppBlacklist(packageName: String, isBlocked: Boolean, prefs: SharedPreferences? = null): Set<String> {
+        checkMidnightReset()
+        val currentBlacklist = rules.blacklistedPackages.toMutableSet()
+        if (isBlocked) {
+            currentBlacklist.add(packageName)
+        } else {
+            currentBlacklist.remove(packageName)
+        }
+        rules = rules.copy(blacklistedPackages = currentBlacklist)
+
+        val targetPrefs = prefs ?: appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        targetPrefs?.let {
+            try {
+                saveToPreferences(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving rules in toggleAppBlacklist", e)
+            }
+        }
+
+        if (isBlocked && activePackageName == packageName) {
+            onPackageChanged(packageName, null)
+        }
+
+        return rules.blacklistedPackages
+    }
+
     @Synchronized
     fun addBonusMinutes(categoryId: String, extraMinutes: Int, prefs: SharedPreferences? = null): AppInterceptionResult {
         checkMidnightReset()

@@ -527,6 +527,10 @@ class WifiAccessibilityHelperService : AccessibilityService() {
             }
 
             // Immediately check current foreground app
+            checkAndInterceptForeground(context)
+        }
+
+        fun checkAndInterceptForeground(@Suppress("UNUSED_PARAMETER") context: Context? = null) {
             val service = instance
             if (service != null) {
                 val currentPkg = latestPackageName ?: service.rootInActiveWindow?.packageName?.toString()
@@ -546,13 +550,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
                 Log.e(TAG, "Error saving bonus minutes to preferences", e)
             }
 
-            val service = instance
-            if (service != null) {
-                val currentPkg = latestPackageName ?: service.rootInActiveWindow?.packageName?.toString()
-                if (!currentPkg.isNullOrBlank()) {
-                    service.checkAndInterceptPackage(currentPkg)
-                }
-            }
+            checkAndInterceptForeground(context)
         }
 
         const val TARGET_STATE_NONE = 0

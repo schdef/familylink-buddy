@@ -15,6 +15,8 @@ class AppLimitsRepository extends ChangeNotifier {
   );
 
   List<AppOpeningRecord> _appHistory = [];
+  Timer? _pollingTimer;
+  bool _isDisposed = false;
 
   AppLimitsRepository({
     http.Client? httpClient,
@@ -256,12 +258,41 @@ class AppLimitsRepository extends ChangeNotifier {
     return '10.0.2.2';
   }
 
+  @visibleForTesting
+  Timer? get pollingTimer => _pollingTimer;
+
   /// Starts listening to device rules over LAN
-  void subscribeToDevice(String childFcmToken, {String? localIpAddress}) async {
+  Future<void> subscribeToDevice(String childFcmToken, {String? localIpAddress}) async {
     await _loadCache(childFcmToken);
     fetchRules(childFcmToken, localIpAddress: localIpAddress);
     fetchInstalledApps(childFcmToken, localIpAddress: localIpAddress);
     fetchAppHistory(childFcmToken, localIpAddress: localIpAddress);
+
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => fetchRules(childFcmToken, localIpAddress: localIpAddress),
+    );
+  }
+
+  /// Stops background polling
+  void stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    stopPolling();
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
   }
 
   /// Fetches app rules from child device via GET /get_app_rules over LAN
@@ -552,6 +583,62 @@ class AppLimitsRepository extends ChangeNotifier {
     notifyListeners();
     await _saveCache(childFcmToken);
 
+    final host = _resolveHost(localIpAddress, childFcmToken);
+    try {
+      final url = Uri.parse(
+        'http://$host:8085/toggle_block_app?package=${Uri.encodeQueryComponent(packageName)}&blocked=$isBlocked',
+      );
+      final payload = jsonEncode({
+        'package': packageName,
+        'blocked': isBlocked,
+      });
+
+      final client = _httpClient;
+      final response = client != null
+          ? await client.post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Buddy-Token': childFcmToken,
+              },
+              body: payload,
+            ).timeout(const Duration(seconds: 3))
+          : await http.post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Buddy-Token': childFcmToken,
+              },
+              body: payload,
+            ).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) {
+            final rawList = data['blacklistedPackages'] ??
+                (data['rules'] is Map<String, dynamic>
+                    ? (data['rules'] as Map<String, dynamic>)['blacklistedPackages']
+                    : null);
+            if (rawList is List) {
+              final updatedList = rawList.map((e) => e.toString()).toList();
+              _state = _state.copyWith(blacklistedPackages: updatedList);
+              await _saveCache(childFcmToken);
+              notifyListeners();
+            }
+          }
+        } catch (e) {
+          debugPrint('toggle_block_app JSON decode error: $e');
+        }
+        return true;
+      } else {
+        debugPrint('toggle_block_app returned status: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('toggle_block_app error: $e');
+    }
+
+    // Fall back to saveRules for backward compatibility
     return saveRules(childFcmToken, localIpAddress: localIpAddress);
   }
 

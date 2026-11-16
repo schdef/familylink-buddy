@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.familylink.buddy.child.data.AudioPlaybackManager
 import com.familylink.buddy.child.data.ChatMessageRecord
 import com.familylink.buddy.child.data.CommunicationDatabaseHelper
 
@@ -95,9 +96,27 @@ class ChatNotificationListenerService : NotificationListenerService() {
         if (sbn == null) return
 
         val pkg = sbn.packageName ?: return
+        val notification = sbn.notification ?: return
+        val extras = notification.extras
+
+        // Media playback metadata extraction (Spotify, YouTube, Podcasting, etc.)
+        val isMediaSession = extras?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true ||
+                extras?.containsKey("android.mediaSession") == true
+        val isTransport = notification.category == Notification.CATEGORY_TRANSPORT
+
+        if (isMediaSession || isTransport || (!SUPPORTED_PACKAGES.contains(pkg) && AudioPlaybackManager.isMusicActive(this))) {
+            val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+            val text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
+            val subText = extras?.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
+            val artist = if (!text.isNullOrBlank()) text else subText
+            if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
+                AudioPlaybackManager.updateMediaInfo(title, artist, pkg)
+            }
+        }
+
+        // Chat messaging notification processing
         if (!SUPPORTED_PACKAGES.contains(pkg)) return
 
-        val notification = sbn.notification ?: return
         val record = parseNotification(pkg, notification.extras, sbn.postTime)
         if (record != null) {
             Log.d(TAG, "Captured incoming chat from ${record.appName} (${record.senderOrChat}): ${record.text.take(30)}...")
@@ -105,6 +124,17 @@ class ChatNotificationListenerService : NotificationListenerService() {
                 CommunicationDatabaseHelper.getInstance(applicationContext).insertChatMessage(record)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save incoming chat record: ${e.message}", e)
+            }
+        }
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        super.onNotificationRemoved(sbn)
+        if (sbn == null) return
+        val pkg = sbn.packageName ?: return
+        if (pkg == AudioPlaybackManager.currentMediaPackage) {
+            if (!AudioPlaybackManager.isMusicActive(this)) {
+                AudioPlaybackManager.clearMediaInfo()
             }
         }
     }

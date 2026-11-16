@@ -403,6 +403,76 @@ class AppLimitsLogicTest {
         assertEquals(15, newManager.getBonusMinutes("cat_games"))
     }
 
+    @Test
+    fun testToggleAppBlacklistAtomicAddAndRemove() {
+        val fakePrefs = FakeSharedPreferences()
+        val manager = AppLimitsManager()
+        manager.updateRules(AppRules(blacklistedPackages = setOf("com.android.settings")), fakePrefs)
+
+        // 1. Atomic block of Roblox
+        val updated1 = manager.toggleAppBlacklist("com.roblox.client", isBlocked = true, prefs = fakePrefs)
+        assertTrue(updated1.contains("com.roblox.client"))
+        assertTrue(updated1.contains("com.android.settings"))
+        assertEquals(setOf("com.android.settings", "com.roblox.client"), manager.getRules().blacklistedPackages)
+
+        // Verify saved to preferences
+        val reloadedManager = AppLimitsManager()
+        reloadedManager.loadFromPreferences(fakePrefs)
+        assertTrue(reloadedManager.getRules().blacklistedPackages.contains("com.roblox.client"))
+
+        // 2. Atomic unblock of Roblox
+        val updated2 = manager.toggleAppBlacklist("com.roblox.client", isBlocked = false, prefs = fakePrefs)
+        assertFalse(updated2.contains("com.roblox.client"))
+        assertTrue(updated2.contains("com.android.settings"))
+        assertEquals(setOf("com.android.settings"), manager.getRules().blacklistedPackages)
+    }
+
+    @Test
+    fun testMultiParentParallelAppBlockingWithoutOverwrites() {
+        val fakePrefs = FakeSharedPreferences()
+        val manager = AppLimitsManager()
+        manager.updateRules(AppRules(), fakePrefs)
+
+        // Parent 1 blocks Roblox
+        val parent1Result = manager.toggleAppBlacklist("com.roblox.client", isBlocked = true, prefs = fakePrefs)
+        assertEquals(setOf("com.roblox.client"), parent1Result)
+
+        // Parent 2 concurrently blocks TikTok
+        val parent2Result = manager.toggleAppBlacklist("com.zhiliaoapp.musically", isBlocked = true, prefs = fakePrefs)
+        assertEquals(setOf("com.roblox.client", "com.zhiliaoapp.musically"), parent2Result)
+
+        // Both blocked packages persist safely
+        val currentRules = manager.getRules().blacklistedPackages
+        assertTrue(currentRules.contains("com.roblox.client"))
+        assertTrue(currentRules.contains("com.zhiliaoapp.musically"))
+
+        // Parent 1 unblocks Roblox -> TikTok MUST still remain blocked
+        val parent1UnblockResult = manager.toggleAppBlacklist("com.roblox.client", isBlocked = false, prefs = fakePrefs)
+        assertFalse(parent1UnblockResult.contains("com.roblox.client"))
+        assertTrue(parent1UnblockResult.contains("com.zhiliaoapp.musically"))
+        assertEquals(setOf("com.zhiliaoapp.musically"), manager.getRules().blacklistedPackages)
+    }
+
+    @Test
+    fun testToggleAppBlacklistInterceptsActiveApp() {
+        val manager = AppLimitsManager()
+        manager.updateRules(AppRules())
+
+        // Child is currently playing Brawl Stars
+        val openResult = manager.onPackageChanged("com.supercell.brawlstars", "Brawl Stars")
+        assertTrue(openResult is AppInterceptionResult.Allowed)
+        assertEquals("com.supercell.brawlstars", manager.activePackageName)
+
+        // Parent instantly blocks Brawl Stars
+        manager.toggleAppBlacklist("com.supercell.brawlstars", isBlocked = true)
+
+        // Immediate subsequent evaluation must block it
+        val blockedResult = manager.onPackageChanged("com.supercell.brawlstars", "Brawl Stars")
+        assertTrue(blockedResult is AppInterceptionResult.BlockedBlacklist)
+        val blockedBlacklist = blockedResult as AppInterceptionResult.BlockedBlacklist
+        assertEquals("com.supercell.brawlstars", blockedBlacklist.packageName)
+    }
+
     private class FakeSharedPreferences : android.content.SharedPreferences {
         val map = mutableMapOf<String, Any?>()
 

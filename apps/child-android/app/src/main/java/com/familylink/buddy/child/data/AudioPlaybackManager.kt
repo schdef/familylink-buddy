@@ -1,15 +1,21 @@
 package com.familylink.buddy.child.data
 
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
+import com.familylink.buddy.child.service.ChatNotificationListenerService
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -42,6 +48,61 @@ object AudioPlaybackManager {
         currentMediaTitle = null
         currentMediaArtist = null
         currentMediaPackage = null
+    }
+
+    /**
+     * Actively queries MediaSessionManager to refresh title, artist, and package name
+     * for active playback sessions.
+     */
+    fun refreshMediaInfo(context: Context) {
+        try {
+            val sessionManager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+                ?: return
+            val componentName = ComponentName(context, ChatNotificationListenerService::class.java)
+            val controllers: List<MediaController> = try {
+                sessionManager.getActiveSessions(componentName)
+            } catch (e: SecurityException) {
+                Log.w(TAG, "SecurityException calling getActiveSessions: ${e.message}")
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "Exception calling getActiveSessions: ${e.message}")
+                return
+            }
+
+            if (controllers.isNullOrEmpty()) return
+
+            val isAudioActive = isMusicActive(context)
+
+            var targetController: MediaController? = null
+            for (controller in controllers) {
+                val state = controller.playbackState?.state
+                if (state == PlaybackState.STATE_PLAYING) {
+                    targetController = controller
+                    break
+                }
+            }
+
+            if (targetController == null && isAudioActive) {
+                targetController = controllers.firstOrNull()
+            }
+
+            if (targetController != null) {
+                val metadata = targetController.metadata
+                if (metadata != null) {
+                    val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
+                        ?: metadata.getText(MediaMetadata.METADATA_KEY_TITLE)?.toString()
+                    val artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                        ?: metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
+                        ?: metadata.getText(MediaMetadata.METADATA_KEY_ARTIST)?.toString()
+                    val pkg = targetController.packageName
+                    if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
+                        updateMediaInfo(title, artist, pkg)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to refresh media info: ${e.message}", e)
+        }
     }
 
     /**

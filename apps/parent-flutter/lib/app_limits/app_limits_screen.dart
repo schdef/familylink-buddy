@@ -27,6 +27,7 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
   final TextEditingController _availableAppsSearchController = TextEditingController();
   String _availableAppsSearchQuery = '';
   bool _isSaving = false;
+  AppLimitsRepository? _repo;
 
   @override
   void initState() {
@@ -36,13 +37,21 @@ class _AppLimitsScreenState extends State<AppLimitsScreen>
       if (mounted) {
         final effectiveIp = _resolveEffectiveIp(context);
         final repo = Provider.of<AppLimitsRepository>(context, listen: false);
+        _repo = repo;
         repo.subscribeToDevice(widget.device.fcmToken, localIpAddress: effectiveIp);
       }
     });
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _repo ??= Provider.of<AppLimitsRepository>(context, listen: false);
+  }
+
+  @override
   void dispose() {
+    _repo?.stopPolling();
     _availableAppsSearchController.dispose();
     _tabController.dispose();
     super.dispose();

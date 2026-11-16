@@ -257,6 +257,95 @@ void main() {
       expect(postCount, 2);
     });
 
+    test('toggleBlacklist uses atomic /toggle_block_app endpoint with query params, body and token, updating state from response', () async {
+      http.Request? capturedRequest;
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/toggle_block_app') {
+          capturedRequest = request;
+          expect(request.method, 'POST');
+          expect(request.headers['X-Buddy-Token'], testDevice.fcmToken);
+          expect(request.headers['Content-Type'], contains('application/json'));
+          expect(request.url.queryParameters['package'], 'com.roblox.client');
+          expect(request.url.queryParameters['blocked'], 'true');
+          final bodyJson = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(bodyJson['package'], 'com.roblox.client');
+          expect(bodyJson['blocked'], true);
+
+          return http.Response(
+            jsonEncode({
+              'status': 'success',
+              'blacklistedPackages': [
+                'com.google.android.apps.chromecast.app',
+                'com.roblox.client',
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      final result = await repo.toggleBlacklist(
+        testDevice.fcmToken,
+        'com.roblox.client',
+        true,
+        localIpAddress: '192.168.1.120',
+      );
+
+      expect(result, isTrue);
+      expect(capturedRequest, isNotNull);
+      expect(repo.state.blacklistedPackages, contains('com.roblox.client'));
+      expect(repo.state.blacklistedPackages, contains('com.google.android.apps.chromecast.app'));
+    });
+
+    test('toggleBlacklist falls back to saveRules (/set_app_rules) if atomic endpoint returns 404', () async {
+      final calledUrls = <String>[];
+      final mockClient = MockClient((request) async {
+        calledUrls.add(request.url.path);
+        if (request.url.path == '/toggle_block_app') {
+          return http.Response('Not Found', 404);
+        }
+        if (request.url.path == '/set_app_rules') {
+          return http.Response(jsonEncode({'status': 'ok'}), 200);
+        }
+        return http.Response('Error', 500);
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      final result = await repo.toggleBlacklist(
+        testDevice.fcmToken,
+        'com.roblox.client',
+        true,
+        localIpAddress: '192.168.1.120',
+      );
+
+      expect(result, isTrue);
+      expect(calledUrls, ['/toggle_block_app', '/set_app_rules']);
+      expect(repo.state.isBlacklisted('com.roblox.client'), isTrue);
+    });
+
+    test('subscribeToDevice starts 4-second periodic timer and stopPolling cancels it', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'status': 'success',
+            'rules': {'blacklistedPackages': [], 'categories': []},
+          }),
+          200,
+        );
+      });
+
+      final repo = AppLimitsRepository(httpClient: mockClient);
+      await repo.subscribeToDevice(testDevice.fcmToken, localIpAddress: '192.168.1.120');
+
+      expect(repo.pollingTimer, isNotNull);
+      expect(repo.pollingTimer!.isActive, isTrue);
+
+      repo.stopPolling();
+      expect(repo.pollingTimer, isNull);
+    });
+
     test('grantBonusMinutes adds bonus and posts update', () async {
       final mockClient = MockClient((request) async {
         final decoded = jsonDecode(request.body) as Map<String, dynamic>;
@@ -887,6 +976,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(requestedHost, '192.168.1.88');
+    });
+
+    testWidgets('AppLimitsScreen dispose calls repo.stopPolling() and cancels periodic timer', (tester) async {
+      final mockClient = MockClient((request) async {
+        return http.Response(jsonEncode({'status': 'ok'}), 200);
+      });
+      final repo = AppLimitsRepository(httpClient: mockClient);
+
+      await tester.pumpWidget(
+        buildTestScreen(
+          appLimitsRepo: repo,
+          localIpAddress: '192.168.1.100',
+        ),
+      );
+      await tester.pump();
+
+      expect(repo.pollingTimer, isNotNull);
+      expect(repo.pollingTimer!.isActive, isTrue);
+
+      // Unmount AppLimitsScreen by pumping another widget
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Text('Done'))));
+      await tester.pump();
+
+      expect(repo.pollingTimer, isNull);
     });
   });
 }

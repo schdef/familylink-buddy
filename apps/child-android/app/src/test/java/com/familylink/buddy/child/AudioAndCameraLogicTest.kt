@@ -335,4 +335,60 @@ class AudioAndCameraLogicTest {
         assertNull(AudioPlaybackManager.currentMediaArtist)
         assertNull(AudioPlaybackManager.currentMediaPackage)
     }
+
+    @Test
+    fun testMediaNotificationExtractionAndFilteringLogic() {
+        AudioPlaybackManager.clearMediaInfo()
+
+        fun shouldUpdateMedia(
+            pkg: String,
+            hasMediaSession: Boolean,
+            isTransport: Boolean,
+            hasMediaText: Boolean,
+            isMusicActive: Boolean,
+            supportedChatPackages: Set<String>
+        ): Boolean {
+            val isChatApp = supportedChatPackages.contains(pkg)
+            return (hasMediaSession || isTransport || (!isChatApp && isMusicActive && hasMediaText))
+        }
+
+        val chatPackages = setOf("com.whatsapp", "org.telegram.messenger", "com.google.android.apps.messaging")
+
+        // 1. WhatsApp notification while music is playing -> must NOT update media
+        assertFalse(shouldUpdateMedia("com.whatsapp", hasMediaSession = false, isTransport = false, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+
+        // 2. Spotify media session notification -> MUST update media
+        assertTrue(shouldUpdateMedia("com.spotify.music", hasMediaSession = true, isTransport = true, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+
+        // 3. YouTube Music transport notification -> MUST update media
+        assertTrue(shouldUpdateMedia("com.google.android.apps.youtube.music", hasMediaSession = false, isTransport = true, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+
+        // 4. Background podcast active playback -> MUST update media
+        assertTrue(shouldUpdateMedia("com.bip.podcasts", hasMediaSession = false, isTransport = false, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+
+        // Updating media info
+        AudioPlaybackManager.updateMediaInfo("Starboy", "The Weeknd", "com.spotify.music")
+        assertEquals("Starboy", AudioPlaybackManager.currentMediaTitle)
+        assertEquals("The Weeknd", AudioPlaybackManager.currentMediaArtist)
+        assertEquals("com.spotify.music", AudioPlaybackManager.currentMediaPackage)
+
+        // Notification removed for current package when audio is inactive -> clears media
+        fun onNotificationRemovedSim(pkg: String, isMusicActive: Boolean) {
+            if (pkg == AudioPlaybackManager.currentMediaPackage && !isMusicActive) {
+                AudioPlaybackManager.clearMediaInfo()
+            }
+        }
+
+        // Removed from a different package -> stays
+        onNotificationRemovedSim("com.whatsapp", isMusicActive = false)
+        assertEquals("Starboy", AudioPlaybackManager.currentMediaTitle)
+
+        // Removed from Spotify while music is still active -> stays
+        onNotificationRemovedSim("com.spotify.music", isMusicActive = true)
+        assertEquals("Starboy", AudioPlaybackManager.currentMediaTitle)
+
+        // Removed from Spotify when music stopped -> cleared!
+        onNotificationRemovedSim("com.spotify.music", isMusicActive = false)
+        assertNull(AudioPlaybackManager.currentMediaTitle)
+    }
 }
