@@ -117,9 +117,9 @@ if [ "$BUILD_WEB" = true ]; then
         echo "❌ Parent Web PWA build failed!"
         exit 1
     fi
-    mkdir -p "$ROOT_DIR/build/web"
-    rm -rf "$ROOT_DIR/build/web"/*
-    cp -r "$PARENT_DIR/build/web"/* "$ROOT_DIR/build/web/"
+    mkdir -p "$ROOT_DIR/build/parent-app-web"
+    rm -rf "$ROOT_DIR/build/parent-app-web"/*
+    cp -r "$PARENT_DIR/build/web"/* "$ROOT_DIR/build/parent-app-web/"
     echo "✅ Parent Web PWA build successful!"
     echo ""
 fi
@@ -127,7 +127,7 @@ fi
 # 4. Print Output Summary
 CHILD_APK="$ROOT_DIR/build/child-app-release.apk"
 PARENT_APK="$ROOT_DIR/build/parent-app-release.apk"
-WEB_DIR="$ROOT_DIR/build/web"
+WEB_DIR="$ROOT_DIR/build/parent-app-web"
 
 echo "==========================================="
 echo "🎉 Compilation Complete! Artifact Summary:"

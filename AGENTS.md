@@ -192,7 +192,8 @@ familylink-buddy/
 │
 └── build/                             # Pre-compiled, signed Release APKs
     ├── child-app-release.apk          # Child Tablet APK (~25 MB)
-    └── parent-app-release.apk         # Parent Phone APK (~85 MB)
+    ├── parent-app-release.apk         # Parent Phone APK (~85 MB)
+    └── parent-app-web/                # Parent Web PWA (~41 MB)
 ```
 
 ---

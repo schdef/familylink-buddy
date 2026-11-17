@@ -13,9 +13,14 @@ Thumbs.db
 
 # Build and local files
 node_modules/
-build/
 dist/
 *.log
+**/build/
+!/build/
+/build/*
+!/build/child-app-release.apk
+!/build/parent-app-release.apk
+!/build/parent-app-web/
 
 # Flutter/Android/Node specific (for our future workspace)
 .dart_tool/

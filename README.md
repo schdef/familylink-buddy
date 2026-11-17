@@ -129,7 +129,7 @@ familylink-buddy/
 Download the latest signed APKs or Web build directly from the [GitHub Releases](../../releases) page or from the `build/` directory:
 * **Child Tablet:** `child-app-release.apk`
 * **Parent Phone:** `parent-app-release.apk`
-* **Parent Web PWA:** `build/web/` (static web bundle)
+* **Parent Web PWA:** `build/parent-app-web/` (static web bundle)
 
 ### 📱 2. Setup on Child Tablet
 1. Install `child-app-release.apk` on the child tablet.
@@ -149,12 +149,12 @@ Download the latest signed APKs or Web build directly from the [GitHub Releases]
 4. **Done!** The dashboard opens immediately with live controls.
 
 #### Option B: Progressive Web App (Desktop / Laptop / Tablet / iOS)
-1. Build or serve the static web app from `build/web`:
+1. Build or serve the static web app from `build/parent-app-web`:
    ```bash
    # Quick local launch using Python:
-   python3 -m http.server 8080 --directory build/web
+   python3 -m http.server 8080 --directory build/parent-app-web
    ```
-   *(Or deploy `build/web/` to your home server, Nginx, Caddy, or Synology NAS).*
+   *(Or deploy `build/parent-app-web/` to your home server, Nginx, Caddy, or Synology NAS).*
 2. Open `http://<your-server-ip>:8080` in Chrome, Edge, Safari, or Firefox.
 3. Click the **Install** icon in your browser's address bar to install FamilyLink Buddy as a standalone desktop app.
 4. Enter the child tablet's IP address (or scan QR code if your laptop has a webcam) and pairing token.
