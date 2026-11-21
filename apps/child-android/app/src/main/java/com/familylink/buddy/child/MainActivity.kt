@@ -33,6 +33,7 @@ import com.familylink.buddy.child.ui.SetupWizardScreen
 import com.familylink.buddy.child.ui.ParentPinDialog
 import com.familylink.buddy.child.ui.ParentPinDialogMode
 import com.familylink.buddy.child.service.WifiAccessibilityHelperService
+import com.familylink.buddy.child.service.BedtimeScheduleReceiver
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
@@ -189,6 +190,12 @@ class MainActivity : ComponentActivity() {
 
         // Update local volume state on startup
         updateLocalVolumeState()
+
+        // Ensure bedtime alarms are scheduled
+        lifecycleScopeLaunch {
+            val schedule = repository.bedtimeSchedule.first()
+            BedtimeScheduleReceiver.scheduleNextAlarms(applicationContext, schedule)
+        }
 
         // Write initial data only if no existing data exists in repository
         lifecycleScopeLaunch {

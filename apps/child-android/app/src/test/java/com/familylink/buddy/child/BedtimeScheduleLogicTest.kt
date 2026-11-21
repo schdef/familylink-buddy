@@ -1,6 +1,8 @@
 package com.familylink.buddy.child
 
+import android.content.Intent
 import com.familylink.buddy.child.data.BedtimeSchedule
+import com.familylink.buddy.child.service.BedtimeScheduleReceiver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -307,5 +309,19 @@ class BedtimeScheduleLogicTest {
         assertEquals(-1L, schedule.getNextBedtimeMillis(now))
         assertEquals(-1L, schedule.getNextWakeupMillis(now))
         assertFalse(schedule.isBedtimeActive(now))
+    }
+
+    @Test
+    fun testBedtimeScheduleReceiverRescheduleActions() {
+        assertEquals("android.intent.action.MY_PACKAGE_REPLACED", BedtimeScheduleReceiver.ACTION_MY_PACKAGE_REPLACED)
+        assertTrue(BedtimeScheduleReceiver.isRescheduleAction(Intent.ACTION_BOOT_COMPLETED))
+        assertTrue(BedtimeScheduleReceiver.isRescheduleAction(Intent.ACTION_MY_PACKAGE_REPLACED))
+        assertTrue(BedtimeScheduleReceiver.isRescheduleAction(BedtimeScheduleReceiver.ACTION_MY_PACKAGE_REPLACED))
+        assertTrue(BedtimeScheduleReceiver.isRescheduleAction(BedtimeScheduleReceiver.ACTION_QUICKBOOT_POWERON))
+
+        assertFalse(BedtimeScheduleReceiver.isRescheduleAction(BedtimeScheduleReceiver.ACTION_TRIGGER_BEDTIME))
+        assertFalse(BedtimeScheduleReceiver.isRescheduleAction(BedtimeScheduleReceiver.ACTION_TRIGGER_WAKEUP))
+        assertFalse(BedtimeScheduleReceiver.isRescheduleAction(null))
+        assertFalse(BedtimeScheduleReceiver.isRescheduleAction("android.intent.action.SOME_OTHER_ACTION"))
     }
 }

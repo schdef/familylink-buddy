@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../pairing/pairing_repository.dart';
+import '../volume/volume_repository.dart';
 import 'bedtime_repository.dart';
 import 'bedtime_schedule.dart';
 import '../l10n/app_strings.dart';
@@ -21,25 +22,57 @@ class BedtimeScheduleScreen extends StatefulWidget {
 
 class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
   bool _isSaving = false;
+  BedtimeRepository? _repo;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        final effectiveIp = _resolveEffectiveIp(context);
         final repo = Provider.of<BedtimeRepository>(context, listen: false);
-        repo.subscribeToDevice(widget.device.fcmToken);
+        _repo = repo;
+        repo.subscribeToDevice(widget.device.fcmToken, localIpAddress: effectiveIp);
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _repo ??= Provider.of<BedtimeRepository>(context, listen: false);
+  }
+
+  @override
+  void dispose() {
+    _repo?.stopPolling();
+    super.dispose();
+  }
+
+  String? _resolveEffectiveIp(BuildContext context) {
+    if (widget.localIpAddress != null && widget.localIpAddress!.isNotEmpty) {
+      return widget.localIpAddress;
+    }
+    if (widget.device.localIpAddress != null && widget.device.localIpAddress!.isNotEmpty) {
+      return widget.device.localIpAddress;
+    }
+    try {
+      final volRepo = Provider.of<VolumeRepository>(context, listen: false);
+      if (volRepo.localIpAddress != null && volRepo.localIpAddress!.isNotEmpty) {
+        return volRepo.localIpAddress;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _updateSchedule(BedtimeSchedule newSchedule) async {
     setState(() => _isSaving = true);
     final repo = Provider.of<BedtimeRepository>(context, listen: false);
+    final effectiveIp = _resolveEffectiveIp(context);
     final success = await repo.saveSchedule(
       widget.device.fcmToken,
       newSchedule,
-      localIpAddress: widget.localIpAddress,
+      localIpAddress: effectiveIp,
     );
 
     if (mounted) {
@@ -59,10 +92,11 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
   Future<void> _toggleManualBlock(bool block) async {
     setState(() => _isSaving = true);
     final repo = Provider.of<BedtimeRepository>(context, listen: false);
+    final effectiveIp = _resolveEffectiveIp(context);
     await repo.toggleManualBlock(
       widget.device.fcmToken,
       block,
-      localIpAddress: widget.localIpAddress,
+      localIpAddress: effectiveIp,
     );
 
     if (mounted) {
@@ -157,32 +191,42 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
         builder: (context, repo, child) {
           final schedule = repo.schedule;
           final isBlocked = schedule.isCurrentlyBlocked;
+          final effectiveIp = _resolveEffectiveIp(context);
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Live Status Card
-                _buildLiveStatusCard(context, isBlocked),
-                const SizedBox(height: 20),
+          return RefreshIndicator(
+            onRefresh: () async {
+              await repo.fetchSchedule(
+                widget.device.fcmToken,
+                localIpAddress: effectiveIp,
+              );
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Live Status Card
+                  _buildLiveStatusCard(context, isBlocked),
+                  const SizedBox(height: 20),
 
-                // Manual Override Button
-                _buildManualOverrideButton(context, isBlocked),
-                const SizedBox(height: 24),
+                  // Manual Override Button
+                  _buildManualOverrideButton(context, isBlocked),
+                  const SizedBox(height: 24),
 
-                // Master Schedule Switch Card
-                _buildMasterSwitchCard(context, schedule),
-                const SizedBox(height: 16),
+                  // Master Schedule Switch Card
+                  _buildMasterSwitchCard(context, schedule),
+                  const SizedBox(height: 16),
 
-                // Time Pickers Card
-                _buildTimePickersCard(context, schedule),
-                const SizedBox(height: 16),
+                  // Time Pickers Card
+                  _buildTimePickersCard(context, schedule),
+                  const SizedBox(height: 16),
 
-                // Weekday Selector Card
-                _buildWeekdaySelectorCard(context, schedule),
-                const SizedBox(height: 32),
-              ],
+                  // Weekday Selector Card
+                  _buildWeekdaySelectorCard(context, schedule),
+                  const SizedBox(height: 32),
+                ],
+              ),
             ),
           );
         },

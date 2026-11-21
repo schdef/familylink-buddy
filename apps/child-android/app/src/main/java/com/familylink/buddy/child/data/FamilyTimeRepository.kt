@@ -109,6 +109,12 @@ class FamilyTimeRepository(private val context: Context) {
         return ParentPinManager.verifyPin(enteredPin, configured)
     }
 
+    fun getBedtimeScheduleSync(): BedtimeSchedule {
+        return runBlocking {
+            bedtimeSchedule.first()
+        }
+    }
+
     suspend fun updateBedtimeSchedule(schedule: BedtimeSchedule) {
         context.dataStore.edit { preferences ->
             preferences[KEY_BEDTIME_ENABLED] = schedule.isEnabled

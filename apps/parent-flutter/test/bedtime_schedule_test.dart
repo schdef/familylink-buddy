@@ -1,13 +1,29 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:parent_app/bedtime/bedtime_schedule.dart';
 import 'package:parent_app/bedtime/bedtime_repository.dart';
+import 'package:parent_app/bedtime/bedtime_schedule_screen.dart';
+import 'package:parent_app/pairing/pairing_repository.dart';
+import 'package:parent_app/volume/volume_repository.dart';
+import 'package:parent_app/l10n/app_strings.dart';
 import 'package:parent_app/updater/p2p_updater_service.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    AppStrings.manualLocale = const Locale('de');
+  });
+
+  tearDown(() {
+    AppStrings.manualLocale = null;
+  });
+
   group('BedtimeSchedule Model Tests', () {
     test('Default values are correct', () {
       const schedule = BedtimeSchedule();
@@ -162,6 +178,297 @@ void main() {
       }));
 
       expect(endpointCalled, isTrue);
+    });
+
+    test('fetchSchedule updates schedule from mock HTTP response with nested schedule object', () async {
+      final mockClient = MockClient((request) async {
+        expect(request.url.toString(), 'http://192.168.1.150:8085/get_schedule');
+        expect(request.method, 'GET');
+        expect(request.headers['X-Buddy-Token'], 'test_token_123');
+
+        return http.Response(
+          jsonEncode({
+            'status': 'success',
+            'schedule': {
+              'isEnabled': true,
+              'bedtimeHour': 21,
+              'bedtimeMinute': 45,
+              'wakeupHour': 7,
+              'wakeupMinute': 15,
+              'activeDays': [1, 2, 3, 4, 5],
+              'isCurrentlyBlocked': false,
+            },
+          }),
+          200,
+        );
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      final success = await repo.fetchSchedule('test_token_123', localIpAddress: '192.168.1.150');
+
+      expect(success, isTrue);
+      expect(repo.schedule.isEnabled, isTrue);
+      expect(repo.schedule.bedtimeHour, 21);
+      expect(repo.schedule.bedtimeMinute, 45);
+      expect(repo.schedule.wakeupHour, 7);
+      expect(repo.schedule.wakeupMinute, 15);
+      expect(repo.schedule.activeDays, [1, 2, 3, 4, 5]);
+
+      // Verify it was cached in SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString(BedtimeRepository.cacheKey('test_token_123'));
+      expect(cachedJson, isNotNull);
+      final decoded = jsonDecode(cachedJson!) as Map<String, dynamic>;
+      expect(decoded['isEnabled'], isTrue);
+      expect(decoded['bedtimeHour'], 21);
+    });
+
+    test('fetchSchedule handles flat JSON response', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'isEnabled': true,
+            'bedtimeHour': 22,
+            'bedtimeMinute': 0,
+            'wakeupHour': 8,
+            'wakeupMinute': 30,
+            'activeDays': [6, 7],
+            'isCurrentlyBlocked': true,
+          }),
+          200,
+        );
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      final success = await repo.fetchSchedule('test_flat_token', localIpAddress: '192.168.1.150');
+
+      expect(success, isTrue);
+      expect(repo.schedule.isEnabled, isTrue);
+      expect(repo.schedule.bedtimeHour, 22);
+      expect(repo.schedule.wakeupHour, 8);
+      expect(repo.schedule.isCurrentlyBlocked, isTrue);
+    });
+
+    test('fetchSchedule returns false and keeps state on error', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response('Internal Server Error', 500);
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      const initial = BedtimeSchedule(isEnabled: false, bedtimeHour: 20);
+      repo.schedule = initial;
+
+      final success = await repo.fetchSchedule('token_err', localIpAddress: '192.168.1.150');
+      expect(success, isFalse);
+      expect(repo.schedule.isEnabled, isFalse);
+      expect(repo.schedule.bedtimeHour, 20);
+    });
+
+    test('loadCache and saveCache persist and restore schedule correctly', () async {
+      final scheduleToCache = const BedtimeSchedule(
+        isEnabled: true,
+        bedtimeHour: 22,
+        bedtimeMinute: 10,
+        wakeupHour: 7,
+        wakeupMinute: 20,
+        activeDays: [1, 2, 3],
+        isCurrentlyBlocked: false,
+      );
+
+      SharedPreferences.setMockInitialValues({
+        BedtimeRepository.cacheKey('cached_child_1'): jsonEncode(scheduleToCache.toJson()),
+      });
+
+      final repo = BedtimeRepository();
+      expect(repo.schedule.isEnabled, isFalse); // default before loading cache
+
+      await repo.loadCache('cached_child_1');
+      expect(repo.schedule.isEnabled, isTrue);
+      expect(repo.schedule.bedtimeHour, 22);
+      expect(repo.schedule.bedtimeMinute, 10);
+      expect(repo.schedule.activeDays, [1, 2, 3]);
+
+      // Modify and save cache
+      final updatedSchedule = repo.schedule.copyWith(bedtimeHour: 23, isEnabled: false);
+      repo.schedule = updatedSchedule;
+      await repo.saveCache('cached_child_1');
+
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(BedtimeRepository.cacheKey('cached_child_1'));
+      expect(raw, isNotNull);
+      final decoded = jsonDecode(raw!) as Map<String, dynamic>;
+      expect(decoded['bedtimeHour'], 23);
+      expect(decoded['isEnabled'], isFalse);
+    });
+
+    test('subscribeToDevice loads cache, triggers fetchSchedule, and starts periodic timer', () async {
+      final cachedSchedule = const BedtimeSchedule(
+        isEnabled: true,
+        bedtimeHour: 21,
+        bedtimeMinute: 30,
+      );
+
+      SharedPreferences.setMockInitialValues({
+        BedtimeRepository.cacheKey('sub_token'): jsonEncode(cachedSchedule.toJson()),
+      });
+
+      int fetchCount = 0;
+      final mockClient = MockClient((request) async {
+        fetchCount++;
+        return http.Response(
+          jsonEncode({
+            'schedule': {
+              'isEnabled': true,
+              'bedtimeHour': 22,
+              'bedtimeMinute': 0,
+            },
+          }),
+          200,
+        );
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      await repo.subscribeToDevice('sub_token', localIpAddress: '192.168.1.50');
+
+      // Cache is loaded immediately
+      expect(repo.pollingTimer, isNotNull);
+      expect(repo.pollingTimer!.isActive, isTrue);
+
+      // Let async fetch finish
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(fetchCount, greaterThanOrEqualTo(1));
+      expect(repo.schedule.bedtimeHour, 22);
+
+      // Stop polling cancels timer
+      repo.stopPolling();
+      expect(repo.pollingTimer, isNull);
+    });
+
+    test('dispose cancels pollingTimer and suppresses notifyListeners', () async {
+      final repo = BedtimeRepository();
+      await repo.subscribeToDevice('dummy_tok');
+      expect(repo.pollingTimer, isNotNull);
+
+      bool notifiedAfterDispose = false;
+      repo.addListener(() {
+        notifiedAfterDispose = true;
+      });
+
+      repo.dispose();
+      expect(repo.pollingTimer, isNull);
+
+      // Calling notifyListeners directly should be safely ignored
+      repo.notifyListeners();
+      expect(notifiedAfterDispose, isFalse);
+    });
+  });
+
+  group('BedtimeScheduleScreen Widget Tests', () {
+    testWidgets('Renders screen, starts polling, and dispose stops polling', (WidgetTester tester) async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'schedule': const BedtimeSchedule(isEnabled: true, bedtimeHour: 20, bedtimeMinute: 30).toJson(),
+          }),
+          200,
+        );
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      final testDevice = PairedDevice(
+        id: 'tablet-1',
+        name: 'Kind-Tablet',
+        fcmToken: 'token_tablet_1',
+        localIpAddress: '192.168.1.180',
+        port: 8085,
+        lastSeen: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BedtimeRepository>.value(value: repo),
+            ChangeNotifierProvider<VolumeRepository>(create: (_) => VolumeRepository()),
+          ],
+          child: MaterialApp(
+            home: BedtimeScheduleScreen(
+              device: testDevice,
+              localIpAddress: '192.168.1.180',
+            ),
+          ),
+        ),
+      );
+
+      // Trigger post frame callbacks
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('WLAN-Nachtruhe'), findsOneWidget);
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+      expect(repo.pollingTimer, isNotNull);
+      expect(repo.pollingTimer!.isActive, isTrue);
+
+      // Unmount the screen to trigger dispose
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: Text('Done')),
+        ),
+      );
+      await tester.pump();
+
+      expect(repo.pollingTimer, isNull);
+    });
+
+    testWidgets('Pull to refresh calls fetchSchedule', (WidgetTester tester) async {
+      int getCalls = 0;
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/get_schedule') {
+          getCalls++;
+        }
+        return http.Response(
+          jsonEncode({
+            'schedule': const BedtimeSchedule(isEnabled: true, bedtimeHour: 21).toJson(),
+          }),
+          200,
+        );
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      final testDevice = PairedDevice(
+        id: 'tablet-2',
+        name: 'Kind-Tablet 2',
+        fcmToken: 'token_tablet_2',
+        localIpAddress: '192.168.1.181',
+        port: 8085,
+        lastSeen: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BedtimeRepository>.value(value: repo),
+            ChangeNotifierProvider<VolumeRepository>(create: (_) => VolumeRepository()),
+          ],
+          child: MaterialApp(
+            home: BedtimeScheduleScreen(
+              device: testDevice,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final initialCalls = getCalls;
+
+      // Trigger pull to refresh
+      await tester.fling(find.byType(SingleChildScrollView), const Offset(0.0, 300.0), 1000.0);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(getCalls, greaterThan(initialCalls));
+      repo.stopPolling();
     });
   });
 

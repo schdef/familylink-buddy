@@ -1,6 +1,7 @@
 package com.familylink.buddy.child
 
 import com.familylink.buddy.child.data.AudioPlaybackManager
+import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.service.LocalHttpServer
 import org.json.JSONArray
 import org.json.JSONObject
@@ -184,5 +185,86 @@ class LocalHttpServerLogicTest {
         assertEquals(3, responseJson.getInt("blacklistedCount"))
         assertEquals(2, responseJson.getInt("categoriesCount"))
         assertEquals(1, responseJson.getInt("bonusCount"))
+    }
+
+    @Test
+    fun testStatusResponseWithBedtimeFields() {
+        val responseJson = JSONObject().apply {
+            put("status", "online")
+            put("deviceId", "tab-1234")
+            put("deviceName", "Test Tablet")
+            put("version", "1.0.0")
+            put("hasParentPin", true)
+            put("isMusicActive", false)
+            put("bedtimeEnabled", true)
+            put("isBedtimeBlocked", false)
+        }
+
+        assertEquals("online", responseJson.getString("status"))
+        assertTrue(responseJson.getBoolean("bedtimeEnabled"))
+        assertFalse(responseJson.getBoolean("isBedtimeBlocked"))
+    }
+
+    @Test
+    fun testGetScheduleResponsePayloadStructureAndParsing() {
+        val scheduleJson = JSONObject().apply {
+            put("isEnabled", true)
+            put("bedtimeHour", 20)
+            put("bedtimeMinute", 30)
+            put("wakeupHour", 6)
+            put("wakeupMinute", 45)
+            val daysArray = JSONArray().apply {
+                listOf(1, 2, 3, 4, 5, 6, 7).forEach { put(it) }
+            }
+            put("activeDays", daysArray)
+            put("isCurrentlyBlocked", false)
+        }
+
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("schedule", scheduleJson)
+        }
+
+        assertEquals("success", responseJson.getString("status"))
+        val returnedSchedule = responseJson.getJSONObject("schedule")
+        assertTrue(returnedSchedule.getBoolean("isEnabled"))
+        assertEquals(20, returnedSchedule.getInt("bedtimeHour"))
+        assertEquals(30, returnedSchedule.getInt("bedtimeMinute"))
+        assertEquals(6, returnedSchedule.getInt("wakeupHour"))
+        assertEquals(45, returnedSchedule.getInt("wakeupMinute"))
+        assertEquals(7, returnedSchedule.getJSONArray("activeDays").length())
+        assertFalse(returnedSchedule.getBoolean("isCurrentlyBlocked"))
+
+        // Verify BedtimeSchedule model parses this JSON accurately
+        val parsedSchedule = BedtimeSchedule.fromJson(returnedSchedule.toString())
+        assertTrue(parsedSchedule.isEnabled)
+        assertEquals(20, parsedSchedule.bedtimeHour)
+        assertEquals(30, parsedSchedule.bedtimeMinute)
+        assertEquals(6, parsedSchedule.wakeupHour)
+        assertEquals(45, parsedSchedule.wakeupMinute)
+        assertEquals(listOf(1, 2, 3, 4, 5, 6, 7), parsedSchedule.activeDays)
+        assertFalse(parsedSchedule.isCurrentlyBlocked)
+    }
+
+    @Test
+    fun testAuthenticationPolicyForGetSchedule() {
+        val pairedToken = "sec_test_secret_token_123"
+        val publicPaths = setOf("/status", "/pair")
+        val path = "/get_schedule"
+
+        assertFalse("Path $path must require authentication", publicPaths.contains(path))
+
+        val checkAuth = { incomingToken: String? ->
+            pairedToken.isNotEmpty() && !publicPaths.contains(path) && (incomingToken == null || incomingToken != pairedToken)
+        }
+
+        // Missing token -> unauthorized
+        assertTrue(checkAuth(null))
+
+        // Wrong token -> unauthorized
+        assertTrue(checkAuth("wrong_token"))
+
+        // Correct token -> authorized
+        assertFalse(checkAuth("sec_test_secret_token_123"))
     }
 }

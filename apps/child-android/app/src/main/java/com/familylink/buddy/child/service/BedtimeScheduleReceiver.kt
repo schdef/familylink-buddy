@@ -38,8 +38,8 @@ class BedtimeScheduleReceiver : BroadcastReceiver() {
                 val repository = FamilyTimeRepository(context)
                 val currentSchedule = repository.bedtimeSchedule.first()
 
-                when (action) {
-                    ACTION_TRIGGER_BEDTIME -> {
+                when {
+                    action == ACTION_TRIGGER_BEDTIME -> {
                         Log.i(TAG, "Bedtime triggered! Disabling Wi-Fi and updating repository.")
                         WifiAccessibilityHelperService.requestToggle(context, turnOn = false)
                         val updated = currentSchedule.copy(isCurrentlyBlocked = true)
@@ -47,7 +47,7 @@ class BedtimeScheduleReceiver : BroadcastReceiver() {
                         scheduleNextAlarms(context, updated)
                     }
 
-                    ACTION_TRIGGER_WAKEUP -> {
+                    action == ACTION_TRIGGER_WAKEUP -> {
                         Log.i(TAG, "Wakeup triggered! Restoring Wi-Fi and updating repository.")
                         WifiAccessibilityHelperService.requestToggle(context, turnOn = true)
                         val updated = currentSchedule.copy(isCurrentlyBlocked = false)
@@ -55,25 +55,9 @@ class BedtimeScheduleReceiver : BroadcastReceiver() {
                         scheduleNextAlarms(context, updated)
                     }
 
-                    Intent.ACTION_BOOT_COMPLETED,
-                    ACTION_QUICKBOOT_POWERON -> {
-                        Log.i(TAG, "Device booted. Evaluating bedtime state and scheduling alarms.")
-                        val now = System.currentTimeMillis()
-                        if (currentSchedule.isEnabled) {
-                            val isBlocked = currentSchedule.isBedtimeActive(now)
-                            if (isBlocked) {
-                                Log.i(TAG, "Bedtime window active on boot; turning Wi-Fi OFF.")
-                                WifiAccessibilityHelperService.requestToggle(context, turnOn = false)
-                            } else if (currentSchedule.isCurrentlyBlocked) {
-                                Log.i(TAG, "Bedtime window expired during reboot; turning Wi-Fi ON.")
-                                WifiAccessibilityHelperService.requestToggle(context, turnOn = true)
-                            }
-                            val updated = currentSchedule.copy(isCurrentlyBlocked = isBlocked)
-                            repository.updateBedtimeSchedule(updated)
-                            scheduleNextAlarms(context, updated)
-                        } else {
-                            cancelAlarms(context)
-                        }
+                    isRescheduleAction(action) -> {
+                        Log.i(TAG, "Device booted or app replaced ($action). Evaluating bedtime state and scheduling alarms.")
+                        evaluateAndReschedule(context, currentSchedule, repository)
                     }
                 }
             } catch (e: Exception) {
@@ -95,9 +79,44 @@ class BedtimeScheduleReceiver : BroadcastReceiver() {
         const val ACTION_TRIGGER_BEDTIME = "com.familylink.buddy.child.ACTION_TRIGGER_BEDTIME"
         const val ACTION_TRIGGER_WAKEUP = "com.familylink.buddy.child.ACTION_TRIGGER_WAKEUP"
         const val ACTION_QUICKBOOT_POWERON = "android.intent.action.QUICKBOOT_POWERON"
+        const val ACTION_MY_PACKAGE_REPLACED = "android.intent.action.MY_PACKAGE_REPLACED"
+
+        fun isRescheduleAction(action: String?): Boolean {
+            return action == Intent.ACTION_BOOT_COMPLETED ||
+                    action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+                    action == ACTION_QUICKBOOT_POWERON
+        }
 
         const val REQUEST_CODE_BEDTIME = 2001
         const val REQUEST_CODE_WAKEUP = 2002
+
+        /**
+         * Evaluates current bedtime window, applies Wi-Fi state if needed, updates repository, and schedules alarms.
+         */
+        suspend fun evaluateAndReschedule(
+            context: Context,
+            currentSchedule: BedtimeSchedule,
+            repository: FamilyTimeRepository,
+            now: Long = System.currentTimeMillis()
+        ): BedtimeSchedule {
+            return if (currentSchedule.isEnabled) {
+                val isBlocked = currentSchedule.isBedtimeActive(now)
+                if (isBlocked) {
+                    Log.i(TAG, "Bedtime window active; turning Wi-Fi OFF.")
+                    WifiAccessibilityHelperService.requestToggle(context, turnOn = false)
+                } else if (currentSchedule.isCurrentlyBlocked) {
+                    Log.i(TAG, "Bedtime window expired; turning Wi-Fi ON.")
+                    WifiAccessibilityHelperService.requestToggle(context, turnOn = true)
+                }
+                val updated = currentSchedule.copy(isCurrentlyBlocked = isBlocked)
+                repository.updateBedtimeSchedule(updated)
+                scheduleNextAlarms(context, updated)
+                updated
+            } else {
+                cancelAlarms(context)
+                currentSchedule
+            }
+        }
 
         /**
          * Schedules the next exact alarms for bedtime and wakeup using AlarmManager.

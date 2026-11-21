@@ -24,6 +24,10 @@ import com.familylink.buddy.child.data.AntiTamperDetector
 import com.familylink.buddy.child.data.ChatMessageRecord
 import com.familylink.buddy.child.data.CommunicationDatabaseHelper
 import com.familylink.buddy.child.data.FamilyTimeRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 
 /**
@@ -58,9 +62,18 @@ class WifiAccessibilityHelperService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         Log.i(TAG, "WifiAccessibilityHelperService connected")
-        LocalHttpServer.startServer(applicationContext, FamilyTimeRepository(applicationContext))
+        val repository = FamilyTimeRepository(applicationContext)
+        LocalHttpServer.startServer(applicationContext, repository)
         AppLimitsManager.getInstance(this)
         startLimitsTicker()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val schedule = repository.bedtimeSchedule.first()
+                BedtimeScheduleReceiver.scheduleNextAlarms(applicationContext, schedule)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error scheduling bedtime alarms on service connected", e)
+            }
+        }
     }
 
     override fun onDestroy() {

@@ -233,6 +233,8 @@ class LocalHttpServer(
                     null
                 }
                 handleSetSchedule(writer, queryParams, bodyJson)
+            } else if (path == "/get_schedule") {
+                handleGetSchedule(writer)
             } else if (path == "/toggle_wifi") {
                 val bodyString = readBodyString(rawInput, contentLength)
                 val bodyJson = try {
@@ -730,6 +732,26 @@ class LocalHttpServer(
         sendHttpResponse(writer, 200, "OK", "{\"status\": \"success\"}")
     }
 
+    private fun handleGetSchedule(writer: PrintWriter) {
+        val schedule = repository.getBedtimeScheduleSync()
+        val scheduleJson = JSONObject().apply {
+            put("isEnabled", schedule.isEnabled)
+            put("bedtimeHour", schedule.bedtimeHour)
+            put("bedtimeMinute", schedule.bedtimeMinute)
+            put("wakeupHour", schedule.wakeupHour)
+            put("wakeupMinute", schedule.wakeupMinute)
+            val daysArray = JSONArray()
+            schedule.activeDays.forEach { daysArray.put(it) }
+            put("activeDays", daysArray)
+            put("isCurrentlyBlocked", schedule.isCurrentlyBlocked)
+        }
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("schedule", scheduleJson)
+        }
+        sendHttpResponse(writer, 200, "OK", responseJson.toString())
+    }
+
     private fun handleToggleWifi(
         writer: PrintWriter,
         queryParams: Map<String, String>,
@@ -1086,6 +1108,7 @@ class LocalHttpServer(
         val deviceId = repository.getDeviceIdSync()
         val deviceName = getDeviceName()
         val isMusicActive = AudioPlaybackManager.isMusicActive(context)
+        val schedule = repository.getBedtimeScheduleSync()
         val responseJson = JSONObject().apply {
             put("status", "online")
             put("deviceId", deviceId)
@@ -1098,6 +1121,8 @@ class LocalHttpServer(
                 put("mediaArtist", AudioPlaybackManager.currentMediaArtist ?: "")
                 put("mediaPackage", AudioPlaybackManager.currentMediaPackage ?: "")
             }
+            put("bedtimeEnabled", schedule.isEnabled)
+            put("isBedtimeBlocked", schedule.isCurrentlyBlocked)
         }
         sendHttpResponse(writer, 200, "OK", responseJson.toString())
     }
