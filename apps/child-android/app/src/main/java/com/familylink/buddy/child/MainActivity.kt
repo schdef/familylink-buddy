@@ -21,7 +21,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.glance.appwidget.updateAll
+import com.familylink.buddy.child.data.AccessibilityAutoRecovery
 import com.familylink.buddy.child.data.AppUsage
+import com.familylink.buddy.child.data.UpdateManager
+import com.familylink.buddy.child.ui.SetupGuideHelper
 import com.familylink.buddy.child.data.FamilyTimeData
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.service.WidgetUpdateService
@@ -89,6 +92,7 @@ class MainActivity : ComponentActivity() {
     private val canDrawOverlaysState = mutableStateOf(false)
     private val hasUsageAccessState = mutableStateOf(false)
     private val hasCameraPermissionState = mutableStateOf(false)
+    private val isAccessibilityEnabledState = mutableStateOf(false)
 
     private fun playCoinSound() {
         try {
@@ -177,6 +181,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         repository = FamilyTimeRepository(applicationContext)
 
+        // Attempt accessibility auto-recovery if WRITE_SECURE_SETTINGS is granted
+        AccessibilityAutoRecovery.tryAutoEnableAccessibility(applicationContext)
+
         // Request notification permission if Android 13+
         requestNotificationPermission()
 
@@ -229,15 +236,18 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val scope = rememberCoroutineScope()
 
-                    // In-App Auto-Updater State (Option A)
+                    // In-App Auto-Updater State
+                    var isCheckingUpdate by remember { mutableStateOf(false) }
                     var showUpdateDialog by remember { mutableStateOf(false) }
                     var updateDownloadUrl by remember { mutableStateOf("") }
                     var updateVersionName by remember { mutableStateOf("") }
                     var downloadProgress by remember { mutableStateOf(-1f) }
+                    var showUpToDateDialog by remember { mutableStateOf(false) }
+                    var updateInfoMessage by remember { mutableStateOf("") }
 
                     if (showUpdateDialog) {
                         AlertDialog(
-                            onDismissRequest = { },
+                            onDismissRequest = { if (downloadProgress < 0f) showUpdateDialog = false },
                             title = {
                                 Text(
                                     text = stringResource(R.string.update_dialog_title),
@@ -256,7 +266,7 @@ class MainActivity : ComponentActivity() {
                                     if (downloadProgress >= 0f) {
                                         Spacer(modifier = Modifier.height(16.dp))
                                         LinearProgressIndicator(
-                                            progress = downloadProgress,
+                                            progress = { downloadProgress },
                                             modifier = Modifier.fillMaxWidth(),
                                             color = MaterialTheme.colorScheme.primary
                                         )
@@ -274,46 +284,13 @@ class MainActivity : ComponentActivity() {
                                     onClick = {
                                         if (downloadProgress < 0f) {
                                             downloadProgress = 0f
-                                            scope.launch(Dispatchers.IO) {
-                                                try {
-                                                    val urlConnection = URL(updateDownloadUrl).openConnection() as HttpURLConnection
-                                                    urlConnection.connect()
-                                                    if (urlConnection.responseCode == HttpURLConnection.HTTP_OK) {
-                                                        val fileLength = urlConnection.contentLength
-                                                        val inputStream = urlConnection.inputStream
-                                                        val cacheFile = File(cacheDir, "update.apk")
-                                                        val outputStream = FileOutputStream(cacheFile)
-                                                        
-                                                        val buffer = ByteArray(4096)
-                                                        var totalBytesRead = 0L
-                                                        var bytesRead: Int
-                                                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                                            totalBytesRead += bytesRead
-                                                            if (fileLength > 0) {
-                                                                downloadProgress = totalBytesRead.toFloat() / fileLength.toFloat()
-                                                            }
-                                                            outputStream.write(buffer, 0, bytesRead)
-                                                        }
-                                                        outputStream.flush()
-                                                        outputStream.close()
-                                                        inputStream.close()
-                                                        
-                                                        // Trigger installation
-                                                        val apkUri = FileProvider.getUriForFile(
-                                                            this@MainActivity,
-                                                            "com.familylink.buddy.child.fileprovider",
-                                                            cacheFile
-                                                        )
-                                                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                                            setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                        }
-                                                        startActivity(installIntent)
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Log.e("MainActivity", "Error downloading update", e)
+                                            scope.launch {
+                                                val success = UpdateManager.downloadAndInstallApk(this@MainActivity, updateDownloadUrl) { progress ->
+                                                    downloadProgress = progress
+                                                }
+                                                if (!success) {
                                                     downloadProgress = -1f
+                                                    Toast.makeText(this@MainActivity, getString(R.string.update_error_title), Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
@@ -324,7 +301,42 @@ class MainActivity : ComponentActivity() {
                                     Text(text = stringResource(R.string.btn_download_install), color = Color.Black)
                                 }
                             },
-                            dismissButton = null
+                            dismissButton = {
+                                if (downloadProgress < 0f) {
+                                    TextButton(onClick = { showUpdateDialog = false }) {
+                                        Text(text = stringResource(R.string.btn_cancel), color = Color(0xFFC5C6C7))
+                                    }
+                                }
+                            }
+                        )
+                    }
+
+                    if (showUpToDateDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showUpToDateDialog = false },
+                            title = {
+                                Text(
+                                    text = stringResource(R.string.update_latest_title),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = updateInfoMessage,
+                                    fontSize = 14.sp,
+                                    color = Color.White
+                                )
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = { showUpToDateDialog = false },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                ) {
+                                    Text(text = stringResource(R.string.btn_close), color = Color.White)
+                                }
+                            }
                         )
                     }
 
@@ -355,6 +367,7 @@ class MainActivity : ComponentActivity() {
 
                     var serviceRunning by remember { mutableStateOf(isServiceRunning()) }
                     val hasOverlayPermission by canDrawOverlaysState
+                    val isAccessibilityEnabled by isAccessibilityEnabledState
 
                     var showSetupWizard by remember { mutableStateOf(false) }
                     var showPinDialog by remember { mutableStateOf(false) }
@@ -457,6 +470,52 @@ class MainActivity : ComponentActivity() {
                                 .padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
+                        // Prominent 1-tap re-enable banner if accessibility is disabled
+                        if (!isAccessibilityEnabled) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp)
+                                    .clickable {
+                                        SetupGuideHelper.openAccessibilitySettings(this@MainActivity)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFDC2626))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.banner_a11y_disabled),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            SetupGuideHelper.openAccessibilitySettings(this@MainActivity)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.setup_guide_item1_enable),
+                                            color = Color(0xFFDC2626),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center,
@@ -491,28 +550,78 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
 
-                        // Setup Wizard Button for Parents
-                        Button(
-                            onClick = {
-                                val pin = repository.getParentPinSync()
-                                if (!pin.isNullOrBlank()) {
-                                    showPinDialog = true
-                                } else {
-                                    WifiAccessibilityHelperService.unlockAntiTamper()
-                                    showSetupWizard = true
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F2833)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF66FCF1).copy(alpha = 0.5f))
+                        // Parent Actions: Setup Wizard & Check Updates
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.setup_wizard_btn),
-                                color = Color(0xFF66FCF1),
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
+                            Button(
+                                onClick = {
+                                    val pin = repository.getParentPinSync()
+                                    if (!pin.isNullOrBlank()) {
+                                        showPinDialog = true
+                                    } else {
+                                        WifiAccessibilityHelperService.unlockAntiTamper()
+                                        showSetupWizard = true
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F2833)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF66FCF1).copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.setup_wizard_btn),
+                                    color = Color(0xFF66FCF1),
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
+                            }
+
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        isCheckingUpdate = true
+                                        val release = UpdateManager.checkLatestRelease()
+                                        isCheckingUpdate = false
+                                        if (release != null) {
+                                            if (release.isNewer) {
+                                                updateVersionName = release.tagName
+                                                updateDownloadUrl = release.downloadUrl
+                                                downloadProgress = -1f
+                                                showUpdateDialog = true
+                                            } else {
+                                                updateInfoMessage = getString(R.string.update_latest_desc, BuildConfig.VERSION_NAME)
+                                                showUpToDateDialog = true
+                                            }
+                                        } else {
+                                            updateInfoMessage = getString(R.string.update_error_desc)
+                                            showUpToDateDialog = true
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F2833)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF45A29E).copy(alpha = 0.5f))
+                            ) {
+                                if (isCheckingUpdate) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Color(0xFF66FCF1),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.btn_check_updates),
+                                        color = Color(0xFF66FCF1),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
                         }
 
                         // Overlay Permission Warning Card
@@ -1388,6 +1497,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        AccessibilityAutoRecovery.tryAutoEnableAccessibility(applicationContext)
         canDrawOverlaysState.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else {
@@ -1398,6 +1508,7 @@ class MainActivity : ComponentActivity() {
             this,
             Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
+        isAccessibilityEnabledState.value = SetupGuideHelper.isAccessibilityServiceEnabled(this)
         if (hasUsageAccessState.value) {
             refreshRealAppUsageData()
         }

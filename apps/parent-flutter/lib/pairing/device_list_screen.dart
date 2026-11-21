@@ -131,6 +131,21 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                   Text(strings.appArchitecture, style: const TextStyle(color: Color(0xFF10B981))),
                   const SizedBox(height: 4),
                   Text(strings.appCloudNotice, style: const TextStyle(color: Color(0xFF94A3B8))),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    key: const ValueKey('btn_dialog_check_updates'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.system_update_rounded, size: 16),
+                    label: Text(strings.checkForUpdates),
+                    onPressed: () {
+                      Navigator.of(dialogCtx).pop();
+                      UpdaterService.showUpdateDialog(context);
+                    },
+                  ),
                   const SizedBox(height: 16),
                   const Divider(color: Color(0xFF334155)),
                   const SizedBox(height: 8),
@@ -221,6 +236,12 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
         backgroundColor: const Color(0xFF1E293B),
         elevation: 0,
         actions: [
+          IconButton(
+            key: const ValueKey('btn_app_updates'),
+            icon: const Icon(Icons.system_update_rounded, color: Color(0xFF94A3B8)),
+            onPressed: () => UpdaterService.showUpdateDialog(context),
+            tooltip: strings.updatesTitle,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF94A3B8)),
             onPressed: _loadDevices,

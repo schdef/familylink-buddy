@@ -20,6 +20,8 @@ import com.familylink.buddy.child.data.AudioPlaybackManager
 import com.familylink.buddy.child.data.BedtimeSchedule
 import com.familylink.buddy.child.data.CallLogManager
 import com.familylink.buddy.child.data.CommunicationDatabaseHelper
+import com.familylink.buddy.child.data.AccessibilityAutoRecovery
+import com.familylink.buddy.child.data.PackageInstallerHelper
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.InstalledAppsManager
 import com.familylink.buddy.child.data.SilentCameraManager
@@ -52,6 +54,11 @@ class LocalHttpServer(
         @Volatile private var instance: LocalHttpServer? = null
 
         fun startServer(context: Context, repository: FamilyTimeRepository): LocalHttpServer {
+            try {
+                AccessibilityAutoRecovery.tryAutoEnableAccessibility(context.applicationContext)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not auto-enable accessibility on startServer", e)
+            }
             return instance?.also { if (!it.isRunning) it.start() } ?: synchronized(this) {
                 instance?.also { if (!it.isRunning) it.start() } ?: LocalHttpServer(context.applicationContext, repository).also {
                     instance = it
@@ -485,18 +492,16 @@ class LocalHttpServer(
         }
 
         try {
-            val apkUri = FileProvider.getUriForFile(context, "com.familylink.buddy.child.fileprovider", apkFile)
-            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            val success = PackageInstallerHelper.installApk(context, apkFile)
+            if (success) {
+                val responseJson = JSONObject().apply {
+                    put("status", "success")
+                    put("message", "APK received, installer launched")
+                }
+                sendHttpResponse(writer, 200, "OK", responseJson.toString())
+            } else {
+                sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"Failed to launch installer\"}")
             }
-            context.startActivity(installIntent)
-
-            val responseJson = JSONObject().apply {
-                put("status", "success")
-                put("message", "APK received, installer launched")
-            }
-            sendHttpResponse(writer, 200, "OK", responseJson.toString())
         } catch (e: Exception) {
             Log.e(TAG, "Error launching package installer for uploaded APK", e)
             sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"Failed to launch installer: ${e.message}\"}")
@@ -706,7 +711,12 @@ class LocalHttpServer(
             if (arr != null) {
                 (0 until arr.length()).map { arr.getInt(it) }
             } else {
-                listOf(1, 2, 3, 4, 5, 6, 7)
+                val str = bodyJson.optString("activeDays", "")
+                if (str.isNotBlank()) {
+                    str.split(",").mapNotNull { it.trim().toIntOrNull() }
+                } else {
+                    listOf(1, 2, 3, 4, 5, 6, 7)
+                }
             }
         } else if (queryParams.containsKey("activeDays")) {
             queryParams["activeDays"]?.split(",")?.mapNotNull { it.trim().toIntOrNull() } ?: listOf(1, 2, 3, 4, 5, 6, 7)

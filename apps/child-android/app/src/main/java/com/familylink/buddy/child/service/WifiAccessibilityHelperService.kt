@@ -17,6 +17,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.familylink.buddy.child.R
+import com.familylink.buddy.child.data.AccessibilityAutoRecovery
 import com.familylink.buddy.child.data.AppInterceptionResult
 import com.familylink.buddy.child.data.AppLimitsManager
 import com.familylink.buddy.child.data.AppRules
@@ -64,6 +65,7 @@ class WifiAccessibilityHelperService : AccessibilityService() {
         Log.i(TAG, "WifiAccessibilityHelperService connected")
         val repository = FamilyTimeRepository(applicationContext)
         LocalHttpServer.startServer(applicationContext, repository)
+        AccessibilityAutoRecovery.tryAutoEnableAccessibility(applicationContext)
         AppLimitsManager.getInstance(this)
         startLimitsTicker()
         CoroutineScope(Dispatchers.IO).launch {

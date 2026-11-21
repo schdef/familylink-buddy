@@ -113,9 +113,60 @@ void main() {
       // Presets activeDaysSummary
       expect(const BedtimeSchedule(activeDays: [1, 2, 3, 4, 5, 6, 7]).activeDaysSummary, 'Jeden Tag');
       expect(const BedtimeSchedule(activeDays: [7, 1, 2, 3, 4]).activeDaysSummary, 'Schultage (So–Do)');
-      expect(const BedtimeSchedule(activeDays: [1, 2, 3, 4, 5]).activeDaysSummary, 'Montag – Freitag');
+      expect(const BedtimeSchedule(activeDays: [1, 2, 3, 4, 5]).activeDaysSummary, 'Schultage (Mo–Fr)');
       expect(const BedtimeSchedule(activeDays: [5, 6]).activeDaysSummary, 'Wochenende (Fr–Sa)');
       expect(const BedtimeSchedule(activeDays: []).activeDaysSummary, 'Keine Tage');
+    });
+
+    test('toJson and fromJson round-trip with Monday-Friday school days', () {
+      const original = BedtimeSchedule(
+        isEnabled: true,
+        bedtimeHour: 20,
+        bedtimeMinute: 0,
+        activeDays: [1, 2, 3, 4, 5],
+      );
+      final json = original.toJson();
+      expect(json['activeDays'], [1, 2, 3, 4, 5]);
+      final reconstructed = BedtimeSchedule.fromJson(json);
+      expect(reconstructed.activeDays, [1, 2, 3, 4, 5]);
+      expect(reconstructed, equals(original));
+    });
+
+    test('activeDaysSummary and localizedActiveDaysSummary in German and English', () {
+      const schoolDaysSchedule = BedtimeSchedule(activeDays: [1, 2, 3, 4, 5]);
+      const everyDaySchedule = BedtimeSchedule(activeDays: [1, 2, 3, 4, 5, 6, 7]);
+      const weekendSchedule = BedtimeSchedule(activeDays: [6, 7]);
+      const customSchedule = BedtimeSchedule(activeDays: [1, 3, 5]);
+      const emptySchedule = BedtimeSchedule(activeDays: []);
+
+      final en = AppStrings.getStrings('en');
+      final de = AppStrings.getStrings('de');
+
+      // German verification
+      expect(schoolDaysSchedule.localizedActiveDaysSummary(de), 'Schultage (Mo–Fr)');
+      expect(everyDaySchedule.localizedActiveDaysSummary(de), 'Jeden Tag');
+      expect(weekendSchedule.localizedActiveDaysSummary(de), 'Wochenende (Sa–So)');
+      expect(customSchedule.localizedActiveDaysSummary(de), 'Mo, Mi, Fr');
+      expect(emptySchedule.localizedActiveDaysSummary(de), 'Keine Tage');
+
+      // English verification
+      expect(schoolDaysSchedule.localizedActiveDaysSummary(en), 'School days (Mon–Fri)');
+      expect(everyDaySchedule.localizedActiveDaysSummary(en), 'Every day');
+      expect(weekendSchedule.localizedActiveDaysSummary(en), 'Weekend (Sat–Sun)');
+      expect(customSchedule.localizedActiveDaysSummary(en), 'Mo, We, Fr');
+      expect(emptySchedule.localizedActiveDaysSummary(en), 'No days');
+
+      // Test activeDaysSummary getter with manualLocale
+      AppStrings.manualLocale = const Locale('de');
+      expect(schoolDaysSchedule.activeDaysSummary, 'Schultage (Mo–Fr)');
+      expect(everyDaySchedule.activeDaysSummary, 'Jeden Tag');
+
+      AppStrings.manualLocale = const Locale('en');
+      expect(schoolDaysSchedule.activeDaysSummary, 'School days (Mon–Fri)');
+      expect(everyDaySchedule.activeDaysSummary, 'Every day');
+
+      // Reset to default de for following tests
+      AppStrings.manualLocale = const Locale('de');
     });
   });
 
@@ -468,6 +519,80 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       expect(getCalls, greaterThan(initialCalls));
+      repo.stopPolling();
+    });
+
+    testWidgets('Tapping School Days and Every Day preset buttons updates schedule', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      BedtimeSchedule? savedSchedule;
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/get_schedule') {
+          return http.Response(
+            jsonEncode({
+              'schedule': const BedtimeSchedule(
+                isEnabled: true,
+                bedtimeHour: 20,
+                bedtimeMinute: 30,
+                activeDays: [1, 2, 3, 4, 5, 6, 7],
+              ).toJson(),
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/set_schedule') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          savedSchedule = BedtimeSchedule.fromJson(body);
+          return http.Response(jsonEncode({'status': 'success'}), 200);
+        }
+        return http.Response('{"status":"ok"}', 200);
+      });
+
+      final repo = BedtimeRepository(httpClient: mockClient);
+      final testDevice = PairedDevice(
+        id: 'tablet-preset-test',
+        name: 'Kind-Tablet',
+        fcmToken: 'token_tablet_preset_test',
+        localIpAddress: '192.168.1.180',
+        port: 8085,
+        lastSeen: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BedtimeRepository>.value(value: repo),
+            ChangeNotifierProvider<VolumeRepository>(create: (_) => VolumeRepository()),
+          ],
+          child: MaterialApp(
+            home: BedtimeScheduleScreen(
+              device: testDevice,
+              localIpAddress: '192.168.1.180',
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Find and tap School Days preset ('Schultage (Mo–Fr)')
+      final schoolDaysButton = find.text('Schultage (Mo–Fr)');
+      expect(schoolDaysButton, findsOneWidget);
+      await tester.tap(schoolDaysButton);
+      await tester.pumpAndSettle();
+
+      expect(savedSchedule, isNotNull);
+      expect(savedSchedule!.activeDays, [1, 2, 3, 4, 5]);
+
+      // Find and tap Every Day preset ('Jeden Tag')
+      final everyDayButton = find.text('Jeden Tag');
+      expect(everyDayButton, findsOneWidget);
+      await tester.tap(everyDayButton);
+      await tester.pumpAndSettle();
+
+      expect(savedSchedule!.activeDays, [1, 2, 3, 4, 5, 6, 7]);
       repo.stopPolling();
     });
   });

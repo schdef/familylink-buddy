@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.familylink.buddy.child.data.AccessibilityAutoRecovery
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.service.LocalHttpServer
 import com.familylink.buddy.child.service.WidgetUpdateService
@@ -20,9 +21,17 @@ class BootReceiver : BroadcastReceiver() {
 
         if (action == Intent.ACTION_BOOT_COMPLETED ||
             action == "android.intent.action.QUICKBOOT_POWERON" ||
-            action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+            action == "com.familylink.buddy.child.ACTION_INSTALL_STATUS") {
 
             val appContext = context.applicationContext ?: context
+
+            // Auto-recover accessibility service if WRITE_SECURE_SETTINGS is granted
+            try {
+                AccessibilityAutoRecovery.tryAutoEnableAccessibility(appContext)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed auto-recovering accessibility: ${e.message}", e)
+            }
 
             // Restart LocalHttpServer immediately upon boot or APK update
             try {

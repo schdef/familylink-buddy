@@ -201,8 +201,8 @@ data class BedtimeSchedule(
             val bedtimeMinute = (map["bedtimeMinute"] as? Number)?.toInt() ?: 30
             val wakeupHour = (map["wakeupHour"] as? Number)?.toInt() ?: 6
             val wakeupMinute = (map["wakeupMinute"] as? Number)?.toInt() ?: 45
-            val activeDays = (map["activeDays"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
-                ?: listOf(1, 2, 3, 4, 5, 6, 7)
+            val parsedDays = (map["activeDays"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+            val activeDays = if (!parsedDays.isNullOrEmpty()) parsedDays else listOf(1, 2, 3, 4, 5, 6, 7)
             val isCurrentlyBlocked = (map["isCurrentlyBlocked"] as? Boolean) ?: false
 
             return BedtimeSchedule(

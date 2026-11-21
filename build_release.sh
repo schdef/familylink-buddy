@@ -89,6 +89,7 @@ if [ "$BUILD_CHILD" = true ]; then
         cp "$CHILD_DIR/app/build/outputs/apk/release/app-release.apk" "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk"
         cp "$CHILD_DIR/app/build/outputs/apk/release/child-release.apk" "$ROOT_DIR/build/child-app-release.apk"
     fi
+    (cd "$CHILD_DIR" && ./gradlew --stop > /dev/null 2>&1 || true)
     echo "✅ Child app build successful!"
     echo ""
 fi

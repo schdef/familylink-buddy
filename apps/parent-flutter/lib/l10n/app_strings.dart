@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -222,6 +223,22 @@ abstract class AppStrings {
   String get updateSuccess;
   String get transferring;
   String get transferUpdate;
+  String get updatesTitle;
+  String get checkForUpdates;
+  String updateAvailable(String version);
+  String get upToDate;
+  String get downloadAndInstall;
+  String downloadingUpdate(int percent);
+  String get updateParentApp;
+  String get updateChildApp;
+  String get updateError;
+  String get checkingForUpdates;
+  String get releaseNotes;
+  String currentVersionLabel(String version);
+  String latestVersionLabel(String version);
+  String get pushedToChildSuccess;
+  String get parentAppUpdated;
+  String get webManualDownloadNotice;
 
   // ===========================================================================
   // 5. SCREENSHOT SCREEN
@@ -379,6 +396,34 @@ abstract class AppStrings {
   String get daysSummaryMonToFri;
   String get daysSummaryWeekend;
   String get timeUnit;
+
+  /// Helper to format a summary of active weekdays in the current language
+  String formatDaysSummary(List<int> activeDays) {
+    if (activeDays.isEmpty) return daysSummaryNoDays;
+    if (activeDays.length == 7) return daysSummaryEveryDay;
+    final sorted = List<int>.from(activeDays)..sort();
+    if (listEquals(sorted, [1, 2, 3, 4, 5])) return schoolDaysPreset;
+    if (listEquals(sorted, [1, 2, 3, 4, 7])) {
+      return languageCode == 'de' ? 'Schultage (So–Do)' : 'School days (Sun–Thu)';
+    }
+    if (listEquals(sorted, [6, 7])) {
+      return languageCode == 'de' ? 'Wochenende (Sa–So)' : 'Weekend (Sat–Sun)';
+    }
+    if (listEquals(sorted, [5, 6])) {
+      return daysSummaryWeekend;
+    }
+
+    final dayNames = {
+      1: dayMo,
+      2: dayDi,
+      3: dayMi,
+      4: dayDo,
+      5: dayFr,
+      6: daySa,
+      7: daySo,
+    };
+    return sorted.map((d) => dayNames[d] ?? '$d').join(', ');
+  }
 
   // ===========================================================================
   // 8. TIME BANK SCREENS
@@ -726,6 +771,38 @@ class AppStringsEn extends AppStrings {
   String get transferring => 'Transferring...';
   @override
   String get transferUpdate => 'Transfer update';
+  @override
+  String get updatesTitle => 'App Updates';
+  @override
+  String get checkForUpdates => 'Check for Updates';
+  @override
+  String updateAvailable(String version) => 'New version available: $version';
+  @override
+  String get upToDate => 'You are using the latest version';
+  @override
+  String get downloadAndInstall => 'Download & Install';
+  @override
+  String downloadingUpdate(int percent) => 'Downloading update: $percent%';
+  @override
+  String get updateParentApp => 'Update Parent App';
+  @override
+  String get updateChildApp => 'Update Child Tablet';
+  @override
+  String get updateError => 'Failed to download update';
+  @override
+  String get checkingForUpdates => 'Checking for updates...';
+  @override
+  String get releaseNotes => 'Release Notes';
+  @override
+  String currentVersionLabel(String version) => 'Current version: $version';
+  @override
+  String latestVersionLabel(String version) => 'Latest version: $version';
+  @override
+  String get pushedToChildSuccess => 'Update pushed to Child Tablet! Installing...';
+  @override
+  String get parentAppUpdated => 'Starting installation...';
+  @override
+  String get webManualDownloadNotice => 'Please download the latest release APK from GitHub:';
 
   // 5. Screenshot Screen
   @override
@@ -993,7 +1070,7 @@ class AppStringsEn extends AppStrings {
   @override
   String get activeWeekdays => 'Active weekdays';
   @override
-  String get schoolDaysPreset => 'School days (Sun–Thu)';
+  String get schoolDaysPreset => 'School days (Mon–Fri)';
   @override
   String get everyDayPreset => 'Every day';
   @override
@@ -1015,7 +1092,7 @@ class AppStringsEn extends AppStrings {
   @override
   String get daysSummaryEveryDay => 'Every day';
   @override
-  String get daysSummarySchoolDays => 'School days (Sun–Thu)';
+  String get daysSummarySchoolDays => 'School days (Mon–Fri)';
   @override
   String get daysSummaryMonToFri => 'Monday – Friday';
   @override
@@ -1470,6 +1547,38 @@ class AppStringsDe extends AppStrings {
   String get transferring => 'Übertrage...';
   @override
   String get transferUpdate => 'Update übertragen';
+  @override
+  String get updatesTitle => 'App-Aktualisierungen';
+  @override
+  String get checkForUpdates => 'Nach Updates suchen';
+  @override
+  String updateAvailable(String version) => 'Neue Version verfügbar: $version';
+  @override
+  String get upToDate => 'Die App ist auf dem neuesten Stand';
+  @override
+  String get downloadAndInstall => 'Herunterladen & Installieren';
+  @override
+  String downloadingUpdate(int percent) => 'Update wird heruntergeladen: $percent%';
+  @override
+  String get updateParentApp => 'Eltern-App aktualisieren';
+  @override
+  String get updateChildApp => 'Kinder-Tablet aktualisieren';
+  @override
+  String get updateError => 'Update konnte nicht heruntergeladen werden';
+  @override
+  String get checkingForUpdates => 'Suche nach Updates...';
+  @override
+  String get releaseNotes => 'Versionshinweise';
+  @override
+  String currentVersionLabel(String version) => 'Aktuelle Version: $version';
+  @override
+  String latestVersionLabel(String version) => 'Neueste Version: $version';
+  @override
+  String get pushedToChildSuccess => 'Update an Kinder-Tablet gesendet! Wird installiert...';
+  @override
+  String get parentAppUpdated => 'Installation wird gestartet...';
+  @override
+  String get webManualDownloadNotice => 'Bitte lade die neueste Release-APK von GitHub herunter:';
 
   // 5. Screenshot Screen
   @override
@@ -1737,7 +1846,7 @@ class AppStringsDe extends AppStrings {
   @override
   String get activeWeekdays => 'Aktive Wochentage';
   @override
-  String get schoolDaysPreset => 'Schultage (So–Do)';
+  String get schoolDaysPreset => 'Schultage (Mo–Fr)';
   @override
   String get everyDayPreset => 'Jeden Tag';
   @override
@@ -1759,7 +1868,7 @@ class AppStringsDe extends AppStrings {
   @override
   String get daysSummaryEveryDay => 'Jeden Tag';
   @override
-  String get daysSummarySchoolDays => 'Schultage (So–Do)';
+  String get daysSummarySchoolDays => 'Schultage (Mo–Fr)';
   @override
   String get daysSummaryMonToFri => 'Montag – Freitag';
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:parent_app/l10n/app_strings.dart';
 
 @immutable
 class BedtimeSchedule {
@@ -37,27 +38,11 @@ class BedtimeSchedule {
   /// Check whether a given ISO weekday (1 = Mon ... 7 = Sun) is active
   bool isDayActive(int weekday) => activeDays.contains(weekday);
 
-  /// Quick summary of active days
-  String get activeDaysSummary {
-    if (activeDays.isEmpty) return 'Keine Tage';
-    if (activeDays.length == 7) return 'Jeden Tag';
-    final sorted = List<int>.from(activeDays)..sort();
-    if (listEquals(sorted, [1, 2, 3, 4, 7])) return 'Schultage (So–Do)';
-    if (listEquals(sorted, [1, 2, 3, 4, 5])) return 'Montag – Freitag';
-    if (listEquals(sorted, [5, 6])) return 'Wochenende (Fr–Sa)';
-    if (listEquals(sorted, [6, 7])) return 'Wochenende (Sa–So)';
+  /// Quick summary of active days localized with provided [AppStrings]
+  String localizedActiveDaysSummary(AppStrings strings) => strings.formatDaysSummary(activeDays);
 
-    const dayNames = {
-      1: 'Mo',
-      2: 'Di',
-      3: 'Mi',
-      4: 'Do',
-      5: 'Fr',
-      6: 'Sa',
-      7: 'So',
-    };
-    return sorted.map((d) => dayNames[d] ?? '$d').join(', ');
-  }
+  /// Quick summary of active days
+  String get activeDaysSummary => localizedActiveDaysSummary(AppStrings.current);
 
   Map<String, dynamic> toJson() {
     return {

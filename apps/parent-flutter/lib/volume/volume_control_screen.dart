@@ -14,6 +14,7 @@ import '../app_limits/app_limits_screen.dart';
 import '../comms/calls_screen.dart';
 import '../comms/chats_screen.dart';
 import '../updater/p2p_updater_service.dart';
+import '../updater/updater_service.dart';
 import '../l10n/app_strings.dart';
 import 'volume_repository.dart';
 
@@ -529,7 +530,11 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                   final effectiveIp = (repo.localIpAddress != null && repo.localIpAddress!.isNotEmpty)
                       ? repo.localIpAddress
                       : _currentDevice.localIpAddress;
-                  _showP2PUpdateDialog(context, effectiveIp);
+                  UpdaterService.showUpdateDialog(
+                    context,
+                    childIp: effectiveIp,
+                    onOpenManualP2p: () => _showP2PUpdateDialog(context, effectiveIp),
+                  );
                 },
               ),
             ),
@@ -735,6 +740,21 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
                 );
               }).toList(),
             ),
+          IconButton(
+            key: const ValueKey('btn_app_updates'),
+            icon: const Icon(Icons.system_update_rounded, color: Color(0xFF818CF8)),
+            tooltip: strings.updatesTitle,
+            onPressed: () {
+              final effectiveIp = (_volumeRepository.localIpAddress != null && _volumeRepository.localIpAddress!.isNotEmpty)
+                  ? _volumeRepository.localIpAddress
+                  : _currentDevice.localIpAddress;
+              UpdaterService.showUpdateDialog(
+                context,
+                childIp: effectiveIp,
+                onOpenManualP2p: () => _showP2PUpdateDialog(context, effectiveIp),
+              );
+            },
+          ),
           IconButton(
             key: const ValueKey('btn_add_kid'),
             icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF818CF8)),

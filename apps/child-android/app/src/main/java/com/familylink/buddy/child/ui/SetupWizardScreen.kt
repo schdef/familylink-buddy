@@ -37,10 +37,12 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.familylink.buddy.child.BuildConfig
 import com.familylink.buddy.child.R
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.QrCodeGenerator
 import com.familylink.buddy.child.data.SetupStateDetector
+import com.familylink.buddy.child.data.UpdateManager
 import com.familylink.buddy.child.service.LocalHttpServer
 import com.familylink.buddy.child.service.WifiAccessibilityHelperService
 import kotlinx.coroutines.launch
@@ -161,6 +163,15 @@ fun SetupWizardScreen(
     // PIN State
     val parentPin by repository.parentPin.collectAsState(initial = null)
     var showPinChangeDialog by remember { mutableStateOf(false) }
+
+    // App Updater State
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var updateDownloadUrl by remember { mutableStateOf("") }
+    var updateVersionName by remember { mutableStateOf("") }
+    var downloadProgress by remember { mutableStateOf(-1f) }
+    var showUpToDateDialog by remember { mutableStateOf(false) }
+    var updateInfoMessage by remember { mutableStateOf("") }
 
     val completedStepsCount = (if (isRestrictedSettingsUnlocked) 1 else 0) +
             (if (isAccessibilityActive) 1 else 0) +
@@ -938,6 +949,82 @@ fun SetupWizardScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ==========================================
+            // Permanent Accessibility (Survive Updates) via ADB
+            // ==========================================
+            PermanentAccessibilityCard()
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ==========================================
+            // In-App Updates Card
+            // ==========================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2833))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "FamilyLink Buddy v${BuildConfig.VERSION_NAME}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = stringResource(R.string.update_dialog_title),
+                            fontSize = 12.sp,
+                            color = Color(0xFFC5C6C7)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isCheckingUpdate = true
+                                val release = UpdateManager.checkLatestRelease()
+                                isCheckingUpdate = false
+                                if (release != null) {
+                                    if (release.isNewer) {
+                                        updateVersionName = release.tagName
+                                        updateDownloadUrl = release.downloadUrl
+                                        downloadProgress = -1f
+                                        showUpdateDialog = true
+                                    } else {
+                                        updateInfoMessage = context.getString(R.string.update_latest_desc, BuildConfig.VERSION_NAME)
+                                        showUpToDateDialog = true
+                                    }
+                                } else {
+                                    updateInfoMessage = context.getString(R.string.update_error_desc)
+                                    showUpToDateDialog = true
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text(
+                                text = stringResource(R.string.btn_check_updates),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(28.dp))
 
             // Bottom Done Button
@@ -986,6 +1073,101 @@ fun SetupWizardScreen(
             },
             onDismiss = {
                 showPinChangeDialog = false
+            }
+        )
+    }
+
+    if (showUpdateDialog) {
+        AlertDialog(
+            onDismissRequest = { if (downloadProgress < 0f) showUpdateDialog = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.update_dialog_title),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = Color(0xFF66FCF1)
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = stringResource(R.string.update_dialog_desc, updateVersionName),
+                        fontSize = 14.sp,
+                        color = Color.White
+                    )
+                    if (downloadProgress >= 0f) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF66FCF1)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.update_downloading, (downloadProgress * 100).toInt()),
+                            fontSize = 12.sp,
+                            color = Color(0xFF45A29E)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (downloadProgress < 0f) {
+                            downloadProgress = 0f
+                            scope.launch {
+                                val success = UpdateManager.downloadAndInstallApk(context, updateDownloadUrl) { progress ->
+                                    downloadProgress = progress
+                                }
+                                if (!success) {
+                                    downloadProgress = -1f
+                                    Toast.makeText(context, context.getString(R.string.update_error_title), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    enabled = downloadProgress < 0f,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF66FCF1))
+                ) {
+                    Text(text = stringResource(R.string.btn_download_install), color = Color.Black)
+                }
+            },
+            dismissButton = {
+                if (downloadProgress < 0f) {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text(text = stringResource(R.string.btn_cancel), color = Color(0xFFC5C6C7))
+                    }
+                }
+            }
+        )
+    }
+
+    if (showUpToDateDialog) {
+        AlertDialog(
+            onDismissRequest = { showUpToDateDialog = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.update_latest_title),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF66FCF1)
+                )
+            },
+            text = {
+                Text(
+                    text = updateInfoMessage,
+                    fontSize = 14.sp,
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showUpToDateDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
+                ) {
+                    Text(text = stringResource(R.string.btn_close), color = Color.White)
+                }
             }
         )
     }

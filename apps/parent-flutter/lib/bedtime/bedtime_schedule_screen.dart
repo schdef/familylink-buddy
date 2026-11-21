@@ -530,7 +530,7 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
                 ),
               ),
               Text(
-                schedule.activeDaysSummary,
+                schedule.localizedActiveDaysSummary(strings),
                 style: const TextStyle(
                   color: Color(0xFF6366F1),
                   fontSize: 12,
@@ -547,8 +547,8 @@ class _BedtimeScheduleScreenState extends State<BedtimeScheduleScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () {
-                    // School days: Sunday through Thursday evening
-                    _updateSchedule(schedule.copyWith(activeDays: [7, 1, 2, 3, 4]));
+                    // School days: Monday through Friday
+                    _updateSchedule(schedule.copyWith(activeDays: [1, 2, 3, 4, 5]));
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFF6366F1),

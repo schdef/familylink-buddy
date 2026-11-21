@@ -122,6 +122,25 @@
     <string name="update_dialog_desc">Eine neue Version von FamilyLink Buddy Child (%1$s) ist verfügbar. Bitte installieren Sie das Update, um fortzufahren.</string>
     <string name="update_downloading">Herunterladen: %1$d%%</string>
     <string name="btn_download_install">Download &amp; Installieren</string>
+    <string name="btn_check_updates">🚀 Nach Updates suchen</string>
+    <string name="update_checking">Suche nach Updates...</string>
+    <string name="update_latest_title">App ist aktuell ✓</string>
+    <string name="update_latest_desc">Sie nutzen bereits die neueste Version (%1$s).</string>
+    <string name="update_error_title">Update-Prüfung fehlgeschlagen</string>
+    <string name="update_error_desc">Konnte Update-Server nicht erreichen. Bitte Internetverbindung prüfen.</string>
+    <string name="btn_close">Schließen</string>
+
+    <!-- Permanent Accessibility & ADB Strings -->
+    <string name="perm_a11y_title">Permanente Bedienungshilfe (Übersteht Updates)</string>
+    <string name="perm_a11y_status_granted">Aktiv (Dauerhaft gewährt) ✓</string>
+    <string name="perm_a11y_status_optional">Optional (Empfohlen)</string>
+    <string name="perm_a11y_desc">Die einmalige Vergabe von WRITE_SECURE_SETTINGS per ADB sorgt dafür, dass die Bedienungshilfe alle künftigen App-Updates automatisch übersteht und sofort aktiv bleibt.\n\nIm Terminal per USB / ADB ausführen:</string>
+    <string name="perm_a11y_adb_command">adb shell pm grant com.familylink.buddy.child android.permission.WRITE_SECURE_SETTINGS</string>
+    <string name="perm_a11y_copy_cmd">ADB-Befehl kopieren</string>
+    <string name="perm_a11y_copied_toast">ADB-Befehl in Zwischenablage kopiert!</string>
+
+    <!-- Top Banner for Disabled Accessibility -->
+    <string name="banner_a11y_disabled">⚠️ Bedienungshilfe-Dienst ist deaktiviert! Antippen zum Aktivieren.</string>
 
     <!-- Setup Wizard Strings -->
     <string name="setup_wizard_back">← Zurück</string>

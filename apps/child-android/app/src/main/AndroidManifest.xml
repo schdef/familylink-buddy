@@ -21,6 +21,9 @@
     <!-- Package usage statistics (to query real foreground apps and usages) -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
+    <!-- Secure settings permission (for persistent Accessibility Service across updates via ADB) -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+
     <!-- Network state (for FCM reconnect) -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -106,6 +109,7 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.familylink.buddy.child.ACTION_INSTALL_STATUS" />
             </intent-filter>
         </receiver>
 

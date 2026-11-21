@@ -122,6 +122,25 @@
     <string name="update_dialog_desc">A new version of FamilyLink Buddy Child (%1$s) is available. Please install the update to continue.</string>
     <string name="update_downloading">Downloading: %1$d%%</string>
     <string name="btn_download_install">Download &amp; Install</string>
+    <string name="btn_check_updates">🚀 Check for Updates</string>
+    <string name="update_checking">Checking for updates...</string>
+    <string name="update_latest_title">App is Up to Date ✓</string>
+    <string name="update_latest_desc">You are running the latest version (%1$s).</string>
+    <string name="update_error_title">Update Check Failed</string>
+    <string name="update_error_desc">Could not connect to update server. Please check your internet connection.</string>
+    <string name="btn_close">Close</string>
+
+    <!-- Permanent Accessibility & ADB Strings -->
+    <string name="perm_a11y_title">Permanent Accessibility (Survives Updates)</string>
+    <string name="perm_a11y_status_granted">Active (Permanently granted) ✓</string>
+    <string name="perm_a11y_status_optional">Optional (Recommended)</string>
+    <string name="perm_a11y_desc">Granting WRITE_SECURE_SETTINGS once via ADB ensures the accessibility service automatically re-enables and survives all future app updates.\n\nRun in terminal via USB / ADB:</string>
+    <string name="perm_a11y_adb_command">adb shell pm grant com.familylink.buddy.child android.permission.WRITE_SECURE_SETTINGS</string>
+    <string name="perm_a11y_copy_cmd">Copy ADB Command</string>
+    <string name="perm_a11y_copied_toast">ADB command copied to clipboard!</string>
+
+    <!-- Top Banner for Disabled Accessibility -->
+    <string name="banner_a11y_disabled">⚠️ Accessibility Service is disabled! Tap to re-enable.</string>
 
     <!-- Setup Wizard Strings -->
     <string name="setup_wizard_back">← Back</string>

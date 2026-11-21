@@ -1,6 +1,8 @@
 package com.familylink.buddy.child.ui
 
 import android.app.NotificationManager
+import android.content.ClipboardManager
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -11,6 +13,7 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
 import android.widget.Toast
+import com.familylink.buddy.child.data.AccessibilityAutoRecovery
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -455,6 +458,11 @@ fun SetupGuideContent(
             }
         )
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Permanent Accessibility (Survive Updates) via ADB
+        PermanentAccessibilityCard()
+
         if (isDialog && onDismiss != null) {
             Spacer(modifier = Modifier.height(20.dp))
             Button(
@@ -611,6 +619,154 @@ private fun SetupItemCard(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isCompleted) Color.Black else Color.Black
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Reusable Card for Permanent Accessibility (Survive Updates) via WRITE_SECURE_SETTINGS & ADB.
+ */
+@Composable
+fun PermanentAccessibilityCard(
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isGranted by remember { mutableStateOf(AccessibilityAutoRecovery.isWriteSecureSettingsGranted(context)) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isGranted = AccessibilityAutoRecovery.isWriteSecureSettingsGranted(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    var expanded by remember { mutableStateOf(!isGranted) }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(
+                width = 1.dp,
+                color = if (isGranted) Color(0xFF10B981).copy(alpha = 0.35f) else Color(0xFF6366F1).copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            ),
+        color = if (isGranted) Color(0xFF13221B) else Color(0xFF1F2229)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isGranted) Color(0xFF10B981) else Color(0xFF6366F1).copy(alpha = 0.2f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isGranted) "✓" else "⚡",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isGranted) Color.Black else Color(0xFF818CF8)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.perm_a11y_title),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isGranted) Color(0xFFE2E8F0) else Color.White
+                    )
+                    Text(
+                        text = if (isGranted) {
+                            stringResource(R.string.perm_a11y_status_granted)
+                        } else {
+                            stringResource(R.string.perm_a11y_status_optional)
+                        },
+                        fontSize = 12.sp,
+                        color = if (isGranted) Color(0xFF10B981) else Color(0xFFF59E0B)
+                    )
+                }
+
+                Text(
+                    text = if (expanded) "▲" else "▼",
+                    fontSize = 12.sp,
+                    color = Color(0xFFC5C6C7),
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(top = 10.dp)) {
+                    Text(
+                        text = stringResource(R.string.perm_a11y_desc),
+                        fontSize = 12.5.sp,
+                        lineHeight = 17.sp,
+                        color = Color(0xFFCBD5E1),
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0B0C10)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.perm_a11y_adb_command),
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = Color(0xFF66FCF1),
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val command = context.getString(R.string.perm_a11y_adb_command)
+                                val clip = ClipData.newPlainText("ADB Command", command)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, context.getString(R.string.perm_a11y_copied_toast), Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF45A29E))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.perm_a11y_copy_cmd),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
                     }
