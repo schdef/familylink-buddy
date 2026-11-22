@@ -30,7 +30,8 @@ import 'package:parent_app/volume/volume_control_screen.dart';
 import 'package:parent_app/volume/volume_repository.dart';
 
 Future<void> loadRealFonts() async {
-  const fontDir = '/home/stefanheintz/flutter/bin/cache/artifacts/material_fonts';
+  final home = Platform.environment['HOME'] ?? '';
+  final fontDir = '$home/flutter/bin/cache/artifacts/material_fonts';
 
   final robotoLoader = FontLoader('Roboto');
   robotoLoader.addFont(File('$fontDir/Roboto-Regular.ttf').readAsBytes().then((b) => ByteData.view(b.buffer)));
