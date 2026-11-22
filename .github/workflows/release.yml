@@ -28,13 +28,15 @@ jobs:
 
       - name: Build Child Release APK
         working-directory: apps/child-android
-        run: ./gradlew assembleRelease
+        run: |
+          ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../../child-app-release.apk
 
       - name: Upload Child APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: child-app-release
-          path: apps/child-android/app/build/outputs/apk/release/app-release.apk
+          path: child-app-release.apk
 
   build-parent-apk:
     name: Build Parent Flutter APK
@@ -61,13 +63,15 @@ jobs:
 
       - name: Build Parent Release APK
         working-directory: apps/parent-flutter
-        run: flutter build apk --release --target-platform android-arm64,android-x64 --android-skip-build-dependency-validation
+        run: |
+          flutter build apk --release --target-platform android-arm64,android-x64 --android-skip-build-dependency-validation
+          cp build/app/outputs/flutter-apk/app-release.apk ../../parent-app-release.apk
 
       - name: Upload Parent APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: parent-app-release
-          path: apps/parent-flutter/build/app/outputs/flutter-apk/app-release.apk
+          path: parent-app-release.apk
 
   publish-release:
     name: Create GitHub Release
@@ -89,12 +93,10 @@ jobs:
           name: parent-app-release
           path: release_artifacts
 
-      - name: Rename APKs and Generate Checksums
+      - name: Generate Checksums
         working-directory: release_artifacts
         run: |
-          mv app-release.apk child-app-release.apk 2>/dev/null || true
-          # Find the flutter release APK if name differed
-          find . -name "*.apk" ! -name "child-app-release.apk" -exec mv {} parent-app-release.apk \;
+          ls -la
           sha256sum child-app-release.apk parent-app-release.apk > checksums.txt
           cat checksums.txt
 
