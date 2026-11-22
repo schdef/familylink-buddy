@@ -7,6 +7,20 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'update_dialog.dart';
 
+enum InstallStatus {
+  success,
+  permissionRequired,
+  downloadFailed,
+  installFailed,
+}
+
+class InstallResult {
+  final InstallStatus status;
+  final String? message;
+
+  const InstallResult(this.status, [this.message]);
+}
+
 class ReleaseInfo {
   final String tagName;
   final String releaseNotes;
@@ -61,7 +75,7 @@ class ReleaseInfo {
 
 class UpdaterService {
   static const MethodChannel _platform = MethodChannel('com.familylink.buddy.parent/updater');
-  static const String currentVersion = '1.1.2';
+  static const String currentVersion = '1.1.3';
 
   static MethodChannel get platformChannel => _platform;
 
@@ -112,30 +126,64 @@ class UpdaterService {
     }
   }
 
+  /// Returns the Android app cache directory path via platform channel, falling back to systemTemp.
+  static Future<String> getCacheDirectoryPath() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final cacheDir = await _platform.invokeMethod<String>('getAppCacheDir');
+        if (cacheDir != null && cacheDir.isNotEmpty) {
+          return cacheDir;
+        }
+      } catch (e) {
+        debugPrint('UpdaterService.getCacheDirectoryPath error: $e');
+      }
+    }
+    return Directory.systemTemp.path;
+  }
+
   /// Downloads parent APK to temporary storage and invokes native package installer.
-  static Future<bool> downloadAndInstallParentApk({
+  static Future<InstallResult> downloadAndInstallParentApk({
     required String apkUrl,
     required Function(double progress) onProgress,
     http.Client? client,
   }) async {
     if (kIsWeb) {
-      return false;
+      return const InstallResult(InstallStatus.installFailed, 'Web platform does not support APK installation');
     }
     final httpClient = client ?? http.Client();
     try {
-      final file = await _downloadFile(
-        url: apkUrl,
-        fileName: 'parent-update.apk',
-        onProgress: onProgress,
-        client: httpClient,
-      );
-      if (file == null) return false;
+      File? file;
+      try {
+        file = await _downloadFile(
+          url: apkUrl,
+          fileName: 'parent-update.apk',
+          onProgress: onProgress,
+          client: httpClient,
+        );
+      } catch (e) {
+        debugPrint('UpdaterService.downloadAndInstallParentApk download error: $e');
+        return InstallResult(InstallStatus.downloadFailed, e.toString());
+      }
 
-      final bool? result = await _platform.invokeMethod<bool>('installApk', {'filePath': file.path});
-      return result ?? false;
-    } catch (e) {
-      debugPrint('UpdaterService.downloadAndInstallParentApk error: $e');
-      return false;
+      if (file == null || !await file.exists()) {
+        return const InstallResult(InstallStatus.downloadFailed, 'Downloaded file not found');
+      }
+
+      try {
+        final bool? result = await _platform.invokeMethod<bool>('installApk', {'filePath': file.path});
+        if (result == true) {
+          return const InstallResult(InstallStatus.success, null);
+        } else {
+          return const InstallResult(InstallStatus.installFailed, 'Native installer returned false');
+        }
+      } on PlatformException catch (pe) {
+        if (pe.code == 'PERMISSION_REQUIRED') {
+          return InstallResult(InstallStatus.permissionRequired, pe.message);
+        }
+        return InstallResult(InstallStatus.installFailed, pe.message);
+      } catch (e) {
+        return InstallResult(InstallStatus.installFailed, e.toString());
+      }
     } finally {
       if (client == null) {
         httpClient.close();
@@ -186,8 +234,8 @@ class UpdaterService {
     }
 
     final totalBytes = response.contentLength ?? -1;
-    final tempDir = Directory.systemTemp;
-    final file = File('${tempDir.path}/$fileName');
+    final cacheDirPath = await getCacheDirectoryPath();
+    final file = File('$cacheDirPath/$fileName');
     if (await file.exists()) {
       try {
         await file.delete();

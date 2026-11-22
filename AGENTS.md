@@ -234,3 +234,11 @@ When an AI agent or developer adds a new feature:
 4. **Unit Tests:** Write corresponding tests in `test/` (Flutter) or `src/test/` (Android).
 5. **Verify:** Confirm `./run_tests.sh` and `flutter analyze` exit with `0`.
 6. **Compile:** Re-run `./build_release.sh` to update APK binaries in `build/`.
+
+---
+
+## 7. Versioning Policy
+
+- **Explicit Request Only:** Only create or increment app versions when the user explicitly requests it.
+- **Semantic Versioning & Build Number:** When creating a new app version, increment the patch number (e.g. `1.1.2` -> `1.1.3`) and the build number / `versionCode` (e.g. `+4` -> `+5`).
+- **No Automatic Bumping:** Never bump or tag new app versions automatically on every prompt or feature addition.

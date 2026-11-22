@@ -238,6 +238,8 @@ abstract class AppStrings {
   String latestVersionLabel(String version);
   String get pushedToChildSuccess;
   String get parentAppUpdated;
+  String get installPermissionRequired;
+  String get installFailed;
   String get webManualDownloadNotice;
 
   // ===========================================================================
@@ -801,6 +803,10 @@ class AppStringsEn extends AppStrings {
   String get pushedToChildSuccess => 'Update pushed to Child Tablet! Installing...';
   @override
   String get parentAppUpdated => 'Starting installation...';
+  @override
+  String get installPermissionRequired => "Install permission required. Please enable 'Allow from this source' in Settings and tap Update again.";
+  @override
+  String get installFailed => "Failed to start installation.";
   @override
   String get webManualDownloadNotice => 'Please download the latest release APK from GitHub:';
 
@@ -1577,6 +1583,10 @@ class AppStringsDe extends AppStrings {
   String get pushedToChildSuccess => 'Update an Kinder-Tablet gesendet! Wird installiert...';
   @override
   String get parentAppUpdated => 'Installation wird gestartet...';
+  @override
+  String get installPermissionRequired => "Installationsberechtigung erforderlich. Bitte aktiviere 'Aus dieser Quelle zulassen' in den Einstellungen und tippe erneut auf Aktualisieren.";
+  @override
+  String get installFailed => "Installation konnte nicht gestartet werden.";
   @override
   String get webManualDownloadNotice => 'Bitte lade die neueste Release-APK von GitHub herunter:';
 

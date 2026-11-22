@@ -102,7 +102,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
     });
 
     try {
-      final success = await UpdaterService.downloadAndInstallParentApk(
+      final result = await UpdaterService.downloadAndInstallParentApk(
         apkUrl: parentUrl,
         onProgress: (p) {
           if (mounted) {
@@ -116,9 +116,25 @@ class _UpdateDialogState extends State<UpdateDialog> {
       );
 
       if (mounted) {
+        final String message;
+        switch (result.status) {
+          case InstallStatus.success:
+            message = strings.parentAppUpdated;
+            break;
+          case InstallStatus.permissionRequired:
+            message = strings.installPermissionRequired;
+            break;
+          case InstallStatus.installFailed:
+            message = strings.installFailed;
+            break;
+          case InstallStatus.downloadFailed:
+            message = strings.updateError;
+            break;
+        }
+
         setState(() {
           _isActionRunning = false;
-          _statusMessage = success ? strings.parentAppUpdated : strings.updateError;
+          _statusMessage = message;
         });
       }
     } catch (e) {

@@ -24,6 +24,9 @@ void main() {
         if (methodCall.method == 'getAppVersionCode') {
           return 42;
         }
+        if (methodCall.method == 'getAppCacheDir') {
+          return '/data/user/0/com.familylink.buddy.parent/cache';
+        }
         if (methodCall.method == 'installApk') {
           return true;
         }
@@ -50,6 +53,14 @@ void main() {
       expect(version, 42);
       expect(log, hasLength(1));
       expect(log.first.method, 'getAppVersionCode');
+    });
+
+    test('getAppCacheDir channel invocation returns correct mocked path', () async {
+      final String? path = await channel.invokeMethod('getAppCacheDir');
+      
+      expect(path, '/data/user/0/com.familylink.buddy.parent/cache');
+      expect(log, hasLength(1));
+      expect(log.first.method, 'getAppCacheDir');
     });
 
     test('installApk channel invocation passes correct path argument', () async {
@@ -207,22 +218,103 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        if (methodCall.method == 'getAppCacheDir') {
+          return null; // fallback to systemTemp
+        }
         if (methodCall.method == 'installApk') {
           return true;
         }
         return null;
       });
 
-      final success = await UpdaterService.downloadAndInstallParentApk(
+      final result = await UpdaterService.downloadAndInstallParentApk(
         apkUrl: 'https://example.com/parent.apk',
         onProgress: (p) => progressLog.add(p),
         client: mockClient,
       );
 
-      expect(success, isTrue);
+      expect(result.status, InstallStatus.success);
       expect(progressLog, isNotEmpty);
       expect(progressLog.first, 0.0);
       expect(progressLog.last, 1.0);
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('downloadAndInstallParentApk returns permissionRequired on PERMISSION_REQUIRED exception', () async {
+      final apkBytes = utf8.encode('DUMMY_APK_BINARY_CONTENT');
+
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          apkBytes,
+          200,
+          headers: {'content-length': apkBytes.length.toString()},
+        );
+      });
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        if (methodCall.method == 'installApk') {
+          throw PlatformException(code: 'PERMISSION_REQUIRED', message: 'Settings opened');
+        }
+        return null;
+      });
+
+      final result = await UpdaterService.downloadAndInstallParentApk(
+        apkUrl: 'https://example.com/parent.apk',
+        onProgress: (_) {},
+        client: mockClient,
+      );
+
+      expect(result.status, InstallStatus.permissionRequired);
+      expect(result.message, 'Settings opened');
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('downloadAndInstallParentApk returns downloadFailed on HTTP error', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response('Server Error', 500);
+      });
+
+      final result = await UpdaterService.downloadAndInstallParentApk(
+        apkUrl: 'https://example.com/parent.apk',
+        onProgress: (_) {},
+        client: mockClient,
+      );
+
+      expect(result.status, InstallStatus.downloadFailed);
+    });
+
+    test('downloadAndInstallParentApk returns installFailed on generic installer exception', () async {
+      final apkBytes = utf8.encode('DUMMY_APK_BINARY_CONTENT');
+
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          apkBytes,
+          200,
+          headers: {'content-length': apkBytes.length.toString()},
+        );
+      });
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        if (methodCall.method == 'installApk') {
+          throw PlatformException(code: 'INSTALL_FAILED', message: 'Corrupt APK');
+        }
+        return null;
+      });
+
+      final result = await UpdaterService.downloadAndInstallParentApk(
+        apkUrl: 'https://example.com/parent.apk',
+        onProgress: (_) {},
+        client: mockClient,
+      );
+
+      expect(result.status, InstallStatus.installFailed);
+      expect(result.message, 'Corrupt APK');
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -372,6 +464,75 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(installCalled, isTrue);
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    testWidgets('Tapping Update Parent App displays permission required message if permission denied', (tester) async {
+      bool installCalled = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        if (methodCall.method == 'installApk') {
+          installCalled = true;
+          throw PlatformException(code: 'PERMISSION_REQUIRED', message: 'Settings opened');
+        }
+        return null;
+      });
+
+      final mockClient = MockClient((request) async {
+        if (request.url.path.contains('/releases/latest')) {
+          return http.Response(
+            jsonEncode({
+              'tag_name': 'v1.2.0',
+              'body': 'New features',
+              'html_url': 'https://github.com/schdef/familylink-buddy/releases',
+              'assets': [
+                {
+                  'name': 'parent-app-release.apk',
+                  'browser_download_url': 'https://example.com/parent.apk',
+                }
+              ]
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response.bytes(
+          utf8.encode('APK_BYTES'),
+          200,
+          headers: {'content-length': '9'},
+        );
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UpdateDialog(
+              childIp: '192.168.1.150',
+              client: mockClient,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btn_update_parent_app')));
+        int waited = 0;
+        while (!installCalled && waited < 40) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          waited++;
+        }
+      });
+      await tester.pumpAndSettle();
+
+      expect(installCalled, isTrue);
+      expect(
+        find.textContaining('Install permission required'),
+        findsOneWidget,
+      );
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);

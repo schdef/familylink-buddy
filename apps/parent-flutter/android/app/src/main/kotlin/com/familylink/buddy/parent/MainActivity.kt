@@ -38,33 +38,78 @@ class MainActivity: FlutterActivity() {
                         result.error("UNAVAILABLE", "Version code not available.", e.message)
                     }
                 }
+                "getAppCacheDir" -> {
+                    try {
+                        result.success(context.cacheDir.absolutePath)
+                    } catch (e: Exception) {
+                        result.error("UNAVAILABLE", "Cache dir not available: ${e.message}", null)
+                    }
+                }
                 "installApk" -> {
                     val filePath = call.argument<String>("filePath")
-                    if (filePath != null) {
+                    if (filePath.isNullOrBlank()) {
+                        result.error("INVALID_ARGUMENT", "File path is null or empty", null)
+                        return@setMethodCallHandler
+                    }
+
+                    val sourceFile = File(filePath)
+                    if (!sourceFile.exists() || sourceFile.length() < 1024 * 1024L) {
+                        result.error("INVALID_FILE", "APK file is missing or smaller than 1MB", null)
+                        return@setMethodCallHandler
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
                         try {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                if (!context.packageManager.canRequestPackageInstalls()) {
-                                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                                        data = Uri.parse("package:${context.packageName}")
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(settingsIntent)
-                                }
-                            }
-                            val file = File(filePath)
-                            val apkUri = FileProvider.getUriForFile(context, "com.familylink.buddy.parent.fileprovider", file)
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                data = Uri.parse("package:${context.packageName}")
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
-                            context.startActivity(intent)
-                            result.success(true)
+                            context.startActivity(settingsIntent)
                         } catch (e: Exception) {
-                            result.error("INSTALL_FAILED", "Failed to trigger apk install", e.message)
+                            try {
+                                val genericIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(genericIntent)
+                            } catch (_: Exception) {}
                         }
-                    } else {
-                        result.error("INVALID_ARGUMENT", "File path is null", null)
+                        result.error("PERMISSION_REQUIRED", "Permission to install unknown apps is required. Settings opened.", null)
+                        return@setMethodCallHandler
+                    }
+
+                    try {
+                        val targetFile = if (sourceFile.parentFile?.canonicalPath != context.cacheDir.canonicalPath) {
+                            val destFile = File(context.cacheDir, "parent-update.apk")
+                            sourceFile.copyTo(destFile, overwrite = true)
+                            destFile
+                        } else {
+                            sourceFile
+                        }
+
+                        val apkUri = FileProvider.getUriForFile(context, "com.familylink.buddy.parent.fileprovider", targetFile)
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+
+                        val resolvedActivities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            context.packageManager.queryIntentActivities(
+                                intent,
+                                android.content.pm.PackageManager.ResolveInfoFlags.of(0L)
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            context.packageManager.queryIntentActivities(intent, 0)
+                        }
+                        for (info in resolvedActivities) {
+                            context.grantUriPermission(info.activityInfo.packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+
+                        context.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("INSTALL_FAILED", e.message, null)
                     }
                 }
                 "pickApkFile" -> {
