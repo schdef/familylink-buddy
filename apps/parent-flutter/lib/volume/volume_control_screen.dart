@@ -688,15 +688,16 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
             Text(strings.volumeControlTitle),
             const SizedBox(width: 8),
             Container(
+              key: const ValueKey('app_version_badge'),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: const Color(0xFF6366F1).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.5)),
               ),
-              child: const Text(
-                'v1.1.2',
-                style: TextStyle(
+              child: Text(
+                'v${UpdaterService.currentVersion}',
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF818CF8),

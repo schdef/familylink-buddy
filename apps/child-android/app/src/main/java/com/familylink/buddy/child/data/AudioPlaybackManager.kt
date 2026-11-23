@@ -23,6 +23,13 @@ import java.util.concurrent.TimeUnit
 object AudioPlaybackManager {
     private const val TAG = "AudioPlaybackManager"
 
+    val ACTIVE_PLAYBACK_STATES = setOf(
+        PlaybackState.STATE_PLAYING,
+        PlaybackState.STATE_BUFFERING,
+        PlaybackState.STATE_SKIPPING_TO_NEXT,
+        PlaybackState.STATE_FAST_FORWARDING
+    )
+
     @Volatile
     var currentMediaTitle: String? = null
 
@@ -36,9 +43,11 @@ object AudioPlaybackManager {
     var lastMediaUpdateTime: Long = 0L
 
     fun updateMediaInfo(title: String?, artist: String?, pkg: String?) {
-        if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
-            currentMediaTitle = title
-            currentMediaArtist = artist
+        val cleanTitle = title?.trim()?.takeIf { it.isNotBlank() }
+        val cleanArtist = artist?.trim()?.takeIf { it.isNotBlank() }
+        if (cleanTitle != null || cleanArtist != null) {
+            currentMediaTitle = cleanTitle
+            currentMediaArtist = cleanArtist
             currentMediaPackage = pkg
             lastMediaUpdateTime = System.currentTimeMillis()
         }
@@ -48,6 +57,58 @@ object AudioPlaybackManager {
         currentMediaTitle = null
         currentMediaArtist = null
         currentMediaPackage = null
+    }
+
+    fun extractTitle(
+        titleString: String?,
+        displayTitleString: String?,
+        titleText: CharSequence? = null,
+        displayTitleText: CharSequence? = null
+    ): String? {
+        return titleString?.trim()?.takeIf { it.isNotBlank() }
+            ?: displayTitleString?.trim()?.takeIf { it.isNotBlank() }
+            ?: titleText?.toString()?.trim()?.takeIf { it.isNotBlank() }
+            ?: displayTitleText?.toString()?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    fun extractArtist(
+        artistString: String?,
+        albumArtistString: String?,
+        displaySubtitleString: String?,
+        authorString: String?,
+        artistText: CharSequence? = null
+    ): String? {
+        return artistString?.trim()?.takeIf { it.isNotBlank() }
+            ?: albumArtistString?.trim()?.takeIf { it.isNotBlank() }
+            ?: displaySubtitleString?.trim()?.takeIf { it.isNotBlank() }
+            ?: authorString?.trim()?.takeIf { it.isNotBlank() }
+            ?: artistText?.toString()?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    data class PlaybackControllerInfo(
+        val packageName: String,
+        val playbackState: Int,
+        val title: String? = null,
+        val artist: String? = null
+    )
+
+    fun selectTargetControllerInfo(
+        controllers: List<PlaybackControllerInfo>,
+        currentPackage: String?,
+        isAudioActive: Boolean
+    ): PlaybackControllerInfo? {
+        if (currentPackage != null) {
+            val matching = controllers.firstOrNull {
+                it.packageName == currentPackage && (it.playbackState in ACTIVE_PLAYBACK_STATES)
+            }
+            if (matching != null) return matching
+        }
+        val active = controllers.firstOrNull {
+            it.playbackState in ACTIVE_PLAYBACK_STATES
+        }
+        if (active != null) return active
+
+        return if (isAudioActive) controllers.firstOrNull() else null
     }
 
     /**
@@ -65,35 +126,55 @@ object AudioPlaybackManager {
                 Log.w(TAG, "SecurityException calling getActiveSessions: ${e.message}")
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "Exception calling getActiveSessions: ${e.message}")
+                Log.e(TAG, "Exception calling getActiveSessions: ${e.message}")
                 return
             }
 
-            if (controllers.isNullOrEmpty()) return
-
             val isAudioActive = isMusicActive(context)
 
-            var targetController: MediaController? = null
-            for (controller in controllers) {
-                val state = controller.playbackState?.state
-                if (state == PlaybackState.STATE_PLAYING) {
-                    targetController = controller
-                    break
+            if (controllers.isNullOrEmpty()) {
+                if (!isAudioActive) {
+                    clearMediaInfo()
                 }
+                return
             }
 
+            var targetController: MediaController? = null
+            val currentPkg = currentMediaPackage
+            if (currentPkg != null) {
+                targetController = controllers.firstOrNull { controller ->
+                    controller.packageName == currentPkg && (controller.playbackState?.state in ACTIVE_PLAYBACK_STATES)
+                }
+            }
+            if (targetController == null) {
+                targetController = controllers.firstOrNull { controller ->
+                    controller.playbackState?.state in ACTIVE_PLAYBACK_STATES
+                }
+            }
             if (targetController == null && isAudioActive) {
                 targetController = controllers.firstOrNull()
+            }
+
+            val hasActiveController = controllers.any { it.playbackState?.state in ACTIVE_PLAYBACK_STATES }
+            if (!isAudioActive && !hasActiveController) {
+                clearMediaInfo()
+                return
             }
 
             if (targetController != null) {
                 val metadata = targetController.metadata
                 if (metadata != null) {
                     val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
+                        ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
                         ?: metadata.getText(MediaMetadata.METADATA_KEY_TITLE)?.toString()
+                        ?: metadata.getText(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)?.toString()
+
                     val artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
                         ?: metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
+                        ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+                        ?: metadata.getString(MediaMetadata.METADATA_KEY_AUTHOR)
                         ?: metadata.getText(MediaMetadata.METADATA_KEY_ARTIST)?.toString()
+
                     val pkg = targetController.packageName
                     if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
                         updateMediaInfo(title, artist, pkg)

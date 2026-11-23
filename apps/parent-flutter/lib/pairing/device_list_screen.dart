@@ -126,7 +126,11 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Text(strings.appVersion('1.1.2'), style: const TextStyle(color: Color(0xFF94A3B8))),
+                  Text(
+                    strings.appVersion(UpdaterService.currentVersion),
+                    key: const ValueKey('device_list_app_version'),
+                    style: const TextStyle(color: Color(0xFF94A3B8)),
+                  ),
                   const SizedBox(height: 4),
                   Text(strings.appArchitecture, style: const TextStyle(color: Color(0xFF10B981))),
                   const SizedBox(height: 4),
@@ -248,6 +252,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
             tooltip: strings.refreshTooltip,
           ),
           IconButton(
+            key: const ValueKey('btn_app_settings'),
             icon: const Icon(Icons.settings, color: Color(0xFF94A3B8)),
             onPressed: _showAppSettings,
             tooltip: strings.settingsTooltip,

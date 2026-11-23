@@ -34,6 +34,12 @@ class VolumeState {
     this.timestamp,
   });
 
+  static String? _normalizeString(dynamic value) {
+    if (value == null) return null;
+    final str = value.toString().trim();
+    return str.isEmpty ? null : str;
+  }
+
   factory VolumeState.fromJson(Map<String, dynamic> json) {
     return VolumeState(
       mediaVolume: json['mediaVolume'] as int? ?? -1,
@@ -44,9 +50,9 @@ class VolumeState {
       maxAlarmVolume: json['maxAlarmVolume'] as int? ?? 15,
       isMuted: json['isMuted'] as bool? ?? false,
       isMusicActive: json['isMusicActive'] as bool? ?? false,
-      mediaTitle: json['mediaTitle'] as String? ?? json['trackTitle'] as String?,
-      mediaArtist: json['mediaArtist'] as String? ?? json['artist'] as String?,
-      mediaPackage: json['mediaPackage'] as String? ?? json['packageName'] as String?,
+      mediaTitle: _normalizeString(json['mediaTitle'] ?? json['trackTitle']),
+      mediaArtist: _normalizeString(json['mediaArtist'] ?? json['artist']),
+      mediaPackage: _normalizeString(json['mediaPackage'] ?? json['packageName']),
       timestamp: json['timestamp'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int)
           : null,
@@ -84,15 +90,51 @@ class VolumeState {
   }
 
   bool get isKnown => mediaVolume >= 0;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is VolumeState &&
+        other.mediaVolume == mediaVolume &&
+        other.ringtoneVolume == ringtoneVolume &&
+        other.alarmVolume == alarmVolume &&
+        other.maxMediaVolume == maxMediaVolume &&
+        other.maxRingtoneVolume == maxRingtoneVolume &&
+        other.maxAlarmVolume == maxAlarmVolume &&
+        other.isMuted == isMuted &&
+        other.isMusicActive == isMusicActive &&
+        other.mediaTitle == mediaTitle &&
+        other.mediaArtist == mediaArtist &&
+        other.mediaPackage == mediaPackage;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        mediaVolume,
+        ringtoneVolume,
+        alarmVolume,
+        maxMediaVolume,
+        maxRingtoneVolume,
+        maxAlarmVolume,
+        isMuted,
+        isMusicActive,
+        mediaTitle,
+        mediaArtist,
+        mediaPackage,
+      );
 }
 
 class VolumeRepository extends ChangeNotifier {
+  static const Duration defaultPollingInterval = Duration(seconds: 5);
+  static const Duration activePollingInterval = Duration(seconds: 3);
+
   final http.Client? _httpClient;
   VolumeState _volumeState = const VolumeState();
   bool _isConnected = false;
   DateTime? _lastSeen;
   String? _localIpAddress;
   Timer? _pollingTimer;
+  Duration _currentPollingInterval = defaultPollingInterval;
   String? _activeChildToken;
   LanDiscoveryService? _lanDiscoveryService;
   PairingRepository? _pairingRepository;
@@ -105,6 +147,7 @@ class VolumeRepository extends ChangeNotifier {
   bool get isConnected => _isConnected;
   DateTime? get lastSeen => _lastSeen;
   String? get localIpAddress => _localIpAddress;
+  Duration get currentPollingInterval => _currentPollingInterval;
 
   set localIpAddress(String? ip) {
     _localIpAddress = ip;
@@ -145,16 +188,30 @@ class VolumeRepository extends ChangeNotifier {
     }
 
     _pollingTimer?.cancel();
+    _currentPollingInterval = _volumeState.isMusicActive ? activePollingInterval : defaultPollingInterval;
+    _startPolling();
 
     // Initial fetch
     _pollVolumeReport(childFcmToken);
+  }
 
-    // Periodic polling every 5 seconds over LAN when active
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(_currentPollingInterval, (_) {
       if (_activeChildToken != null && _activeChildToken!.isNotEmpty) {
         _pollVolumeReport(_activeChildToken!);
       }
     });
+  }
+
+  void _updatePollingInterval(bool isMusicActive) {
+    final targetInterval = isMusicActive ? activePollingInterval : defaultPollingInterval;
+    if (_currentPollingInterval != targetInterval) {
+      _currentPollingInterval = targetInterval;
+      if (_pollingTimer != null) {
+        _startPolling();
+      }
+    }
   }
 
   /// Stop background polling
@@ -179,6 +236,7 @@ class VolumeRepository extends ChangeNotifier {
   @visibleForTesting
   set volumeStateForTesting(VolumeState state) {
     _volumeState = state;
+    _updatePollingInterval(state.isMusicActive);
     notifyListeners();
   }
 
@@ -195,6 +253,7 @@ class VolumeRepository extends ChangeNotifier {
     );
     _isConnected = true;
     _lastSeen = DateTime.now();
+    _updatePollingInterval(_volumeState.isMusicActive);
     notifyListeners();
   }
 
@@ -232,6 +291,7 @@ class VolumeRepository extends ChangeNotifier {
                 _isConnected = true;
                 _lastSeen = DateTime.now();
                 stateUpdated = true;
+                _updatePollingInterval(_volumeState.isMusicActive);
                 notifyListeners();
               } else if (data.containsKey('level')) {
                 final respLevel = (data['level'] as num).toInt();
@@ -275,6 +335,7 @@ class VolumeRepository extends ChangeNotifier {
         _volumeState = VolumeState.fromJson(data);
         _isConnected = true;
         _lastSeen = DateTime.now();
+        _updatePollingInterval(_volumeState.isMusicActive);
         notifyListeners();
       } else {
         debugPrint('VolumeRepository: LAN volume_report failed with HTTP ${response.statusCode}');
@@ -313,6 +374,7 @@ class VolumeRepository extends ChangeNotifier {
         );
         _isConnected = true;
         _lastSeen = DateTime.now();
+        _updatePollingInterval(false);
         notifyListeners();
         return true;
       } else {

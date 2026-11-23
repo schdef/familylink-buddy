@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:parent_app/pairing/device_list_screen.dart';
 import 'package:parent_app/pairing/pairing_repository.dart';
+import 'package:parent_app/updater/updater_service.dart';
 import 'package:parent_app/l10n/app_strings.dart';
 
 class MockPairingRepository extends PairingRepository {
@@ -150,5 +151,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Online • LAN (192.168.1.170)'), findsOneWidget);
+  });
+
+  testWidgets('DeviceListScreen displays app version 1.1.3 in settings dialog', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: DeviceListScreen(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final settingsBtn = find.byKey(const ValueKey('btn_app_settings'));
+    expect(settingsBtn, findsOneWidget);
+
+    await tester.tap(settingsBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('device_list_app_version')), findsOneWidget);
+    expect(find.textContaining('1.1.3'), findsOneWidget);
+    expect(find.textContaining(UpdaterService.currentVersion), findsOneWidget);
   });
 }

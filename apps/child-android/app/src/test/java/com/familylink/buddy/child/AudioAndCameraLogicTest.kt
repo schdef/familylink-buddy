@@ -1,10 +1,12 @@
 package com.familylink.buddy.child
 
 import android.hardware.camera2.CameraCharacteristics
+import android.media.session.PlaybackState
 import android.util.Size
 import com.familylink.buddy.child.data.AudioPlaybackManager
 import com.familylink.buddy.child.data.SilentCameraManager
 import com.familylink.buddy.child.data.VolumeState
+import com.familylink.buddy.child.service.ChatNotificationListenerService
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -337,6 +339,250 @@ class AudioAndCameraLogicTest {
     }
 
     @Test
+    fun testTrackChangeDetection() {
+        AudioPlaybackManager.clearMediaInfo()
+
+        // 1. Initial track playback: Song A
+        val initialTime = System.currentTimeMillis()
+        AudioPlaybackManager.updateMediaInfo("Song A", "Artist A", "com.spotify.music")
+        assertEquals("Song A", AudioPlaybackManager.currentMediaTitle)
+        assertEquals("Artist A", AudioPlaybackManager.currentMediaArtist)
+        assertEquals("com.spotify.music", AudioPlaybackManager.currentMediaPackage)
+        assertTrue(AudioPlaybackManager.lastMediaUpdateTime >= initialTime)
+
+        // 2. Track transition: next song (Song B) starts playing
+        val nextTime = System.currentTimeMillis()
+        AudioPlaybackManager.updateMediaInfo("Song B", "Artist B", "com.spotify.music")
+        assertEquals("Song B", AudioPlaybackManager.currentMediaTitle)
+        assertEquals("Artist B", AudioPlaybackManager.currentMediaArtist)
+        assertEquals("com.spotify.music", AudioPlaybackManager.currentMediaPackage)
+        assertTrue(AudioPlaybackManager.lastMediaUpdateTime >= nextTime)
+
+        // 3. Controller selection during track transition states (STATE_BUFFERING, STATE_SKIPPING_TO_NEXT)
+        val spotifyBuffering = AudioPlaybackManager.PlaybackControllerInfo(
+            packageName = "com.spotify.music",
+            playbackState = PlaybackState.STATE_BUFFERING,
+            title = "Song B",
+            artist = "Artist B"
+        )
+        val backgroundIdleApp = AudioPlaybackManager.PlaybackControllerInfo(
+            packageName = "com.google.android.apps.podcasts",
+            playbackState = PlaybackState.STATE_PAUSED,
+            title = "Old Podcast",
+            artist = "Old Host"
+        )
+
+        // Verify that controller matching currentMediaPackage is prioritized when buffering
+        val target = AudioPlaybackManager.selectTargetControllerInfo(
+            controllers = listOf(backgroundIdleApp, spotifyBuffering),
+            currentPackage = "com.spotify.music",
+            isAudioActive = true
+        )
+        assertNotNull(target)
+        assertEquals("com.spotify.music", target?.packageName)
+        assertEquals("Song B", target?.title)
+
+        // 4. Verify support for all active transition states
+        assertTrue(AudioPlaybackManager.ACTIVE_PLAYBACK_STATES.contains(PlaybackState.STATE_PLAYING))
+        assertTrue(AudioPlaybackManager.ACTIVE_PLAYBACK_STATES.contains(PlaybackState.STATE_BUFFERING))
+        assertTrue(AudioPlaybackManager.ACTIVE_PLAYBACK_STATES.contains(PlaybackState.STATE_SKIPPING_TO_NEXT))
+        assertTrue(AudioPlaybackManager.ACTIVE_PLAYBACK_STATES.contains(PlaybackState.STATE_FAST_FORWARDING))
+        assertFalse(AudioPlaybackManager.ACTIVE_PLAYBACK_STATES.contains(PlaybackState.STATE_PAUSED))
+        assertFalse(AudioPlaybackManager.ACTIVE_PLAYBACK_STATES.contains(PlaybackState.STATE_STOPPED))
+
+        AudioPlaybackManager.clearMediaInfo()
+    }
+
+    @Test
+    fun testDisplayTitleAndDisplaySubtitleFallbacks() {
+        // 1. Primary title present -> should use primary title
+        val title1 = AudioPlaybackManager.extractTitle(
+            titleString = "Primary Song Title",
+            displayTitleString = "Fallback Display Title"
+        )
+        assertEquals("Primary Song Title", title1)
+
+        // 2. Primary title null/blank -> fallback to displayTitle
+        val title2 = AudioPlaybackManager.extractTitle(
+            titleString = null,
+            displayTitleString = "Fallback Display Title"
+        )
+        assertEquals("Fallback Display Title", title2)
+
+        val title3 = AudioPlaybackManager.extractTitle(
+            titleString = "   ",
+            displayTitleString = "Fallback Display Title"
+        )
+        assertEquals("Fallback Display Title", title3)
+
+        // 3. String titles null -> fallback to CharSequence text
+        val title4 = AudioPlaybackManager.extractTitle(
+            titleString = null,
+            displayTitleString = null,
+            titleText = "CharSequence Title"
+        )
+        assertEquals("CharSequence Title", title4)
+
+        // 4. All titles null/empty -> returns null
+        assertNull(AudioPlaybackManager.extractTitle(null, null, null, null))
+        assertNull(AudioPlaybackManager.extractTitle("", "  ", "", "   "))
+
+        // 5. Primary artist present -> should use primary artist
+        val artist1 = AudioPlaybackManager.extractArtist(
+            artistString = "Primary Artist",
+            albumArtistString = "Album Artist",
+            displaySubtitleString = "Display Subtitle",
+            authorString = "Author"
+        )
+        assertEquals("Primary Artist", artist1)
+
+        // 6. Primary artist missing -> fallback to albumArtist
+        val artist2 = AudioPlaybackManager.extractArtist(
+            artistString = null,
+            albumArtistString = "Album Artist",
+            displaySubtitleString = "Display Subtitle",
+            authorString = "Author"
+        )
+        assertEquals("Album Artist", artist2)
+
+        // 7. Primary & album artist missing -> fallback to displaySubtitle
+        val artist3 = AudioPlaybackManager.extractArtist(
+            artistString = "  ",
+            albumArtistString = null,
+            displaySubtitleString = "Display Subtitle",
+            authorString = "Author"
+        )
+        assertEquals("Display Subtitle", artist3)
+
+        // 8. Primary, album, subtitle missing -> fallback to author
+        val artist4 = AudioPlaybackManager.extractArtist(
+            artistString = null,
+            albumArtistString = null,
+            displaySubtitleString = null,
+            authorString = "Audiobook Author"
+        )
+        assertEquals("Audiobook Author", artist4)
+
+        // 9. All artist strings missing -> fallback to artistText CharSequence
+        val artist5 = AudioPlaybackManager.extractArtist(
+            artistString = null,
+            albumArtistString = null,
+            displaySubtitleString = null,
+            authorString = null,
+            artistText = "CharSequence Artist"
+        )
+        assertEquals("CharSequence Artist", artist5)
+
+        // 10. All null/blank -> returns null
+        assertNull(AudioPlaybackManager.extractArtist(null, null, null, null, null))
+        assertNull(AudioPlaybackManager.extractArtist(" ", "", "  ", "   ", ""))
+    }
+
+    @Test
+    fun testAvoidingNonMediaNotificationOverwrite() {
+        // 1. Generic battery alert (non-media) -> MUST NOT be identified as media notification
+        val isBatteryAlertMedia = ChatNotificationListenerService.isMediaNotification(
+            category = "sys",
+            hasMediaSessionExtra = false,
+            template = null,
+            actionTitles = listOf("Turn on Battery Saver")
+        )
+        assertFalse("Battery warning should never be identified as media", isBatteryAlertMedia)
+
+        // 2. Download complete alert (non-media) -> MUST NOT be identified as media
+        val isDownloadAlertMedia = ChatNotificationListenerService.isMediaNotification(
+            category = null,
+            hasMediaSessionExtra = false,
+            template = null,
+            actionTitles = listOf("Open file")
+        )
+        assertFalse("Download alert should never be identified as media", isDownloadAlertMedia)
+
+        // 3. Regular chat message -> MUST NOT be identified as media
+        val isChatMedia = ChatNotificationListenerService.isMediaNotification(
+            category = "msg",
+            hasMediaSessionExtra = false,
+            template = "android.app.Notification\$MessagingStyle",
+            actionTitles = listOf("Reply", "Mark as read")
+        )
+        assertFalse("Chat notification should not be identified as media", isChatMedia)
+
+        // 4. Media notification with EXTRA_MEDIA_SESSION -> MUST be identified as media
+        val isSessionMedia = ChatNotificationListenerService.isMediaNotification(
+            category = null,
+            hasMediaSessionExtra = true,
+            template = null,
+            actionTitles = null
+        )
+        assertTrue("Media session extra must identify as media", isSessionMedia)
+
+        // 5. Media notification with MediaStyle template -> MUST be identified as media
+        val isTemplateMedia = ChatNotificationListenerService.isMediaNotification(
+            category = null,
+            hasMediaSessionExtra = false,
+            template = "androidx.media.app.NotificationCompat\$MediaStyle",
+            actionTitles = null
+        )
+        assertTrue("MediaStyle template must identify as media", isTemplateMedia)
+
+        // 6. Media notification with CATEGORY_TRANSPORT -> MUST be identified as media
+        val isTransportMedia = ChatNotificationListenerService.isMediaNotification(
+            category = "transport",
+            hasMediaSessionExtra = false,
+            template = null,
+            actionTitles = null
+        )
+        assertTrue("CATEGORY_TRANSPORT must identify as media", isTransportMedia)
+
+        // 7. Notification with transport action ("Pause", "Play", "Next", "Skip") -> MUST be identified as media
+        val isActionMedia = ChatNotificationListenerService.isMediaNotification(
+            category = null,
+            hasMediaSessionExtra = false,
+            template = null,
+            actionTitles = listOf("Previous", "Pause", "Next")
+        )
+        assertTrue("Transport actions must identify as media", isActionMedia)
+    }
+
+    @Test
+    fun testPlaybackCleanupOnStop() {
+        AudioPlaybackManager.clearMediaInfo()
+        AudioPlaybackManager.updateMediaInfo("Track 1", "Artist 1", "com.spotify.music")
+        assertEquals("Track 1", AudioPlaybackManager.currentMediaTitle)
+        assertEquals("Artist 1", AudioPlaybackManager.currentMediaArtist)
+        assertEquals("com.spotify.music", AudioPlaybackManager.currentMediaPackage)
+
+        // Clear media info
+        AudioPlaybackManager.clearMediaInfo()
+        assertNull(AudioPlaybackManager.currentMediaTitle)
+        assertNull(AudioPlaybackManager.currentMediaArtist)
+        assertNull(AudioPlaybackManager.currentMediaPackage)
+
+        // Notification removal logic simulation
+        AudioPlaybackManager.updateMediaInfo("Podcast Episode 42", "Host X", "com.google.android.apps.podcasts")
+
+        fun onNotificationRemovedSim(pkg: String, isMusicActive: Boolean) {
+            if (pkg == AudioPlaybackManager.currentMediaPackage && !isMusicActive) {
+                AudioPlaybackManager.clearMediaInfo()
+            }
+        }
+
+        // Notification from a different package removed -> media info should NOT be cleared
+        onNotificationRemovedSim("com.whatsapp", isMusicActive = false)
+        assertEquals("Podcast Episode 42", AudioPlaybackManager.currentMediaTitle)
+
+        // Notification from podcast app removed while music is still active -> media info remains
+        onNotificationRemovedSim("com.google.android.apps.podcasts", isMusicActive = true)
+        assertEquals("Podcast Episode 42", AudioPlaybackManager.currentMediaTitle)
+
+        // Notification from podcast app removed when music is stopped -> media info IS cleared
+        onNotificationRemovedSim("com.google.android.apps.podcasts", isMusicActive = false)
+        assertNull(AudioPlaybackManager.currentMediaTitle)
+        assertNull(AudioPlaybackManager.currentMediaArtist)
+        assertNull(AudioPlaybackManager.currentMediaPackage)
+    }
+
+    @Test
     fun testMediaNotificationExtractionAndFilteringLogic() {
         AudioPlaybackManager.clearMediaInfo()
 
@@ -344,27 +590,36 @@ class AudioAndCameraLogicTest {
             pkg: String,
             hasMediaSession: Boolean,
             isTransport: Boolean,
-            hasMediaText: Boolean,
-            isMusicActive: Boolean,
+            template: String?,
+            actionTitles: List<String>?,
             supportedChatPackages: Set<String>
         ): Boolean {
             val isChatApp = supportedChatPackages.contains(pkg)
-            return (hasMediaSession || isTransport || (!isChatApp && isMusicActive && hasMediaText))
+            if (isChatApp) return false
+            return ChatNotificationListenerService.isMediaNotification(
+                category = if (isTransport) "transport" else null,
+                hasMediaSessionExtra = hasMediaSession,
+                template = template,
+                actionTitles = actionTitles
+            )
         }
 
         val chatPackages = setOf("com.whatsapp", "org.telegram.messenger", "com.google.android.apps.messaging")
 
         // 1. WhatsApp notification while music is playing -> must NOT update media
-        assertFalse(shouldUpdateMedia("com.whatsapp", hasMediaSession = false, isTransport = false, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+        assertFalse(shouldUpdateMedia("com.whatsapp", hasMediaSession = false, isTransport = false, template = null, actionTitles = null, supportedChatPackages = chatPackages))
 
         // 2. Spotify media session notification -> MUST update media
-        assertTrue(shouldUpdateMedia("com.spotify.music", hasMediaSession = true, isTransport = true, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+        assertTrue(shouldUpdateMedia("com.spotify.music", hasMediaSession = true, isTransport = true, template = null, actionTitles = null, supportedChatPackages = chatPackages))
 
         // 3. YouTube Music transport notification -> MUST update media
-        assertTrue(shouldUpdateMedia("com.google.android.apps.youtube.music", hasMediaSession = false, isTransport = true, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+        assertTrue(shouldUpdateMedia("com.google.android.apps.youtube.music", hasMediaSession = false, isTransport = true, template = null, actionTitles = null, supportedChatPackages = chatPackages))
 
-        // 4. Background podcast active playback -> MUST update media
-        assertTrue(shouldUpdateMedia("com.bip.podcasts", hasMediaSession = false, isTransport = false, hasMediaText = true, isMusicActive = true, supportedChatPackages = chatPackages))
+        // 4. Background podcast active playback with media template -> MUST update media
+        assertTrue(shouldUpdateMedia("com.bip.podcasts", hasMediaSession = false, isTransport = false, template = "androidx.media.app.NotificationCompat\$MediaStyle", actionTitles = null, supportedChatPackages = chatPackages))
+
+        // 5. Generic battery warning while music is active -> MUST NOT update media
+        assertFalse(shouldUpdateMedia("android", hasMediaSession = false, isTransport = false, template = null, actionTitles = listOf("Battery Saver"), supportedChatPackages = chatPackages))
 
         // Updating media info
         AudioPlaybackManager.updateMediaInfo("Starboy", "The Weeknd", "com.spotify.music")

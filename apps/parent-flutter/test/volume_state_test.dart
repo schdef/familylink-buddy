@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:parent_app/pairing/pairing_repository.dart';
 import 'package:parent_app/volume/volume_control_screen.dart';
 import 'package:parent_app/volume/volume_repository.dart';
+import 'package:parent_app/updater/updater_service.dart';
 import 'package:parent_app/l10n/app_strings.dart';
 
 void main() {
@@ -70,6 +71,65 @@ void main() {
       expect(state.mediaTitle, 'Die Drei ??? Kids');
       expect(state.mediaArtist, 'Europa');
       expect(state.mediaPackage, 'com.spotify.music');
+    });
+
+    test('fromJson handles empty strings and whitespace by normalizing to null', () {
+      final json = {
+        'mediaVolume': 5,
+        'isMusicActive': true,
+        'mediaTitle': '',
+        'mediaArtist': '   ',
+        'mediaPackage': '',
+      };
+      final state = VolumeState.fromJson(json);
+      expect(state.mediaTitle, isNull);
+      expect(state.mediaArtist, isNull);
+      expect(state.mediaPackage, isNull);
+    });
+
+    test('VolumeState equality and hashCode distinguish media track and artist changes', () {
+      const state1 = VolumeState(
+        mediaVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'Song A',
+        mediaArtist: 'Artist A',
+        mediaPackage: 'com.spotify.music',
+      );
+      const state2 = VolumeState(
+        mediaVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'Song A',
+        mediaArtist: 'Artist A',
+        mediaPackage: 'com.spotify.music',
+      );
+      const state3 = VolumeState(
+        mediaVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'Song B',
+        mediaArtist: 'Artist A',
+        mediaPackage: 'com.spotify.music',
+      );
+      const state4 = VolumeState(
+        mediaVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'Song A',
+        mediaArtist: 'Artist B',
+        mediaPackage: 'com.spotify.music',
+      );
+      const state5 = VolumeState(
+        mediaVolume: 5,
+        isMusicActive: false,
+        mediaTitle: 'Song A',
+        mediaArtist: 'Artist A',
+        mediaPackage: 'com.spotify.music',
+      );
+
+      expect(state1, equals(state2));
+      expect(state1.hashCode, equals(state2.hashCode));
+
+      expect(state1, isNot(equals(state3)));
+      expect(state1, isNot(equals(state4)));
+      expect(state1, isNot(equals(state5)));
     });
 
     test('fromJson parsing with nulls / missing values', () {
@@ -281,6 +341,65 @@ void main() {
       // Days cases
       expect(VolumeRepository.getLastSeenText(now.subtract(const Duration(days: 2)), now: now), 'Vor 2 Tagen aktiv');
     });
+
+    test('adaptive polling adjusts from 5s to 3s when music is active and back to 5s when stopped', () async {
+      final repo = VolumeRepository();
+      repo.localIpAddress = '192.168.1.100';
+
+      // Default polling interval is 5 seconds
+      expect(repo.currentPollingInterval, equals(VolumeRepository.defaultPollingInterval));
+      expect(repo.currentPollingInterval, equals(const Duration(seconds: 5)));
+
+      // Music starts: report indicates isMusicActive = true
+      await http.runWithClient(() async {
+        await repo.requestVolumeReport('test_token');
+        expect(repo.volumeState.isMusicActive, isTrue);
+        expect(repo.volumeState.mediaTitle, equals('Track 1'));
+        expect(repo.currentPollingInterval, equals(VolumeRepository.activePollingInterval));
+        expect(repo.currentPollingInterval, equals(const Duration(seconds: 3)));
+      }, () => MockClient((request) async {
+        return http.Response(jsonEncode({
+          'mediaVolume': 8,
+          'ringtoneVolume': 5,
+          'alarmVolume': 5,
+          'isMusicActive': true,
+          'mediaTitle': 'Track 1',
+          'mediaArtist': 'Artist 1',
+        }), 200);
+      }));
+
+      // Next song plays: report updates with new track title and artist
+      int notifyCount = 0;
+      repo.addListener(() => notifyCount++);
+
+      await http.runWithClient(() async {
+        await repo.requestVolumeReport('test_token');
+        expect(repo.volumeState.mediaTitle, equals('Track 2'));
+        expect(repo.volumeState.mediaArtist, equals('Artist 2'));
+        expect(repo.currentPollingInterval, equals(VolumeRepository.activePollingInterval));
+        expect(notifyCount, greaterThan(0));
+      }, () => MockClient((request) async {
+        return http.Response(jsonEncode({
+          'mediaVolume': 8,
+          'ringtoneVolume': 5,
+          'alarmVolume': 5,
+          'isMusicActive': true,
+          'mediaTitle': 'Track 2',
+          'mediaArtist': 'Artist 2',
+        }), 200);
+      }));
+
+      // Stop playback restores polling interval to 5s
+      await http.runWithClient(() async {
+        final stopped = await repo.stopAudioPlayback(childToken: 'test_token');
+        expect(stopped, isTrue);
+        expect(repo.volumeState.isMusicActive, isFalse);
+        expect(repo.currentPollingInterval, equals(VolumeRepository.defaultPollingInterval));
+        expect(repo.currentPollingInterval, equals(const Duration(seconds: 5)));
+      }, () => MockClient((request) async {
+        return http.Response(jsonEncode({'status': 'success'}), 200);
+      }));
+    });
   });
 
   group('VolumeControlScreen Active Audio UI Tests', () {
@@ -444,6 +563,86 @@ void main() {
           'mediaArtist': 'Great Artist',
         }), 200);
       }));
+    });
+
+    testWidgets('VolumeControlScreen displays dynamic version badge matching UpdaterService.currentVersion', (tester) async {
+      final repo = VolumeRepository();
+      repo.localIpAddress = '192.168.1.100';
+
+      final device = PairedDevice(
+        id: 'dev-1',
+        name: 'Kind-Tablet',
+        token: 'token-abc',
+        localIpAddress: '192.168.1.100',
+        lastSeen: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<VolumeRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            home: VolumeControlScreen(device: device),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('app_version_badge')), findsOneWidget);
+      expect(find.text('v${UpdaterService.currentVersion}'), findsOneWidget);
+      expect(find.text('v1.1.3'), findsOneWidget);
+    });
+
+    testWidgets('VolumeControlScreen updates active audio card immediately when next song plays', (tester) async {
+      final repo = VolumeRepository();
+      repo.localIpAddress = '192.168.1.100';
+      repo.volumeStateForTesting = VolumeState(
+        mediaVolume: 8,
+        ringtoneVolume: 5,
+        alarmVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'First Song',
+        mediaArtist: 'First Artist',
+        mediaPackage: 'com.spotify.music',
+        timestamp: DateTime.now(),
+      );
+
+      final device = PairedDevice(
+        id: 'dev-1',
+        name: 'Kind-Tablet',
+        token: 'token-abc',
+        localIpAddress: '192.168.1.100',
+        lastSeen: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<VolumeRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            home: VolumeControlScreen(device: device),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('First Song'), findsOneWidget);
+      expect(find.textContaining('First Artist'), findsOneWidget);
+
+      // Next song starts playing on child device
+      repo.volumeStateForTesting = VolumeState(
+        mediaVolume: 8,
+        ringtoneVolume: 5,
+        alarmVolume: 5,
+        isMusicActive: true,
+        mediaTitle: 'Second Song (Next Track)',
+        mediaArtist: 'Second Artist',
+        mediaPackage: 'com.spotify.music',
+        timestamp: DateTime.now(),
+      );
+      await tester.pump();
+
+      expect(find.text('Second Song (Next Track)'), findsOneWidget);
+      expect(find.textContaining('Second Artist'), findsOneWidget);
+      expect(find.text('First Song'), findsNothing);
     });
   });
 }

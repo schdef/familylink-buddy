@@ -1,7 +1,15 @@
 package com.familylink.buddy.child.service
 
 import android.app.Notification
+import android.content.ComponentName
+import android.content.Context
+import android.media.MediaMetadata
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -10,10 +18,64 @@ import com.familylink.buddy.child.data.ChatMessageRecord
 import com.familylink.buddy.child.data.CommunicationDatabaseHelper
 
 /**
- * Listens for incoming chat notifications from supported messaging platforms:
- * WhatsApp, Google Messages, Telegram, and Signal.
+ * Listens for incoming chat notifications from supported messaging platforms
+ * (WhatsApp, Google Messages, Telegram, Signal) and monitors media session updates
+ * for real-time track metadata detection.
  */
 class ChatNotificationListenerService : NotificationListenerService() {
+
+    private var sessionManager: MediaSessionManager? = null
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+    private val controllerCallbacks = mutableMapOf<MediaController, MediaController.Callback>()
+
+    private val sessionsChangedListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
+        Log.d(TAG, "Active media sessions changed: count=${controllers?.size ?: 0}")
+        updateMediaControllers(controllers)
+        AudioPlaybackManager.refreshMediaInfo(this@ChatNotificationListenerService)
+    }
+
+    @Synchronized
+    private fun updateMediaControllers(controllers: List<MediaController>?) {
+        for ((controller, callback) in controllerCallbacks) {
+            try {
+                controller.unregisterCallback(callback)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error unregistering controller callback: ${e.message}")
+            }
+        }
+        controllerCallbacks.clear()
+
+        if (!controllers.isNullOrEmpty()) {
+            for (controller in controllers) {
+                val callback = object : MediaController.Callback() {
+                    override fun onMetadataChanged(metadata: MediaMetadata?) {
+                        Log.d(TAG, "Media metadata changed for package: ${controller.packageName}")
+                        AudioPlaybackManager.refreshMediaInfo(this@ChatNotificationListenerService)
+                    }
+
+                    override fun onPlaybackStateChanged(state: PlaybackState?) {
+                        Log.d(TAG, "Playback state changed for package: ${controller.packageName}, state=${state?.state}")
+                        AudioPlaybackManager.refreshMediaInfo(this@ChatNotificationListenerService)
+                    }
+                }
+                try {
+                    controller.registerCallback(callback, mainHandler)
+                    controllerCallbacks[controller] = callback
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error registering callback on controller ${controller.packageName}: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun cleanupSessionListeners() {
+        try {
+            sessionManager?.removeOnActiveSessionsChangedListener(sessionsChangedListener)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error removing active sessions listener: ${e.message}")
+        }
+        updateMediaControllers(null)
+    }
 
     companion object {
         private const val TAG = "ChatNotifListener"
@@ -38,6 +100,46 @@ class ChatNotificationListenerService : NotificationListenerService() {
                 PKG_SIGNAL -> "Signal"
                 else -> packageName
             }
+        }
+
+        /**
+         * Validates whether a notification is an authentic media playback notification
+         * based on standard Android media criteria:
+         * 1. EXTRA_MEDIA_SESSION or "android.mediaSession" extra key present
+         * 2. MediaStyle template extra
+         * 3. CATEGORY_TRANSPORT notification category
+         * 4. Transport playback actions (play, pause, skip, next, previous)
+         */
+        fun isMediaNotification(
+            category: String?,
+            extras: Bundle?,
+            actions: Array<Notification.Action>? = null
+        ): Boolean {
+            val hasMediaSessionExtra = extras?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true ||
+                    extras?.containsKey("android.mediaSession") == true
+            val template = extras?.getString(Notification.EXTRA_TEMPLATE)
+            val actionTitles = actions?.mapNotNull { it.title?.toString() }
+            return isMediaNotification(category, hasMediaSessionExtra, template, actionTitles)
+        }
+
+        fun isMediaNotification(
+            category: String?,
+            hasMediaSessionExtra: Boolean,
+            template: String?,
+            actionTitles: List<String>? = null
+        ): Boolean {
+            if (hasMediaSessionExtra) return true
+            if (template != null && template.contains("MediaStyle", ignoreCase = true)) return true
+            if (category == Notification.CATEGORY_TRANSPORT) return true
+            if (!actionTitles.isNullOrEmpty()) {
+                val hasTransportAction = actionTitles.any { rawTitle ->
+                    val title = rawTitle.lowercase()
+                    title.contains("pause") || title.contains("play") || title.contains("next") ||
+                            title.contains("previous") || title.contains("skip") || title.contains("stop")
+                }
+                if (hasTransportAction) return true
+            }
+            return false
         }
 
         /**
@@ -100,11 +202,8 @@ class ChatNotificationListenerService : NotificationListenerService() {
         val extras = notification.extras
 
         // Media playback metadata extraction (Spotify, YouTube, Podcasting, etc.)
-        val isMediaSession = extras?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true ||
-                extras?.containsKey("android.mediaSession") == true
-        val isTransport = notification.category == Notification.CATEGORY_TRANSPORT
-
-        if (isMediaSession || isTransport || (!SUPPORTED_PACKAGES.contains(pkg) && AudioPlaybackManager.isMusicActive(this))) {
+        val isMedia = isMediaNotification(notification.category, extras, notification.actions)
+        if (isMedia) {
             val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
             val text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
             val subText = extras?.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
@@ -112,6 +211,7 @@ class ChatNotificationListenerService : NotificationListenerService() {
             if (!title.isNullOrBlank() || !artist.isNullOrBlank()) {
                 AudioPlaybackManager.updateMediaInfo(title, artist, pkg)
             }
+            AudioPlaybackManager.refreshMediaInfo(this)
         }
 
         // Chat messaging notification processing
@@ -135,6 +235,8 @@ class ChatNotificationListenerService : NotificationListenerService() {
         if (pkg == AudioPlaybackManager.currentMediaPackage) {
             if (!AudioPlaybackManager.isMusicActive(this)) {
                 AudioPlaybackManager.clearMediaInfo()
+            } else {
+                AudioPlaybackManager.refreshMediaInfo(this)
             }
         }
     }
@@ -142,10 +244,28 @@ class ChatNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "ChatNotificationListenerService connected and listening.")
+        try {
+            sessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            val componentName = ComponentName(this, ChatNotificationListenerService::class.java)
+            sessionManager?.addOnActiveSessionsChangedListener(sessionsChangedListener, componentName, mainHandler)
+            val controllers = sessionManager?.getActiveSessions(componentName)
+            updateMediaControllers(controllers)
+            AudioPlaybackManager.refreshMediaInfo(this)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException in onListenerConnected registering session listener: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onListenerConnected media session setup: ${e.message}", e)
+        }
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.i(TAG, "ChatNotificationListenerService disconnected.")
+        cleanupSessionListeners()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cleanupSessionListeners()
     }
 }
