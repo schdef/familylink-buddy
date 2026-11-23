@@ -1130,6 +1130,7 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
       builder: (ctx) => _P2PUpdateDialog(
         initialLocalIp: localIpAddress,
         childFcmToken: _currentDevice.fcmToken,
+        authToken: _currentDevice.token,
       ),
     );
   }
@@ -1138,10 +1139,12 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> with SingleTi
 class _P2PUpdateDialog extends StatefulWidget {
   final String? initialLocalIp;
   final String childFcmToken;
+  final String? authToken;
 
   const _P2PUpdateDialog({
     this.initialLocalIp,
     required this.childFcmToken,
+    this.authToken,
   });
 
   @override
@@ -1284,6 +1287,7 @@ class _P2PUpdateDialogState extends State<_P2PUpdateDialog> {
       await updater.pushUpdateToChild(
         childLocalIp: ip,
         apkFilePath: apkPath,
+        authToken: widget.authToken,
         onProgress: (p) {
           if (mounted) {
             setState(() {

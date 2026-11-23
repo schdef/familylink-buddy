@@ -103,22 +103,33 @@ class UpdaterService {
 
   /// Fetches latest release metadata from GitHub repository releases endpoint.
   static Future<ReleaseInfo?> fetchLatestRelease({http.Client? client}) async {
+    const fallbackRelease = ReleaseInfo(
+      tagName: 'v1.1.3',
+      releaseNotes: '',
+      parentApkUrl: 'https://github.com/schdef/familylink-buddy/releases/latest/download/parent-app-release.apk',
+      childApkUrl: 'https://github.com/schdef/familylink-buddy/releases/latest/download/child-app-release.apk',
+      htmlUrl: 'https://github.com/schdef/familylink-buddy/releases/latest',
+    );
+
     final httpClient = client ?? http.Client();
     final url = Uri.parse('https://api.github.com/repos/schdef/familylink-buddy/releases/latest');
     try {
       final response = await httpClient.get(
         url,
-        headers: {'Accept': 'application/vnd.github.v3+json'},
-      ).timeout(const Duration(seconds: 5));
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'FamilyLinkBuddy-Parent/1.1.3',
+        },
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final jsonMap = jsonDecode(response.body) as Map<String, dynamic>;
         return ReleaseInfo.fromJson(jsonMap);
       }
-      return null;
+      return fallbackRelease;
     } catch (e) {
       debugPrint('UpdaterService.fetchLatestRelease error: $e');
-      return null;
+      return fallbackRelease;
     } finally {
       if (client == null) {
         httpClient.close();
@@ -225,53 +236,89 @@ class UpdaterService {
     required Function(double progress) onProgress,
     required http.Client client,
   }) async {
-    final uri = Uri.parse(url);
-    final request = http.Request('GET', uri);
-    final response = await client.send(request);
+    final releaseAssetName = fileName.contains('child')
+        ? 'child-app-release.apk'
+        : (fileName.contains('parent') ? 'parent-app-release.apk' : fileName);
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('Failed to download update: HTTP ${response.statusCode}', uri: uri);
-    }
+    final candidates = <String>[
+      url,
+      'https://github.com/schdef/familylink-buddy/releases/latest/download/$fileName',
+      'https://github.com/schdef/familylink-buddy/releases/latest/download/$releaseAssetName',
+      'https://raw.githubusercontent.com/schdef/familylink-buddy/main/build/$fileName',
+      'https://raw.githubusercontent.com/schdef/familylink-buddy/main/build/$releaseAssetName',
+    ];
+    final uniqueCandidates = candidates.toSet().toList();
 
-    final totalBytes = response.contentLength ?? -1;
     final cacheDirPath = await getCacheDirectoryPath();
     final file = File('$cacheDirPath/$fileName');
-    if (await file.exists()) {
+    Object? lastError;
+
+    for (final candidateUrl in uniqueCandidates) {
       try {
-        await file.delete();
-      } catch (_) {}
+        final uri = Uri.parse(candidateUrl);
+        final request = http.Request('GET', uri);
+        request.headers['User-Agent'] = 'FamilyLinkBuddy-Parent/1.1.3';
+        final response = await client.send(request).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw HttpException('Failed to download update: HTTP ${response.statusCode}', uri: uri);
+        }
+
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } catch (_) {}
+        }
+
+        final totalBytes = response.contentLength ?? -1;
+        final sink = file.openWrite();
+        int receivedBytes = 0;
+        onProgress(0.0);
+
+        final completer = Completer<void>();
+
+        response.stream.listen(
+          (chunk) {
+            sink.add(chunk);
+            receivedBytes += chunk.length;
+            if (totalBytes > 0) {
+              final progress = (receivedBytes / totalBytes).clamp(0.0, 1.0);
+              onProgress(progress);
+            }
+          },
+          onDone: () async {
+            await sink.flush();
+            await sink.close();
+            onProgress(1.0);
+            completer.complete();
+          },
+          onError: (err, stackTrace) async {
+            await sink.close();
+            completer.completeError(err, stackTrace);
+          },
+          cancelOnError: true,
+        );
+
+        await completer.future;
+        return file;
+      } catch (e) {
+        debugPrint('Download attempt failed from $candidateUrl: $e');
+        lastError = e;
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } catch (_) {}
+        }
+      }
     }
 
-    final sink = file.openWrite();
-    int receivedBytes = 0;
-    onProgress(0.0);
-
-    final completer = Completer<void>();
-
-    response.stream.listen(
-      (chunk) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
-        if (totalBytes > 0) {
-          final progress = (receivedBytes / totalBytes).clamp(0.0, 1.0);
-          onProgress(progress);
-        }
-      },
-      onDone: () async {
-        await sink.flush();
-        await sink.close();
-        onProgress(1.0);
-        completer.complete();
-      },
-      onError: (err, stackTrace) async {
-        await sink.close();
-        completer.completeError(err, stackTrace);
-      },
-      cancelOnError: true,
-    );
-
-    await completer.future;
-    return file;
+    if (lastError != null) {
+      if (lastError is Exception) {
+        throw lastError;
+      }
+      throw Exception(lastError.toString());
+    }
+    throw const HttpException('All download candidates failed');
   }
 
   /// Displays the interactive update dialog to check, download, and install updates.

@@ -646,5 +646,35 @@ void main() {
         }
       }
     });
+
+    test('pushUpdateToChild includes X-Buddy-Token header when authToken provided', () async {
+      final tempFile = File('${Directory.systemTemp.path}/test_upload_token.apk');
+      final dummyBytes = List<int>.generate(1024 * 2, (i) => i % 256);
+      await tempFile.writeAsBytes(dummyBytes);
+
+      try {
+        final mockClient = MockClient((request) async {
+          expect(request.url.toString(), 'http://192.168.1.150:8085/upload_update');
+          expect(request.method, 'POST');
+          expect(request.headers['X-Buddy-Token'], 'test_auth_token_xyz');
+          expect(request.headers['Authorization'], 'Bearer test_auth_token_xyz');
+          return http.Response('{"status":"success"}', 200);
+        });
+
+        final updater = P2PUpdaterService(client: mockClient);
+        final success = await updater.pushUpdateToChild(
+          childLocalIp: '192.168.1.150',
+          apkFilePath: tempFile.path,
+          authToken: 'test_auth_token_xyz',
+          onProgress: (_) {},
+        );
+
+        expect(success, isTrue);
+      } finally {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      }
+    });
   });
 }

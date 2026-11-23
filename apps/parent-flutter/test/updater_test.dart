@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -192,13 +193,17 @@ void main() {
       expect(info.parentApkUrl, 'https://example.com/parent.apk');
     });
 
-    test('fetchLatestRelease returns null on HTTP error', () async {
+    test('fetchLatestRelease returns fallback ReleaseInfo on HTTP error or rate limit', () async {
       final mockClient = MockClient((request) async {
-        return http.Response('Not Found', 404);
+        expect(request.headers['User-Agent'], 'FamilyLinkBuddy-Parent/1.1.3');
+        return http.Response('Rate limited', 403);
       });
 
       final info = await UpdaterService.fetchLatestRelease(client: mockClient);
-      expect(info, isNull);
+      expect(info, isNotNull);
+      expect(info!.tagName, 'v1.1.3');
+      expect(info.parentApkUrl, contains('parent-app-release.apk'));
+      expect(info.childApkUrl, contains('child-app-release.apk'));
     });
 
     test('downloadAndInstallParentApk streams file and invokes installApk', () async {
@@ -536,6 +541,164 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
+    });
+
+    test('downloadChildApk falls back to release asset URL when primary URL fails', () async {
+      final apkBytes = utf8.encode('FALLBACK_APK_CONTENT');
+      final requestedUrls = <String>[];
+
+      final mockClient = MockClient((request) async {
+        requestedUrls.add(request.url.toString());
+        expect(request.headers['User-Agent'], 'FamilyLinkBuddy-Parent/1.1.3');
+        if (request.url.toString() == 'https://example.com/failing_primary.apk') {
+          return http.Response('Not Found', 404);
+        }
+        return http.Response.bytes(
+          apkBytes,
+          200,
+          headers: {'content-length': apkBytes.length.toString()},
+        );
+      });
+
+      final path = await UpdaterService.downloadChildApk(
+        apkUrl: 'https://example.com/failing_primary.apk',
+        onProgress: (_) {},
+        client: mockClient,
+      );
+
+      expect(path, isNotNull);
+      expect(requestedUrls.length, greaterThan(1));
+      expect(requestedUrls.first, 'https://example.com/failing_primary.apk');
+    });
+
+    test('P2PUpdaterService.pushUpdateToChild sends X-Buddy-Token and Authorization headers', () async {
+      final tempFile = File('${Directory.systemTemp.path}/test_p2p_token.apk');
+      await tempFile.writeAsBytes(utf8.encode('TEST_APK'));
+
+      try {
+        String? capturedToken;
+        String? capturedAuth;
+        final mockClient = MockClient((request) async {
+          capturedToken = request.headers['X-Buddy-Token'];
+          capturedAuth = request.headers['Authorization'];
+          return http.Response('{"status":"ok"}', 200);
+        });
+
+        final service = P2PUpdaterService(client: mockClient);
+        final success = await service.pushUpdateToChild(
+          childLocalIp: '192.168.1.150',
+          apkFilePath: tempFile.path,
+          authToken: 'my_secret_token_123',
+          onProgress: (_) {},
+        );
+
+        expect(success, isTrue);
+        expect(capturedToken, 'my_secret_token_123');
+        expect(capturedAuth, 'Bearer my_secret_token_123');
+      } finally {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      }
+    });
+
+    test('P2PUpdaterService.triggerChildDirectUpdate sends POST with token and downloadUrl', () async {
+      String? capturedBody;
+      String? capturedToken;
+      final mockClient = MockClient((request) async {
+        expect(request.url.toString(), 'http://192.168.1.150:8085/trigger_update');
+        expect(request.method, 'POST');
+        capturedToken = request.headers['X-Buddy-Token'];
+        capturedBody = request.body;
+        return http.Response('{"status":"ok"}', 200);
+      });
+
+      final service = P2PUpdaterService(client: mockClient);
+      final success = await service.triggerChildDirectUpdate(
+        childLocalIp: '192.168.1.150',
+        authToken: 'test_token',
+        downloadUrl: 'https://example.com/child.apk',
+      );
+
+      expect(success, isTrue);
+      expect(capturedToken, 'test_token');
+      expect(capturedBody, contains('https://example.com/child.apk'));
+    });
+
+    testWidgets('Tapping Update Child Tablet displays p2pTransferFailed and direct update button on P2P error', (tester) async {
+      final mockClient = MockClient((request) async {
+        if (request.url.path.contains('/releases/latest')) {
+          return http.Response(
+            jsonEncode({
+              'tag_name': 'v1.2.0',
+              'body': 'New features',
+              'html_url': 'https://github.com/schdef/familylink-buddy/releases',
+              'assets': [
+                {
+                  'name': 'child-app-release.apk',
+                  'browser_download_url': 'https://example.com/child.apk',
+                }
+              ]
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        if (request.url.path.contains('child.apk')) {
+          return http.Response.bytes(
+            utf8.encode('APK_BYTES'),
+            200,
+            headers: {'content-length': '9'},
+          );
+        }
+        if (request.url.path == '/upload_update') {
+          return http.Response('Unauthorized', 401);
+        }
+        if (request.url.path == '/trigger_update') {
+          return http.Response('{"status":"ok"}', 200);
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UpdateDialog(
+              childIp: '192.168.1.150',
+              client: mockClient,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btn_update_child_app')));
+        // Wait for async download and p2p push failure
+        int waited = 0;
+        while (find.byKey(const ValueKey('btn_trigger_direct_tablet_download')).evaluate().isEmpty && waited < 40) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          waited++;
+        }
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Failed to send update to tablet over Wi-Fi'), findsOneWidget);
+      expect(find.byKey(const ValueKey('btn_trigger_direct_tablet_download')), findsOneWidget);
+
+      // Tap direct tablet download button
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btn_trigger_direct_tablet_download')));
+        int waited = 0;
+        while (find.textContaining('Update download started on tablet').evaluate().isEmpty && waited < 40) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          waited++;
+        }
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Update download started on tablet'), findsOneWidget);
     });
   });
 }

@@ -2,6 +2,7 @@ package com.familylink.buddy.child
 
 import com.familylink.buddy.child.data.AudioPlaybackManager
 import com.familylink.buddy.child.data.BedtimeSchedule
+import com.familylink.buddy.child.data.UpdateManager
 import com.familylink.buddy.child.service.LocalHttpServer
 import org.json.JSONArray
 import org.json.JSONObject
@@ -251,6 +252,73 @@ class LocalHttpServerLogicTest {
         val pairedToken = "sec_test_secret_token_123"
         val publicPaths = setOf("/status", "/pair")
         val path = "/get_schedule"
+
+        assertFalse("Path $path must require authentication", publicPaths.contains(path))
+
+        val checkAuth = { incomingToken: String? ->
+            pairedToken.isNotEmpty() && !publicPaths.contains(path) && (incomingToken == null || incomingToken != pairedToken)
+        }
+
+        // Missing token -> unauthorized
+        assertTrue(checkAuth(null))
+
+        // Wrong token -> unauthorized
+        assertTrue(checkAuth("wrong_token"))
+
+        // Correct token -> authorized
+        assertFalse(checkAuth("sec_test_secret_token_123"))
+    }
+
+    @Test
+    fun testTriggerUpdateDownloadUrlParsingFromBody() {
+        val bodyJson = JSONObject().apply {
+            put("downloadUrl", "https://example.com/builds/child-v2.apk")
+        }
+        val parsedUrl = LocalHttpServer.parseDownloadUrl(bodyJson, emptyMap())
+        assertEquals("https://example.com/builds/child-v2.apk", parsedUrl)
+    }
+
+    @Test
+    fun testTriggerUpdateDownloadUrlParsingFromQueryParams() {
+        val queryParams = mapOf("downloadUrl" to "https://example.com/query/child.apk")
+        val parsedUrl = LocalHttpServer.parseDownloadUrl(null, queryParams)
+        assertEquals("https://example.com/query/child.apk", parsedUrl)
+    }
+
+    @Test
+    fun testTriggerUpdateDownloadUrlFallbackWhenMissingOrBlank() {
+        // Null body and empty query params
+        val urlFromEmpty = LocalHttpServer.parseDownloadUrl(null, emptyMap())
+        assertEquals(UpdateManager.FALLBACK_DOWNLOAD_URL, urlFromEmpty)
+
+        // Blank string in body
+        val blankBody = JSONObject().apply {
+            put("downloadUrl", "   ")
+        }
+        val urlFromBlankBody = LocalHttpServer.parseDownloadUrl(blankBody, emptyMap())
+        assertEquals(UpdateManager.FALLBACK_DOWNLOAD_URL, urlFromBlankBody)
+
+        // Blank query param
+        val blankQuery = mapOf("downloadUrl" to "")
+        val urlFromBlankQuery = LocalHttpServer.parseDownloadUrl(null, blankQuery)
+        assertEquals(UpdateManager.FALLBACK_DOWNLOAD_URL, urlFromBlankQuery)
+    }
+
+    @Test
+    fun testTriggerUpdateResponseJsonStructure() {
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("message", "Update download started")
+        }
+        assertEquals("success", responseJson.getString("status"))
+        assertEquals("Update download started", responseJson.getString("message"))
+    }
+
+    @Test
+    fun testAuthenticationPolicyForTriggerUpdate() {
+        val pairedToken = "sec_test_secret_token_123"
+        val publicPaths = setOf("/status", "/pair")
+        val path = "/trigger_update"
 
         assertFalse("Path $path must require authentication", publicPaths.contains(path))
 

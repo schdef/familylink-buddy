@@ -241,6 +241,10 @@ abstract class AppStrings {
   String get installPermissionRequired;
   String get installFailed;
   String get webManualDownloadNotice;
+  String get downloadFailed;
+  String get p2pTransferFailed;
+  String get triggerTabletDownload;
+  String get tabletDownloadTriggered;
 
   // ===========================================================================
   // 5. SCREENSHOT SCREEN
@@ -807,6 +811,14 @@ class AppStringsEn extends AppStrings {
   String get installPermissionRequired => "Install permission required. Please enable 'Allow from this source' in Settings and tap Update again.";
   @override
   String get installFailed => "Failed to start installation.";
+  @override
+  String get downloadFailed => 'Failed to download update file';
+  @override
+  String get p2pTransferFailed => 'Failed to send update to tablet over Wi-Fi';
+  @override
+  String get triggerTabletDownload => 'Download directly on tablet';
+  @override
+  String get tabletDownloadTriggered => 'Update download started on tablet';
   @override
   String get webManualDownloadNotice => 'Please download the latest release APK from GitHub:';
 
@@ -1587,6 +1599,14 @@ class AppStringsDe extends AppStrings {
   String get installPermissionRequired => "Installationsberechtigung erforderlich. Bitte aktiviere 'Aus dieser Quelle zulassen' in den Einstellungen und tippe erneut auf Aktualisieren.";
   @override
   String get installFailed => "Installation konnte nicht gestartet werden.";
+  @override
+  String get downloadFailed => 'Update-Datei konnte nicht heruntergeladen werden';
+  @override
+  String get p2pTransferFailed => 'Update-Übertragung an das Tablet über WLAN fehlgeschlagen';
+  @override
+  String get triggerTabletDownload => 'Direkt auf dem Tablet herunterladen';
+  @override
+  String get tabletDownloadTriggered => 'Update-Download auf dem Tablet gestartet';
   @override
   String get webManualDownloadNotice => 'Bitte lade die neueste Release-APK von GitHub herunter:';
 

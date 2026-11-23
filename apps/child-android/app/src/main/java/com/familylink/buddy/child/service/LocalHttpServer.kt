@@ -25,6 +25,7 @@ import com.familylink.buddy.child.data.PackageInstallerHelper
 import com.familylink.buddy.child.data.FamilyTimeRepository
 import com.familylink.buddy.child.data.InstalledAppsManager
 import com.familylink.buddy.child.data.SilentCameraManager
+import com.familylink.buddy.child.data.UpdateManager
 import com.familylink.buddy.child.data.VolumeState
 import com.familylink.buddy.child.data.toJsonArray
 import kotlinx.coroutines.CoroutineScope
@@ -75,6 +76,12 @@ class LocalHttpServer(
         }
 
         fun getInstance(): LocalHttpServer? = instance
+
+        fun parseDownloadUrl(bodyJson: JSONObject?, queryParams: Map<String, String>): String {
+            val fromBody = bodyJson?.optString("downloadUrl")?.takeIf { it.isNotBlank() }
+            val fromQuery = queryParams["downloadUrl"]?.takeIf { it.isNotBlank() }
+            return fromBody ?: fromQuery ?: UpdateManager.FALLBACK_DOWNLOAD_URL
+        }
     }
 
     private var serverSocket: ServerSocket? = null
@@ -232,6 +239,14 @@ class LocalHttpServer(
                 handlePair(writer, queryParams, bodyJson)
             } else if (path == "/upload_update" && method.equals("POST", ignoreCase = true)) {
                 handleUploadUpdate(rawInput, writer, contentLength)
+            } else if (path == "/trigger_update" && method.equals("POST", ignoreCase = true)) {
+                val bodyString = readBodyString(rawInput, contentLength)
+                val bodyJson = try {
+                    if (bodyString.isNotBlank()) JSONObject(bodyString) else null
+                } catch (e: Exception) {
+                    null
+                }
+                handleTriggerUpdate(writer, queryParams, bodyJson)
             } else if (path == "/set_schedule") {
                 val bodyString = readBodyString(rawInput, contentLength)
                 val bodyJson = try {
@@ -506,6 +521,27 @@ class LocalHttpServer(
             Log.e(TAG, "Error launching package installer for uploaded APK", e)
             sendHttpResponse(writer, 500, "Internal Server Error", "{\"status\":\"error\",\"message\":\"Failed to launch installer: ${e.message}\"}")
         }
+    }
+
+    private fun handleTriggerUpdate(
+        writer: PrintWriter,
+        queryParams: Map<String, String>,
+        bodyJson: JSONObject?
+    ) {
+        val downloadUrl = parseDownloadUrl(bodyJson, queryParams)
+        scope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "Triggering update download from: $downloadUrl")
+                UpdateManager.downloadAndInstallApk(context, downloadUrl)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error downloading and installing update", e)
+            }
+        }
+        val responseJson = JSONObject().apply {
+            put("status", "success")
+            put("message", "Update download started")
+        }
+        sendHttpResponse(writer, 200, "OK", responseJson.toString())
     }
 
     private fun handleStopAudio(writer: PrintWriter) {

@@ -120,7 +120,7 @@ object UpdateManager {
     suspend fun downloadAndInstallApk(
         context: Context,
         downloadUrl: String,
-        onProgress: (Float) -> Unit
+        onProgress: (Float) -> Unit = {}
     ): Boolean = withContext(Dispatchers.IO) {
         val cacheFile = File(context.cacheDir, "update.apk")
         if (cacheFile.exists()) {

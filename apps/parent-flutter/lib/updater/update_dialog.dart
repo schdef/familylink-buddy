@@ -27,6 +27,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _isActionRunning = false;
+  bool _showDirectUpdateOption = false;
   double _progress = -1.0;
   String _statusMessage = '';
   late final TextEditingController _ipController;
@@ -97,6 +98,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     setState(() {
       _isActionRunning = true;
+      _showDirectUpdateOption = false;
       _progress = 0.0;
       _statusMessage = strings.downloadingUpdate(0);
     });
@@ -169,6 +171,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     setState(() {
       _isActionRunning = true;
+      _showDirectUpdateOption = false;
       _progress = 0.0;
       _statusMessage = strings.downloadingUpdate(0);
     });
@@ -191,7 +194,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
         if (mounted) {
           setState(() {
             _isActionRunning = false;
-            _statusMessage = strings.updateError;
+            _statusMessage = strings.downloadFailed;
+            _showDirectUpdateOption = true;
           });
         }
         return;
@@ -203,10 +207,21 @@ class _UpdateDialogState extends State<UpdateDialog> {
         });
       }
 
+      String? authToken;
+      try {
+        final devices = await PairingRepository().loadAllPairedDevices();
+        final match = devices.cast<PairedDevice?>().firstWhere(
+          (d) => d?.localIpAddress == targetIp,
+          orElse: () => null,
+        );
+        authToken = match?.token;
+      } catch (_) {}
+
       final p2pService = P2PUpdaterService(client: widget.client);
       final pushSuccess = await p2pService.pushUpdateToChild(
         childLocalIp: targetIp,
         apkFilePath: apkPath,
+        authToken: authToken,
         onProgress: (p) {
           if (mounted) {
             setState(() {
@@ -220,7 +235,68 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (mounted) {
         setState(() {
           _isActionRunning = false;
-          _statusMessage = pushSuccess ? strings.pushedToChildSuccess : strings.updateError;
+          if (pushSuccess) {
+            _statusMessage = strings.pushedToChildSuccess;
+            _showDirectUpdateOption = false;
+          } else {
+            _statusMessage = strings.p2pTransferFailed;
+            _showDirectUpdateOption = true;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isActionRunning = false;
+          _statusMessage = strings.p2pTransferFailed;
+          _showDirectUpdateOption = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _triggerDirectTabletUpdate() async {
+    final strings = AppStrings.of(context);
+    final targetIp = _ipController.text.trim();
+    if (targetIp.isEmpty) {
+      setState(() {
+        _statusMessage = strings.enterChildIp;
+      });
+      return;
+    }
+
+    setState(() {
+      _isActionRunning = true;
+      _statusMessage = strings.checking;
+    });
+
+    try {
+      String? authToken;
+      try {
+        final devices = await PairingRepository().loadAllPairedDevices();
+        final match = devices.cast<PairedDevice?>().firstWhere(
+          (d) => d?.localIpAddress == targetIp,
+          orElse: () => null,
+        );
+        authToken = match?.token;
+      } catch (_) {}
+
+      final p2pService = P2PUpdaterService(client: widget.client);
+      final success = await p2pService.triggerChildDirectUpdate(
+        childLocalIp: targetIp,
+        authToken: authToken,
+        downloadUrl: _releaseInfo?.childApkUrl,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isActionRunning = false;
+          if (success) {
+            _statusMessage = strings.tabletDownloadTriggered;
+            _showDirectUpdateOption = false;
+          } else {
+            _statusMessage = strings.updateError;
+          }
         });
       }
     } catch (e) {
@@ -467,9 +543,31 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 if (_statusMessage.isNotEmpty)
                   Text(
                     _statusMessage,
-                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      color: _showDirectUpdateOption ? const Color(0xFFF87171) : const Color(0xFF38BDF8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                     textAlign: TextAlign.center,
                   ),
+
+                if (_showDirectUpdateOption && !_isActionRunning) ...[
+                  const SizedBox(height: 10),
+                  Center(
+                    child: ElevatedButton.icon(
+                      key: const ValueKey('btn_trigger_direct_tablet_download'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      icon: const Icon(Icons.cloud_download_outlined, size: 16),
+                      label: Text(strings.triggerTabletDownload, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      onPressed: _triggerDirectTabletUpdate,
+                    ),
+                  ),
+                ],
 
                 if (widget.onOpenManualP2p != null && !_isActionRunning) ...[
                   const SizedBox(height: 8),
